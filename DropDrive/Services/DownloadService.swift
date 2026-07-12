@@ -100,7 +100,10 @@ struct GoogleDriveDownloadService: DownloadServicing {
 
     private func fetchMetadata(fileID: String, accessToken: String) async throws -> DriveFile {
         var components = URLComponents(string: "\(Self.apiBase)/\(fileID)")!
-        components.queryItems = [URLQueryItem(name: "fields", value: "id,name,mimeType")]
+        components.queryItems = [
+            URLQueryItem(name: "fields", value: "id,name,mimeType"),
+            URLQueryItem(name: "supportsAllDrives", value: "true")
+        ]
 
         var request = URLRequest(url: components.url!)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
@@ -121,7 +124,8 @@ struct GoogleDriveDownloadService: DownloadServicing {
                 URLQueryItem(name: "fields", value: "nextPageToken, files(id, name, mimeType)"),
                 URLQueryItem(name: "pageSize", value: "1000"),
                 URLQueryItem(name: "supportsAllDrives", value: "true"),
-                URLQueryItem(name: "includeItemsFromAllDrives", value: "true")
+                URLQueryItem(name: "includeItemsFromAllDrives", value: "true"),
+                URLQueryItem(name: "corpora", value: "allDrives")
             ]
             if let pageToken {
                 queryItems.append(URLQueryItem(name: "pageToken", value: pageToken))
@@ -158,7 +162,10 @@ struct GoogleDriveDownloadService: DownloadServicing {
         } else {
             destinationURL = folderURL.appendingPathComponent(Self.sanitizedName(file.name))
             var components = URLComponents(string: "\(Self.apiBase)/\(file.id)")!
-            components.queryItems = [URLQueryItem(name: "alt", value: "media")]
+            components.queryItems = [
+                URLQueryItem(name: "alt", value: "media"),
+                URLQueryItem(name: "supportsAllDrives", value: "true")
+            ]
             requestURL = components.url!
         }
 

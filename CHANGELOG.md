@@ -5,6 +5,47 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [5.1.0] - Chrome integration
+
+### Added
+- Menu Bar Mode: the menu bar extra now shows live queue/progress, with
+  Pause/Resume/Cancel on the active download and per-item actions, sharing
+  the same live state as the main window (previously each held its own
+  independent, out-of-sync copy)
+- Download-complete notifications gained an "Open DropDrive" action
+  alongside "Reveal in Finder"
+
+### Fixed
+- Chrome extension: the injected "Send to DropDrive" button never worked —
+  `content.js` referenced a `class` before its declaration, which throws
+  and aborts the whole script in JavaScript (no hoisting for classes the
+  way there is for functions)
+- Chrome extension: the "Send to DropDrive" context menu could appear on
+  any website, not just Google Drive, because the page-context menu item
+  only had `targetUrlPatterns` (which constrains link/image targets) and
+  no `documentUrlPatterns` (which constrains the page itself)
+- Chrome extension: removed an unused `scripting` permission and a
+  manifest `icons` block pointing at image files that don't exist (both
+  would surface as load-time warnings/errors in `chrome://extensions`)
+- Removed a second, unwired deep-link handler and environment key in
+  `DropDriveApp.swift` that duplicated (and could have silently diverged
+  from) the one actually in use
+- Removed a forked, drifted copy of the browser-extension JS that had
+  been placed inside the Safari extension's app folder; the Xcode project
+  was never pointed at it, so it was dead weight, and Safari continues to
+  reference the single Chrome source of truth directly
+
+### Changed
+- The `dropdrive://` deep link host is now consistently `download`
+  (`dropdrive://download?url=...`) everywhere it's emitted — Chrome
+  extension, Safari extension, Share Extension. The app-side handler was
+  already host-agnostic, so this is a producer-side consistency fix, not
+  a breaking change.
+- Chrome/Safari extension messaging simplified: the content script asks
+  the background service worker to open DropDrive (`chrome.tabs.update`
+  isn't available to a content script); nothing else builds or sends the
+  deep link independently anymore.
+
 ## [4.0.0] - Productivity sprint
 
 ### Added

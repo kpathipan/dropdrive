@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
-    @State private var viewModel = DropDriveViewModel()
+    @State private var viewModel = DropDriveViewModel.shared
     @State private var historyStore = DownloadHistoryStore.shared
     @State private var isDropTargeted = false
     @State private var historySearchText = ""

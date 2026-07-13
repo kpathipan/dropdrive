@@ -35,7 +35,7 @@ final class ShareViewController: NSViewController {
 
     private func openInDropDrive(_ link: String) async {
         let encoded = link.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? link
-        guard let target = URL(string: "dropdrive://add?url=\(encoded)") else {
+        guard let target = URL(string: "dropdrive://download?url=\(encoded)") else {
             extensionContext?.cancelRequest(withError: ShareExtensionError.noDriveLink)
             return
         }

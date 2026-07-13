@@ -1,82 +1,62 @@
-# DropDrive v4.0.0 Release Notes
+# DropDrive v5.1.0 Release Notes
 
-A productivity-focused sprint on top of v3.1.0: a more reliable download engine
-(resumable, throttleable, multi-threaded, shortcut/resourceKey-aware), a
-more capable queue (pause/resume, drag-to-reorder, smart naming, duplicate
-detection across sessions), search and lightweight local stats for Recent
-Downloads, and three new ways to send a Drive link into DropDrive without
-copy/paste: a Chrome extension, a Safari extension, and a native macOS Share
-Extension.
+Chrome integration for the "download without copy/paste" workflow that v4.0.0
+introduced for Chrome and Safari, plus a real bug in the Chrome extension that
+would have kept it from working at all, plus a Menu Bar Mode that now actually
+reflects what the app is doing.
 
-## What's new
+## What's new / fixed
 
-### Download engine
-- **Fixed** a class of Drive items that previously failed outright: Drive
-  "shortcuts" (an item added via *Add shortcut to Drive*) are now resolved
-  to their real target transparently, and links carrying a `resourcekey`
-  parameter (Google's newer sharing-security parameter, required for some
-  older/rekeyed shared items) are now honored instead of silently 404ing.
-- **Resumable downloads**: an interrupted download (app quit, network drop,
-  explicit pause) resumes from where it left off whenever the server
-  supports it, and falls back to a clean restart otherwise. Already-completed
-  files in a folder download are skipped on resume rather than redownloaded.
-- **Bandwidth limit**: optional download speed cap in Preferences
-  (Unlimited / 5 / 10 / 20 MB/s / Custom).
-- **Multi-threaded downloads**: large files are automatically split into
-  concurrent ranged requests when the server supports it, with a safe
-  fallback to a single stream when it doesn't.
-- **Smart naming**: a download that would collide with an existing file or
-  folder is automatically suffixed `(1)`, `(2)`, … instead of overwriting it.
+### Chrome, for real this time
+The Chrome extension shipped in v4.0.0 (and touched again ahead of this
+release) had a JavaScript bug that crashed its content script before it ever
+ran: a `class` was referenced before its declaration, which — unlike a
+`function` — isn't hoisted, so it threw immediately and the "Send to
+DropDrive" button never got injected into Google Drive. Fixed, along with:
+- The right-click context menu could appear on any website, not just Google
+  Drive (missing `documentUrlPatterns`).
+- An unused `scripting` permission and a manifest reference to icon files
+  that don't exist — both surface as load warnings in `chrome://extensions`.
+- Duplicated deep-link-building logic between the content script and the
+  background worker, now consolidated into one place (the background
+  worker, since only it can call `chrome.tabs.update`).
 
-### Queue
-- **Pause/Resume** the whole queue; the active download stops safely and
-  picks back up (or restarts, if resume isn't possible) when resumed.
-- **Drag to reorder** pending items in the queue.
-- **Duplicate detection** now also checks Recent Downloads (not just the
-  current session), and asks before re-downloading something you already have.
+### Menu Bar Mode
+The menu bar extra now shows the live download queue, active progress, and
+Pause/Resume/Cancel — and it's the *same* state as the main window, not a
+second independent copy that silently drifted out of sync (which is what it
+was doing before this release).
 
-### Recent Downloads
-- **Search** by file/folder name.
-- **Reveal in Finder** is now the consistent label everywhere (including the
-  completion notification, which previously said "Open Folder" — same
-  behavior, clearer name).
-- **Statistics** (in Preferences): total downloads, total files, total size —
-  computed locally from your own history, nothing leaves your Mac.
+### Deep link consistency
+Every integration — Chrome extension, Safari extension, Share Extension —
+now emits `dropdrive://download?url=<link>` consistently. The app's handler
+was already written to accept any `dropdrive://<host>?url=` form, so this is
+a producer-side cleanup, not a behavior change for anyone already using it.
 
-### Send a link without copy/paste
-- **Chrome extension** (`browser-extension/chrome`): right-click a Drive
-  link or page → *Download with DropDrive*. Load unpacked; not published to
-  the Chrome Web Store.
-- **Safari extension** (`browser-extension/safari`): same capability,
-  packaged as its own small companion app per Safari's extension model.
-- **Share Extension**: send a Drive link to DropDrive from any app's Share
-  menu.
-- All three hand off through a new `dropdrive://` URL scheme — no native
-  messaging host, no App Group, just DropDrive being asked to open a link.
+### Notifications
+Download-complete notifications now offer "Open DropDrive" alongside
+"Reveal in Finder."
 
 ## Upgrading
 
-Download `DropDrive-v4.0.0.dmg`, open it, and drag DropDrive.app to
+Download `DropDrive-v5.1.0.dmg`, open it, and drag DropDrive.app to
 Applications, replacing the previous version. Everything you had — sign-in,
-history, preferences, destination folder — carries over.
+history, preferences, destination folder, queue — carries over.
+
+To use the Chrome integration: load `browser-extension/chrome` unpacked via
+`chrome://extensions` → Developer Mode → Load unpacked (not published to the
+Chrome Web Store). See [browser-extension/chrome/README.md](browser-extension/chrome/README.md).
 
 ## Known limitations in this release
 
-- Live regression testing against real Drive files (every file type, both
-  extensions, the Share Extension) needs a signed-in Google account and real
-  Drive links; this was verified as far as possible in a sandboxed build
-  environment (clean Debug/Release builds, structural UI checks, code
-  review) but a full click-through with real files is still worth doing
-  before wide distribution.
-- Multi-threaded downloads don't carry resume data if interrupted — they
-  fall back to a fresh single-stream restart, which is still correct, just
-  not byte-resumed.
-- The Chrome and Safari extensions aren't published to their respective
-  stores; both are load-locally/build-locally deliverables.
-- `GoogleAPIKey` isn't configured, so anonymous access to public
-  files/folders always falls back to signing in with Google.
-- The GitHub update checker and the About panel's GitHub link remain
-  inactive until a real repository is configured (unchanged from v3.1.0).
-- Signed with a personal Apple Development certificate, not notarized —
-  fine for direct or team distribution; wider public distribution would
-  need a Developer ID certificate and notarization.
+- The Chrome extension fixes were verified by code review, JS/JSON
+  validation, and an end-to-end test of the `dropdrive://download` link
+  handler on the DropDrive side (confirmed the app launches, parses the
+  link, and starts analysis) — not by an interactive click-through inside
+  Chrome itself, since that access wasn't granted in this session. Worth a
+  real click-through in Chrome before wide distribution.
+- Edge/Brave/Arc are not implemented — out of scope for this release by
+  design (Chrome only).
+- Everything listed in v4.0.0's known limitations still applies
+  (`GoogleAPIKey` unset, update checker inactive pending a real repo, not
+  notarized).

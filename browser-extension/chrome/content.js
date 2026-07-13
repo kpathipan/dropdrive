@@ -1,25 +1,35 @@
 // DropDrive Chrome Extension - Content Script
-// Injects download button and context menu into Google Drive
+// Injects a "Send to DropDrive" button into Google Drive's toolbar. Building
+// the deep link and launching the app is the background worker's job
+// (chrome.tabs.update isn't available here) — this just asks for it.
 
-(function() {
-  'use strict';
+(function () {
+  "use strict";
 
-  const BUTTON_ID = 'dropdrive-download-btn';
-  const EXTENSION_ICON = '⬇';
+  const BUTTON_ID = "dropdrive-download-btn";
+  const EXTENSION_ICON = "⬇";
 
-  // Listen for messages from background script
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'downloadFileFromDrive') {
-      const driveLink = request.url;
-      openDropDrive(driveLink);
-      sendResponse({ success: true });
+  class HistoryObserver {
+    constructor(callback) {
+      this.callback = callback;
+      const originalPushState = history.pushState;
+      const originalReplaceState = history.replaceState;
+
+      history.pushState = function (...args) {
+        originalPushState.apply(this, args);
+        callback();
+      };
+
+      history.replaceState = function (...args) {
+        originalReplaceState.apply(this, args);
+        callback();
+      };
+
+      window.addEventListener("popstate", () => callback());
     }
-  });
+  }
 
-  // Inject download button into Google Drive toolbar
   function injectDownloadButton() {
-    if (document.getElementById(BUTTON_ID)) return;
-
     const observer = new MutationObserver(() => {
       tryInjectButton();
     });
@@ -29,16 +39,15 @@
   }
 
   function tryInjectButton() {
-    // Find Google Drive toolbar (main actions toolbar)
     const toolbars = document.querySelectorAll('[role="toolbar"]');
 
     for (const toolbar of toolbars) {
       if (toolbar.querySelector(`#${BUTTON_ID}`)) continue;
 
-      const button = document.createElement('button');
+      const button = document.createElement("button");
       button.id = BUTTON_ID;
-      button.setAttribute('aria-label', 'Send to DropDrive');
-      button.title = 'Send to DropDrive';
+      button.setAttribute("aria-label", "Send to DropDrive");
+      button.title = "Send to DropDrive";
       button.style.cssText = `
         padding: 8px 12px;
         margin: 0 4px;
@@ -53,10 +62,10 @@
       `;
       button.textContent = `${EXTENSION_ICON} DropDrive`;
 
-      button.addEventListener('click', () => {
+      button.addEventListener("click", () => {
         const driveLink = getCurrentDriveLink();
         if (driveLink) {
-          openDropDrive(driveLink);
+          chrome.runtime.sendMessage({ action: "openDropDrive", url: driveLink });
         }
       });
 
@@ -66,29 +75,16 @@
   }
 
   function getCurrentDriveLink() {
-    // Extract file/folder ID from URL
     const urlMatch = window.location.href.match(/\/(?:file|folders)\/([a-zA-Z0-9-_]+)/);
-    if (urlMatch && urlMatch[1]) {
-      return `https://drive.google.com/file/d/${urlMatch[1]}/view`;
-    }
-    return null;
+    return urlMatch ? `https://drive.google.com/file/d/${urlMatch[1]}/view` : null;
   }
 
   function updateButtonVisibility() {
     const button = document.getElementById(BUTTON_ID);
     if (!button) return;
-
-    const driveLink = getCurrentDriveLink();
-    button.style.display = driveLink ? 'inline-block' : 'none';
+    button.style.display = getCurrentDriveLink() ? "inline-block" : "none";
   }
 
-  function openDropDrive(driveLink) {
-    // Use deep link to launch DropDrive
-    const deepLink = `dropdrive://add?url=${encodeURIComponent(driveLink)}`;
-    window.location.href = deepLink;
-  }
-
-  // Listen for URL changes (SPA navigation)
   let lastUrl = location.href;
   new HistoryObserver(() => {
     if (location.href !== lastUrl) {
@@ -100,34 +96,12 @@
     }
   });
 
-  class HistoryObserver {
-    constructor(callback) {
-      this.callback = callback;
-      const originalPushState = history.pushState;
-      const originalReplaceState = history.replaceState;
-
-      history.pushState = function(...args) {
-        originalPushState.apply(this, args);
-        callback();
-      };
-
-      history.replaceState = function(...args) {
-        originalReplaceState.apply(this, args);
-        callback();
-      };
-
-      window.addEventListener('popstate', () => callback());
-    }
-  }
-
-  // Initialize
   injectDownloadButton();
-  document.addEventListener('DOMContentLoaded', () => {
+  document.addEventListener("DOMContentLoaded", () => {
     injectDownloadButton();
   });
 
-  // Update visibility on navigation
-  document.addEventListener('click', () => {
+  document.addEventListener("click", () => {
     setTimeout(updateButtonVisibility, 100);
   });
 })();

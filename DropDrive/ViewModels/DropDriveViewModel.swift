@@ -12,6 +12,11 @@ struct QueueSummary {
 @MainActor
 @Observable
 final class DropDriveViewModel {
+    /// The main window and the menu bar extra both need to reflect the same live
+    /// queue/progress state, not two independent download engines — shared the same
+    /// way DownloadHistoryStore/PreferencesStore are.
+    static let shared = DropDriveViewModel()
+
     private static let largeDownloadThresholdBytes: Int64 = 1_073_741_824 // 1 GB
     private static let assumedDownloadRateBytesPerSecond: Double = 5_000_000 // conservative ~5 MB/s estimate for the ETA shown before starting
 
@@ -117,9 +122,11 @@ final class DropDriveViewModel {
     }
 
     /// Entry point for every URL the app is opened with: Google Sign-In's OAuth
-    /// callback, or `dropdrive://add?url=<Drive link>` from the browser extension,
-    /// Share Extension, or Safari extension — all of which hand off a link the same
-    /// way rather than talking to the app directly.
+    /// callback, or `dropdrive://download?url=<Drive link>` from the Chrome
+    /// extension, Safari extension, or Share Extension — all of which hand off a
+    /// link the same way rather than talking to the app directly. The host segment
+    /// isn't actually inspected below, so any `dropdrive://<host>?url=...` works,
+    /// but `download` is the one canonical form every integration emits.
     func handleIncomingURL(_ url: URL) {
         guard url.scheme?.caseInsensitiveCompare("dropdrive") == .orderedSame else {
             handleCallbackURL(url)

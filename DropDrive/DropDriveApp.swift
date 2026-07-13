@@ -8,11 +8,6 @@ struct DropDriveApp: App {
 
     private static let mainWindowID = "main"
 
-    @Environment(\.openWindow) private var openWindow
-    @Environment(\.openSettings) private var openSettings
-    @State private var historyStore = DownloadHistoryStore.shared
-    @State private var pendingDeepLinkURL: URL?
-
     init() {
         UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
         NotificationService.requestAuthorizationIfNeeded()
@@ -43,7 +38,7 @@ struct DropDriveApp: App {
     }
 
     private func showAboutPanel() {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "4.0.0"
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "5.1.0"
 
         let credits = NSMutableAttributedString(
             string: "Download Google Drive files and folders directly to your Mac.\n\nLicense: All Rights Reserved",
@@ -63,25 +58,5 @@ struct DropDriveApp: App {
                 NSApplication.AboutPanelOptionKey.credits: credits
             ]
         )
-    }
-
-    private func handleDeepLink(_ url: URL) {
-        // Handle dropdrive://download?url=<share-link>
-        guard url.scheme == "dropdrive" else { return }
-        guard url.host == "download" else { return }
-
-        // Extract URL query parameter
-        guard let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let queryItems = urlComponents.queryItems,
-              let urlItem = queryItems.first(where: { $0.name == "url" }),
-              let downloadURLString = urlItem.value,
-              !downloadURLString.isEmpty else {
-            return
-        }
-
-        // Bring app to front and set the deep link URL for ContentView to process
-        NSApp.activate(ignoringOtherApps: true)
-        openWindow(id: Self.mainWindowID)
-        pendingDeepLinkURL = URL(string: downloadURLString)
     }
 }

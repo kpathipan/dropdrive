@@ -5,9 +5,7 @@
   "description": "Download Google Drive files directly to your Mac with DropDrive",
   "version": "5.1.0",
   "permissions": [
-    "scripting",
-    "contextMenus",
-    "activeTab"
+    "contextMenus"
   ],
   "host_permissions": [
     "https://drive.google.com/*"
@@ -25,10 +23,5 @@
   "action": {
     "default_popup": "popup.html",
     "default_title": "DropDrive"
-  },
-  "icons": {
-    "16": "images/icon-16.png",
-    "48": "images/icon-48.png",
-    "128": "images/icon-128.png"
   }
 }

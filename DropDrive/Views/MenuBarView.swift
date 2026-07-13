@@ -1,8 +1,7 @@
 import SwiftUI
 
 struct MenuBarView: View {
-    @State private var viewModel = DropDriveViewModel()
-    @State private var historyStore = DownloadHistoryStore.shared
+    @State private var viewModel = DropDriveViewModel.shared
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
 

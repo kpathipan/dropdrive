@@ -2,68 +2,101 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var viewModel = DropDriveViewModel()
+    @State private var recentDownloads: [DownloadHistoryItem] = []
 
     var body: some View {
         VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 22) {
-                header
+            ScrollView {
+                VStack(spacing: 28) {
+                    header
 
-                AccountCardView(
+                    VStack(spacing: 20) {
+                        DownloadFormView(
+                            driveLink: $viewModel.driveLink,
+                            destinationURL: viewModel.selectedDestinationURL,
+                            isLocked: viewModel.isFormLocked,
+                            onChooseDestination: viewModel.chooseDestinationFolder
+                        )
+
+                        if case .idle = viewModel.downloadPhase {
+                            Button(action: viewModel.download) {
+                                Label("Download", systemImage: "arrow.down.circle.fill")
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 4)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.large)
+                            .disabled(!viewModel.canDownload)
+                        }
+                    }
+                    .frame(maxWidth: 360)
+
+                    resultArea
+                        .frame(maxWidth: 360)
+
+                    if case .idle = viewModel.downloadPhase, recentDownloads.isEmpty {
+                        EmptyStateView()
+                            .frame(maxWidth: 360)
+                    } else if !recentDownloads.isEmpty {
+                        RecentDownloadsView(items: recentDownloads)
+                            .frame(maxWidth: 360)
+                    }
+                }
+                .padding(.horizontal, 32)
+                .padding(.top, 20)
+                .padding(.bottom, 28)
+                .frame(maxWidth: .infinity)
+            }
+
+            Divider()
+
+            StatusBarView(statusText: statusBarText)
+        }
+        .frame(minWidth: 460, idealWidth: 520, minHeight: 480, idealHeight: 600)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                ConnectionToolbarControl(
                     account: viewModel.googleAccount,
                     isSigningIn: viewModel.isSigningIn,
                     isLocked: viewModel.isFormLocked,
                     onSignIn: viewModel.signInWithGoogle,
                     onSignOut: viewModel.signOut
                 )
-
-                DownloadFormView(
-                    driveLink: $viewModel.driveLink,
-                    destinationURL: viewModel.selectedDestinationURL,
-                    isLocked: viewModel.isFormLocked,
-                    onChooseDestination: viewModel.chooseDestinationFolder
-                )
-
-                resultArea
-
-                if case .idle = viewModel.downloadPhase {
-                    Button(action: viewModel.download) {
-                        Label("Download", systemImage: "arrow.down.circle.fill")
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 4)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .disabled(!viewModel.canDownload)
-                }
-
-                if !viewModel.statusMessage.isEmpty, viewModel.downloadPhase == .idle {
-                    Text(viewModel.statusMessage)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
             }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 24)
-            .padding(.top, 40)
-
-            Divider()
-
-            StatusBarView(
-                statusText: viewModel.footerStatusText,
-                isConnected: viewModel.isGoogleSignedIn
-            )
         }
-        .frame(width: 440)
-        .fixedSize(horizontal: false, vertical: true)
-        .background(.background)
         .animation(.easeInOut(duration: 0.25), value: viewModel.downloadPhase)
         .task {
             viewModel.restoreLogin()
         }
         .onOpenURL { url in
             viewModel.handleCallbackURL(url)
+        }
+        .onChange(of: viewModel.downloadPhase) { _, newPhase in
+            recordHistoryIfNeeded(for: newPhase)
+        }
+    }
+
+    private func recordHistoryIfNeeded(for phase: DownloadPhase) {
+        switch phase {
+        case .success(let folderURL, _):
+            recentDownloads.insert(DownloadHistoryItem(name: folderURL.lastPathComponent, date: .now, status: .completed), at: 0)
+        case .failed:
+            let name = GoogleDriveLinkParser.folderID(from: viewModel.driveLink) != nil ? "Google Drive download" : "Download"
+            recentDownloads.insert(DownloadHistoryItem(name: name, date: .now, status: .failed), at: 0)
+        case .cancelled:
+            recentDownloads.insert(DownloadHistoryItem(name: "Google Drive download", date: .now, status: .cancelled), at: 0)
+        default:
+            break
+        }
+    }
+
+    private var statusBarText: String {
+        switch viewModel.downloadPhase {
+        case .idle: "Ready"
+        case .downloading: "Downloading"
+        case .success: "Completed"
+        case .failed: "Error"
+        case .cancelled: "Ready"
         }
     }
 
@@ -74,7 +107,7 @@ struct ContentView: View {
             EmptyView()
         case .downloading:
             if let progress = viewModel.downloadProgress {
-                DownloadProgressView(progress: progress, onCancel: viewModel.cancelDownload)
+                DownloadPanelView(progress: progress, onCancel: viewModel.cancelDownload)
             }
         case .success(let folderURL, let fileCount):
             DownloadSuccessView(
@@ -95,14 +128,18 @@ struct ContentView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(spacing: 6) {
             Text("DropDrive")
-                .font(.system(size: 24, weight: .semibold, design: .rounded))
+                .font(.system(size: 28, weight: .semibold, design: .rounded))
 
-            Text("Download Google Drive folders effortlessly.")
-                .font(.system(size: 12))
+            Text("Download Google Drive files and folders directly to your Mac.")
+                .font(.system(size: 12.5))
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 320)
         }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 8)
     }
 }
 

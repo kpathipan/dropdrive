@@ -2,24 +2,23 @@ import SwiftUI
 
 struct StatusBarView: View {
     let statusText: String
-    let isConnected: Bool
 
     private var appVersion: String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0"
-        return "Version \(version) (Beta)"
+        return "Version \(version) Beta"
     }
 
     var body: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(isConnected ? .green : .secondary)
-                .frame(width: 6, height: 6)
-
+        HStack {
             Text(statusText)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
 
             Spacer()
+
+            Text("DropDrive")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
 
             Text(appVersion)
                 .font(.system(size: 11))

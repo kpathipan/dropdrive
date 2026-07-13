@@ -23,11 +23,12 @@ struct DownloadSuccessView: View {
                     .multilineTextAlignment(.center)
             }
 
-            HStack(spacing: 10) {
-                Button("Open in Finder", action: onOpenInFinder)
-                    .buttonStyle(.bordered)
-
+            HStack(spacing: 14) {
                 Button("Done", action: onDone)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+
+                Button("Open in Finder", action: onOpenInFinder)
                     .buttonStyle(.borderedProminent)
             }
         }

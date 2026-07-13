@@ -4,14 +4,18 @@ DropDrive is a native macOS app that downloads Google Drive files and folders di
 
 ## Features
 
-- **Smart Link Analysis** — paste a Drive link and see what it is (file or folder, size, file count, owner, public/private) before downloading anything
+- **Smart Link Analysis** — paste a Drive link and see what it is (file or folder, size, file count, owner, public/private) before downloading anything, including items behind a Drive "shortcut" or a `resourcekey`-protected link
 - Public links download without signing in; private links prompt for Google sign-in only when actually needed
-- Real progress reporting (bytes, speed, ETA) with cancel support
-- Recent download history, persisted across launches, with **Reveal in Finder** and **Copy Google Drive Link** on every entry
-- Drag and drop a Drive link straight onto the window
-- Native notifications on completion, with an **Open Folder** action
+- Real progress reporting (bytes, speed, ETA) with cancel support; downloads **resume** after an interruption whenever the server allows it, and large files can download over **multiple concurrent connections**
+- Optional **bandwidth limit**, and a queue that can be **paused/resumed** and **reordered** by drag-and-drop
+- Destination collisions get a smart `(1)`, `(2)`… suffix instead of being overwritten
+- Recent download history, persisted across launches and **searchable**, with **Reveal in Finder** and **Copy Google Drive Link** on every entry, plus lightweight local download statistics in Preferences
+- Duplicate-download detection across sessions, not just the current one
+- Drag and drop a Drive link straight onto the window (from a browser, as text, or as a dragged URL file)
+- Send a link into DropDrive without copy/paste: a [Chrome extension](browser-extension/chrome), a [Safari extension](browser-extension/safari), or the macOS **Share menu**
+- Native notifications on completion, with a **Reveal in Finder** action
 - Menu bar item for quick access without keeping the main window open
-- Preferences for default download folder, auto-open in Finder, notification sound, and launch at login
+- Preferences for default download folder, auto-open in Finder, notification sound, launch at login, and bandwidth limit
 - Optional GitHub-based update check (notify-only — DropDrive never auto-downloads or auto-installs updates)
 
 ## Requirements

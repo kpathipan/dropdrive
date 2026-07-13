@@ -5,6 +5,7 @@ struct ContentView: View {
     @State private var viewModel = DropDriveViewModel()
     @State private var historyStore = DownloadHistoryStore.shared
     @State private var isDropTargeted = false
+    @State private var historySearchText = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -35,6 +36,8 @@ struct ContentView: View {
                                 showLargeDownloadWarning: viewModel.showLargeDownloadWarning,
                                 activeProgress: viewModel.activeProgress,
                                 highlightedItemID: viewModel.highlightedQueueItemID,
+                                canPauseQueue: viewModel.canPauseQueue,
+                                canResumeQueue: viewModel.canResumeQueue,
                                 onStartQueue: viewModel.startQueueDownloads,
                                 onConfirmLargeDownload: viewModel.confirmLargeDownloadAndStart,
                                 onCancelLargeDownload: viewModel.cancelLargeDownloadWarning,
@@ -45,7 +48,10 @@ struct ContentView: View {
                                     guard let url = item.resultURL else { return }
                                     NSWorkspace.shared.activateFileViewerSelecting([url])
                                 },
-                                onClearCompleted: viewModel.clearCompletedQueueItems
+                                onClearCompleted: viewModel.clearCompletedQueueItems,
+                                onPauseQueue: viewModel.pauseQueue,
+                                onResumeQueue: viewModel.resumeQueue,
+                                onReorder: viewModel.moveQueueItem
                             )
                             .frame(maxWidth: 360)
                         }
@@ -56,6 +62,7 @@ struct ContentView: View {
                         } else if !historyStore.items.isEmpty {
                             RecentDownloadsView(
                                 items: historyStore.items,
+                                searchText: $historySearchText,
                                 onRevealInFinder: { item in
                                     guard let url = item.itemURL else { return }
                                     NSWorkspace.shared.activateFileViewerSelecting([url])
@@ -99,7 +106,7 @@ struct ContentView: View {
                     .allowsHitTesting(false)
             }
         }
-        .onDrop(of: [.url, .plainText], isTargeted: $isDropTargeted) { providers in
+        .onDrop(of: [.url, .fileURL, .plainText], isTargeted: $isDropTargeted) { providers in
             handleDrop(providers: providers)
         }
         .toolbar {
@@ -119,7 +126,7 @@ struct ContentView: View {
             viewModel.restoreLogin()
         }
         .onOpenURL { url in
-            viewModel.handleCallbackURL(url)
+            viewModel.handleIncomingURL(url)
         }
         .alert("Restore previous queue?", isPresented: $viewModel.showRestorePrompt) {
             Button("Discard", role: .destructive) { viewModel.discardSavedQueue() }
@@ -134,33 +141,29 @@ struct ContentView: View {
         return "You have \(count) item\(count == 1 ? "" : "s") from your last session."
     }
 
-    /// Accepts a dragged Drive link as either a file-style URL promise or plain text.
-    /// Tries the URL representation first, then falls back to plain text if the URL
-    /// doesn't parse as a Drive link (a provider can offer both, and the URL one isn't
-    /// always the useful one — e.g. dragging selected text from a page). If neither
-    /// yields a valid link, the field is left untouched.
+    /// Accepts a dragged Drive link from a browser tab/address bar (`.url`), a dragged
+    /// `.webloc`/URL file from Finder (`.fileURL`), or dragged selected text (`.plainText`).
+    /// Tries each representation in turn and stops at the first one that parses as a
+    /// Drive link — a provider can offer several, and the first one isn't always the
+    /// useful one (e.g. dragging selected text from a page). If none yield a valid
+    /// link, the field is left untouched.
     private func handleDrop(providers: [NSItemProvider]) -> Bool {
         guard !viewModel.isSigningIn else { return false }
 
-        guard let provider = providers.first(where: {
-            $0.hasItemConformingToTypeIdentifier(UTType.url.identifier)
-                || $0.hasItemConformingToTypeIdentifier(UTType.plainText.identifier)
+        let candidateTypes = [UTType.url, UTType.fileURL, UTType.plainText]
+        guard let provider = providers.first(where: { provider in
+            candidateTypes.contains { provider.hasItemConformingToTypeIdentifier($0.identifier) }
         }) else {
             return false
         }
 
         Task { @MainActor in
-            if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier),
-               let candidate = await Self.loadedString(from: provider, typeIdentifier: UTType.url.identifier),
-               GoogleDriveLinkParser.itemID(from: candidate) != nil {
-                viewModel.driveLink = candidate
-                return
-            }
-
-            if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier),
-               let candidate = await Self.loadedString(from: provider, typeIdentifier: UTType.plainText.identifier),
-               GoogleDriveLinkParser.itemID(from: candidate) != nil {
-                viewModel.driveLink = candidate
+            for type in candidateTypes where provider.hasItemConformingToTypeIdentifier(type.identifier) {
+                if let candidate = await Self.loadedString(from: provider, typeIdentifier: type.identifier),
+                   GoogleDriveLinkParser.itemID(from: candidate) != nil {
+                    viewModel.driveLink = candidate
+                    return
+                }
             }
         }
         return true

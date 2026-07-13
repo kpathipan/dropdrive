@@ -5,6 +5,37 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [4.0.0] - Productivity sprint
+
+### Added
+- Resumable downloads (app quit, network drop, or explicit pause), with
+  graceful fallback to a fresh restart when resume isn't possible
+- Optional bandwidth limit (Unlimited / 5 / 10 / 20 MB/s / Custom)
+- Multi-threaded ranged downloads for large files when the server supports it
+- Smart destination naming — collisions get `(1)`, `(2)`, … instead of being
+  overwritten
+- Pause/Resume for the whole download queue
+- Drag-and-drop reordering of pending queue items
+- Duplicate-download detection now also checks Recent Downloads across past
+  sessions, not just the current one
+- Search Recent Downloads by name
+- Lightweight local download statistics (total downloads/files/size) in
+  Preferences — no analytics, no telemetry
+- Chrome extension, Safari extension, and a native Share Extension, all
+  sending links into DropDrive via a new `dropdrive://` URL scheme
+- `.fileURL` (e.g. dragged `.webloc` files) added to drag-and-drop support,
+  alongside the existing URL/plain-text handling
+
+### Fixed
+- Google Drive "shortcut" items (added via *Add shortcut to Drive*) failed
+  to download; they're now resolved to their real target transparently
+- Links carrying a Drive `resourcekey` parameter previously 404'd; the key
+  is now parsed and sent with every request for that item
+
+### Changed
+- The download-complete notification's action is now labeled "Reveal in
+  Finder" (previously "Open Folder"); behavior was already reveal-in-Finder
+
 ## [2.1.1] - Final release sprint
 
 ### Fixed

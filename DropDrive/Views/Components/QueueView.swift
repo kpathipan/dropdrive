@@ -8,6 +8,8 @@ struct QueueView: View {
     let showLargeDownloadWarning: Bool
     let activeProgress: DownloadProgress?
     let highlightedItemID: UUID?
+    let canPauseQueue: Bool
+    let canResumeQueue: Bool
     let onStartQueue: () -> Void
     let onConfirmLargeDownload: () -> Void
     let onCancelLargeDownload: () -> Void
@@ -16,6 +18,9 @@ struct QueueView: View {
     let onCancelActive: () -> Void
     let onRevealInFinder: (QueueItem) -> Void
     let onClearCompleted: () -> Void
+    let onPauseQueue: () -> Void
+    let onResumeQueue: () -> Void
+    let onReorder: (UUID, UUID) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -26,6 +31,20 @@ struct QueueView: View {
                     .tracking(0.4)
 
                 Spacer()
+
+                if canPauseQueue {
+                    Button("Pause", action: onPauseQueue)
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel("Pause the download queue")
+                } else if canResumeQueue {
+                    Button("Resume", action: onResumeQueue)
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel("Resume the download queue")
+                }
 
                 if queue.contains(where: { $0.status == .completed }) {
                     Button("Clear Completed", action: onClearCompleted)
@@ -57,6 +76,14 @@ struct QueueView: View {
                         onRevealInFinder: { onRevealInFinder(item) }
                     )
                     .id(item.id)
+                    .applyingIf(item.status == .ready) { view in
+                        view
+                            .draggable(item.id.uuidString)
+                            .dropDestination(for: String.self) { draggedIDs, _ in
+                                guard let draggedIDString = draggedIDs.first, let draggedID = UUID(uuidString: draggedIDString) else { return }
+                                onReorder(draggedID, item.id)
+                            }
+                    }
                 }
             }
             .cardBackground()
@@ -304,6 +331,9 @@ private struct QueueRow: View {
             case .cancelled:
                 Image(systemName: "xmark.circle.fill")
                     .foregroundStyle(.secondary)
+            case .paused:
+                Image(systemName: "pause.circle.fill")
+                    .foregroundStyle(.secondary)
             }
         }
         .font(.system(size: 13))
@@ -317,6 +347,18 @@ private struct QueueRow: View {
         case .completed: "Completed"
         case .failed: "Failed"
         case .cancelled: "Cancelled"
+        case .paused: "Paused"
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func applyingIf<Content: View>(_ condition: Bool, transform: (Self) -> Content) -> some View {
+        if condition {
+            transform(self)
+        } else {
+            self
         }
     }
 }

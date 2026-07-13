@@ -32,6 +32,7 @@ final class DropDriveViewModel {
     var activeProgress: DownloadProgress?
     var highlightedQueueItemID: UUID?
     var showLargeDownloadWarning = false
+    var isQueuePaused = false
 
     var pendingRestoreQueue: [QueueItem]?
     var showRestorePrompt = false
@@ -42,6 +43,7 @@ final class DropDriveViewModel {
     private var downloadTask: Task<Void, Never>?
     private var analysisTask: Task<Void, Never>?
     private var highlightTask: Task<Void, Never>?
+    private var isPausingActiveItem = false
 
     init() {
         let loginManager = LoginManager.shared
@@ -114,6 +116,27 @@ final class DropDriveViewModel {
         _ = loginManager.handleCallbackURL(url)
     }
 
+    /// Entry point for every URL the app is opened with: Google Sign-In's OAuth
+    /// callback, or `dropdrive://add?url=<Drive link>` from the browser extension,
+    /// Share Extension, or Safari extension — all of which hand off a link the same
+    /// way rather than talking to the app directly.
+    func handleIncomingURL(_ url: URL) {
+        guard url.scheme?.caseInsensitiveCompare("dropdrive") == .orderedSame else {
+            handleCallbackURL(url)
+            return
+        }
+
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let linkValue = components.queryItems?.first(where: { $0.name == "url" })?.value,
+              !linkValue.isEmpty else {
+            return
+        }
+
+        NSApp.activate(ignoringOtherApps: true)
+        driveLink = linkValue
+        handleSubmit()
+    }
+
     func chooseDestinationFolder() {
         Task {
             guard let folderURL = await folderSelectionService.chooseDestinationFolder() else {
@@ -150,7 +173,8 @@ final class DropDriveViewModel {
         linkAnalysisState = .analyzing
 
         do {
-            let result = try await downloadService.analyzeLink(itemID: itemID)
+            let resourceKey = GoogleDriveLinkParser.resourceKey(from: trimmedLink)
+            let result = try await downloadService.analyzeLink(itemID: itemID, resourceKey: resourceKey)
             guard !Task.isCancelled else { return }
 
             switch result {
@@ -180,8 +204,21 @@ final class DropDriveViewModel {
             return
         }
 
+        if hasCompletedDownloadPreviously(itemID: analysis.itemID) {
+            linkAnalysisState = .duplicateCompleted(analysis)
+            return
+        }
+
         enqueue(analysis: analysis, driveLink: trimmedLink)
         driveLink = ""
+    }
+
+    /// Checks Recent Downloads (which spans past app sessions), not just this
+    /// session's in-memory queue.
+    private func hasCompletedDownloadPreviously(itemID: String) -> Bool {
+        DownloadHistoryStore.shared.items.contains { historyItem in
+            historyItem.status == .completed && GoogleDriveLinkParser.itemID(from: historyItem.driveLink) == itemID
+        }
     }
 
     private func flashDuplicate(itemID: String) {
@@ -253,9 +290,11 @@ final class DropDriveViewModel {
     }
 
     private func processQueueIfNeeded() {
-        guard activeQueueItemID == nil else { return }
+        guard activeQueueItemID == nil, !isQueuePaused else { return }
         guard let destinationURL = selectedDestinationURL else { return }
-        guard let index = queue.firstIndex(where: { $0.status == .ready }) else { return }
+        // A paused item was already in flight; give it priority over freshly-queued ones.
+        let index = queue.firstIndex(where: { $0.status == .paused }) ?? queue.firstIndex(where: { $0.status == .ready })
+        guard let index else { return }
         startDownloading(queue[index], destinationURL: destinationURL)
     }
 
@@ -266,7 +305,13 @@ final class DropDriveViewModel {
         activeProgress = DownloadProgress(currentFileName: "Preparing…")
         QueueStore.save(queue)
 
-        let request = DownloadRequest(driveLink: item.driveLink, itemID: item.itemID, destinationURL: destinationURL)
+        let request = DownloadRequest(
+            driveLink: item.driveLink,
+            itemID: item.itemID,
+            destinationURL: destinationURL,
+            resourceKey: GoogleDriveLinkParser.resourceKey(from: item.driveLink),
+            resumeID: item.id
+        )
 
         downloadTask = Task {
             do {
@@ -278,7 +323,9 @@ final class DropDriveViewModel {
                 try Task.checkCancellation()
                 finishActiveItem(item.id, status: .completed, resultURL: resultURL, errorMessage: nil)
             } catch is CancellationError {
-                finishActiveItem(item.id, status: .cancelled, resultURL: nil, errorMessage: nil)
+                let status: QueueItem.Status = isPausingActiveItem ? .paused : .cancelled
+                isPausingActiveItem = false
+                finishActiveItem(item.id, status: status, resultURL: nil, errorMessage: nil)
             } catch {
                 finishActiveItem(item.id, status: .failed, resultURL: nil, errorMessage: Self.friendlyMessage(for: error))
             }
@@ -312,25 +359,51 @@ final class DropDriveViewModel {
                 date: .now,
                 status: .completed,
                 itemURL: resultURL,
-                driveLink: item.driveLink
+                driveLink: item.driveLink,
+                fileCount: item.analysis.fileCount ?? 1,
+                sizeBytes: item.analysis.totalBytes
             ))
         case .failed:
+            ResumeEnvelopeStore.clear(for: item.id)
             DownloadHistoryStore.shared.record(DownloadHistoryItem(
                 name: item.analysis.name, date: .now, status: .failed, driveLink: item.driveLink
             ))
         case .cancelled:
+            ResumeEnvelopeStore.clear(for: item.id)
             DownloadHistoryStore.shared.record(DownloadHistoryItem(
                 name: item.analysis.name, date: .now, status: .cancelled, driveLink: item.driveLink
             ))
-        case .ready, .downloading:
+        case .ready, .downloading, .paused:
             break
         }
 
         processQueueIfNeeded()
     }
 
+    /// Cancels the active download outright; any resume data it produced is discarded.
     func cancelActiveDownload() {
+        isPausingActiveItem = false
         downloadTask?.cancel()
+    }
+
+    // MARK: - Queue pause/resume
+
+    var canPauseQueue: Bool { isQueueProcessing && !isQueuePaused }
+    var canResumeQueue: Bool { isQueuePaused && queue.contains { $0.status == .paused || $0.status == .ready } }
+
+    /// Stops the active download safely — resume data is kept when the server supports
+    /// it — and prevents the queue from auto-advancing until resumed.
+    func pauseQueue() {
+        guard isQueueProcessing, !isQueuePaused else { return }
+        isQueuePaused = true
+        isPausingActiveItem = true
+        downloadTask?.cancel()
+    }
+
+    func resumeQueue() {
+        guard isQueuePaused else { return }
+        isQueuePaused = false
+        processQueueIfNeeded()
     }
 
     /// Retries only this item; the rest of the queue's order and state are untouched.
@@ -346,10 +419,24 @@ final class DropDriveViewModel {
         guard id != activeQueueItemID else { return }
         queue.removeAll { $0.id == id }
         QueueStore.save(queue)
+        ResumeEnvelopeStore.clear(for: id)
     }
 
     func clearCompletedQueueItems() {
         queue.removeAll { $0.status == .completed }
+        QueueStore.save(queue)
+    }
+
+    /// Reorders pending (`.ready`) items via drag-and-drop; the active download and
+    /// completed/failed rows are left untouched.
+    func moveQueueItem(fromID: UUID, toID: UUID) {
+        guard fromID != toID,
+              let fromIndex = queue.firstIndex(where: { $0.id == fromID }), queue[fromIndex].status == .ready,
+              queue.first(where: { $0.id == toID })?.status == .ready else { return }
+
+        let item = queue.remove(at: fromIndex)
+        let insertionIndex = queue.firstIndex(where: { $0.id == toID }) ?? queue.count
+        queue.insert(item, at: insertionIndex)
         QueueStore.save(queue)
     }
 

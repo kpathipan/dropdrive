@@ -2,9 +2,15 @@ import SwiftUI
 
 struct RecentDownloadsView: View {
     let items: [DownloadHistoryItem]
+    @Binding var searchText: String
     let onRevealInFinder: (DownloadHistoryItem) -> Void
     let onCopyLink: (DownloadHistoryItem) -> Void
     let onClearHistory: () -> Void
+
+    private var filteredItems: [DownloadHistoryItem] {
+        guard !searchText.trimmingCharacters(in: .whitespaces).isEmpty else { return items }
+        return items.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -23,17 +29,57 @@ struct RecentDownloadsView: View {
                     .accessibilityLabel("Clear download history")
             }
 
-            VStack(spacing: 0) {
-                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                    if index > 0 {
-                        Divider()
-                            .padding(.leading, 38)
-                    }
-                    RecentDownloadRow(item: item, onRevealInFinder: onRevealInFinder, onCopyLink: onCopyLink)
-                }
+            if items.count > 1 {
+                searchField
             }
-            .cardBackground()
+
+            if filteredItems.isEmpty {
+                Text("No matching downloads")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 14)
+                    .cardBackground()
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(filteredItems.enumerated()), id: \.element.id) { index, item in
+                        if index > 0 {
+                            Divider()
+                                .padding(.leading, 38)
+                        }
+                        RecentDownloadRow(item: item, onRevealInFinder: onRevealInFinder, onCopyLink: onCopyLink)
+                    }
+                }
+                .cardBackground()
+            }
         }
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+
+            TextField("Search downloads", text: $searchText)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12))
+
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .cardBackground()
     }
 }
 

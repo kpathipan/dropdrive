@@ -7,6 +7,7 @@ struct QueueItem: Identifiable, Equatable, Codable {
         case completed
         case failed
         case cancelled
+        case paused
     }
 
     let id: UUID

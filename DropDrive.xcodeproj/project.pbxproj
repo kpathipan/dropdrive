@@ -8,11 +8,38 @@
 
 /* Begin PBXBuildFile section */
 		04800F4B3001FBE90006AB71 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 04800F4A3001FBE90006AB71 /* GoogleSignIn */; };
+		8201033493CB3BB8BB96A7AF /* DropDriveShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = ACA0329E6D8741A7E7670DD0 /* DropDriveShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A751840B5128553BF5082ED0 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 04800F17300186E70006AB71 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = FF577EB77904052032CE592C;
+			remoteInfo = DropDriveShare;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		4C569298602DAC021069326F /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				8201033493CB3BB8BB96A7AF /* DropDriveShare.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		04800F1F300186E70006AB71 /* DropDrive.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DropDrive.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		04FFCC173004042A0047641E /* DropDrive.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DropDrive.entitlements; sourceTree = "<group>"; };
+		6B3DC9D6880A41B972BE30CB /* DropDriveShare.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DropDriveShare.entitlements; sourceTree = "<group>"; };
+		ACA0329E6D8741A7E7670DD0 /* DropDriveShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = DropDriveShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -23,6 +50,13 @@
 			);
 			target = 04800F1E300186E70006AB71 /* DropDrive */;
 		};
+		A545730758342747876A87E8 /* Exceptions for "DropDriveShare" folder in "DropDriveShare" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = FF577EB77904052032CE592C /* DropDriveShare */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -32,6 +66,14 @@
 				04FBAE8E3003E150004F08C0 /* Exceptions for "DropDrive" folder in "DropDrive" target */,
 			);
 			path = DropDrive;
+			sourceTree = "<group>";
+		};
+		61A21C181F1017E5F74A5770 /* DropDriveShare */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A545730758342747876A87E8 /* Exceptions for "DropDriveShare" folder in "DropDriveShare" target */,
+			);
+			path = DropDriveShare;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -45,6 +87,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		2ABA9589B2A0E6742B1EF789 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -52,8 +101,10 @@
 			isa = PBXGroup;
 			children = (
 				04800F21300186E70006AB71 /* DropDrive */,
+				61A21C181F1017E5F74A5770 /* DropDriveShare */,
 				04800F20300186E70006AB71 /* Products */,
 				04FFCC173004042A0047641E /* DropDrive.entitlements */,
+				6B3DC9D6880A41B972BE30CB /* DropDriveShare.entitlements */,
 			);
 			sourceTree = "<group>";
 		};
@@ -61,6 +112,7 @@
 			isa = PBXGroup;
 			children = (
 				04800F1F300186E70006AB71 /* DropDrive.app */,
+				ACA0329E6D8741A7E7670DD0 /* DropDriveShare.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -75,10 +127,12 @@
 				04800F1B300186E70006AB71 /* Sources */,
 				04800F1C300186E70006AB71 /* Frameworks */,
 				04800F1D300186E70006AB71 /* Resources */,
+				4C569298602DAC021069326F /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				F7769101AFC9A8AE45AE2A21 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				04800F21300186E70006AB71 /* DropDrive */,
@@ -91,6 +145,26 @@
 			productReference = 04800F1F300186E70006AB71 /* DropDrive.app */;
 			productType = "com.apple.product-type.application";
 		};
+		FF577EB77904052032CE592C /* DropDriveShare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2CE2A645618D456F6082BC4E /* Build configuration list for PBXNativeTarget "DropDriveShare" */;
+			buildPhases = (
+				FC04E4FE5712B0A2B2C6FCDB /* Sources */,
+				2ABA9589B2A0E6742B1EF789 /* Frameworks */,
+				4585BBD57619BDF44E243F84 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				61A21C181F1017E5F74A5770 /* DropDriveShare */,
+			);
+			name = DropDriveShare;
+			productName = DropDriveShare;
+			productReference = ACA0329E6D8741A7E7670DD0 /* DropDriveShare.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -102,6 +176,9 @@
 				LastUpgradeCheck = 2660;
 				TargetAttributes = {
 					04800F1E300186E70006AB71 = {
+						CreatedOnToolsVersion = 26.6;
+					};
+					FF577EB77904052032CE592C = {
 						CreatedOnToolsVersion = 26.6;
 					};
 				};
@@ -124,12 +201,20 @@
 			projectRoot = "";
 			targets = (
 				04800F1E300186E70006AB71 /* DropDrive */,
+				FF577EB77904052032CE592C /* DropDriveShare */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		04800F1D300186E70006AB71 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4585BBD57619BDF44E243F84 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -146,7 +231,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		FC04E4FE5712B0A2B2C6FCDB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		F7769101AFC9A8AE45AE2A21 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = FF577EB77904052032CE592C /* DropDriveShare */;
+			targetProxy = A751840B5128553BF5082ED0 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		04800F28300186EA0006AB71 /* Debug */ = {
@@ -277,7 +377,7 @@
 				CODE_SIGN_ENTITLEMENTS = DropDrive.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = YM8Y88VSBF;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
@@ -288,7 +388,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 3.1.0;
+				MARKETING_VERSION = 4.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.dropdrive.DropDrive;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -309,7 +409,7 @@
 				CODE_SIGN_ENTITLEMENTS = DropDrive.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = YM8Y88VSBF;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
@@ -320,7 +420,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 3.1.0;
+				MARKETING_VERSION = 4.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.dropdrive.DropDrive;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -332,6 +432,60 @@
 				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
+		};
+		1D7BFE4291009F6064315A5A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = DropDriveShare/DropDriveShare.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 8;
+				DEVELOPMENT_TEAM = YM8Y88VSBF;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = DropDriveShare/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = DropDrive;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 4.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.dropdrive.DropDrive.Share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		DF146D98FACF976D82BAEF10 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = DropDriveShare/DropDriveShare.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 8;
+				DEVELOPMENT_TEAM = YM8Y88VSBF;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = DropDriveShare/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = DropDrive;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 4.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.dropdrive.DropDrive.Share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
 		};
 /* End XCBuildConfiguration section */
 
@@ -350,6 +504,15 @@
 			buildConfigurations = (
 				04800F2B300186EA0006AB71 /* Debug */,
 				04800F2C300186EA0006AB71 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		2CE2A645618D456F6082BC4E /* Build configuration list for PBXNativeTarget "DropDriveShare" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DF146D98FACF976D82BAEF10 /* Debug */,
+				1D7BFE4291009F6064315A5A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

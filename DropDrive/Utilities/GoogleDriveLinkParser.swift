@@ -32,4 +32,13 @@ enum GoogleDriveLinkParser {
 
         return nil
     }
+
+    /// Newer Drive share links for items that require it carry a `resourcekey` query
+    /// parameter; without it the Drive API returns 404 even for a valid, accessible id.
+    static func resourceKey(from link: String) -> String? {
+        let trimmedLink = link.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let components = URLComponents(string: trimmedLink) else { return nil }
+        let value = components.queryItems?.first { $0.name.caseInsensitiveCompare("resourcekey") == .orderedSame }?.value
+        return (value?.isEmpty ?? true) ? nil : value
+    }
 }

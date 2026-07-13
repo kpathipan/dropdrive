@@ -126,7 +126,7 @@ struct DuplicateCompletedPromptView: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
 
-                    Text("Already downloaded this session")
+                    Text("You've already downloaded this")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }

@@ -10,7 +10,7 @@ enum NotificationService {
         let center = UNUserNotificationCenter.current()
         center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
 
-        let openAction = UNNotificationAction(identifier: openFolderActionID, title: "Open Folder", options: [])
+        let openAction = UNNotificationAction(identifier: openFolderActionID, title: "Reveal in Finder", options: [])
         let downloadCategory = UNNotificationCategory(
             identifier: downloadCategoryID,
             actions: [openAction],

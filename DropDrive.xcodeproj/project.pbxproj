@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		04800F4B3001FBE90006AB71 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 04800F4A3001FBE90006AB71 /* GoogleSignIn */; };
-		04800F4D3001FBE90006AB71 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 04800F4C3001FBE90006AB71 /* GoogleSignInSwift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -43,7 +42,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				04800F4B3001FBE90006AB71 /* GoogleSignIn in Frameworks */,
-				04800F4D3001FBE90006AB71 /* GoogleSignInSwift in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -88,7 +86,6 @@
 			name = DropDrive;
 			packageProductDependencies = (
 				04800F4A3001FBE90006AB71 /* GoogleSignIn */,
-				04800F4C3001FBE90006AB71 /* GoogleSignInSwift */,
 			);
 			productName = DropDrive;
 			productReference = 04800F1F300186E70006AB71 /* DropDrive.app */;
@@ -280,7 +277,7 @@
 				CODE_SIGN_ENTITLEMENTS = DropDrive.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = YM8Y88VSBF;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
@@ -291,7 +288,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.0.0;
+				MARKETING_VERSION = 2.0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.dropdrive.DropDrive;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -312,7 +309,7 @@
 				CODE_SIGN_ENTITLEMENTS = DropDrive.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = YM8Y88VSBF;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
@@ -323,7 +320,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.0.0;
+				MARKETING_VERSION = 2.0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.dropdrive.DropDrive;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -375,11 +372,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 04800F493001FBE90006AB71 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
 			productName = GoogleSignIn;
-		};
-		04800F4C3001FBE90006AB71 /* GoogleSignInSwift */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 04800F493001FBE90006AB71 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
-			productName = GoogleSignInSwift;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

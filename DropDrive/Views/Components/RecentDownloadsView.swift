@@ -32,6 +32,7 @@ private struct RecentDownloadRow: View {
             Image(systemName: statusIcon)
                 .foregroundStyle(statusColor)
                 .frame(width: 18)
+                .accessibilityLabel(statusLabel)
 
             Text(item.name)
                 .font(.system(size: 12.5))
@@ -46,6 +47,7 @@ private struct RecentDownloadRow: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
+        .accessibilityElement(children: .combine)
     }
 
     private var statusIcon: String {
@@ -61,6 +63,14 @@ private struct RecentDownloadRow: View {
         case .completed: .green
         case .failed: .orange
         case .cancelled: .secondary
+        }
+    }
+
+    private var statusLabel: String {
+        switch item.status {
+        case .completed: "Completed"
+        case .failed: "Failed"
+        case .cancelled: "Cancelled"
         }
     }
 }

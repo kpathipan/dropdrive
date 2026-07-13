@@ -43,7 +43,7 @@ struct DropDriveApp: App {
         NSApplication.shared.orderFrontStandardAboutPanel(
             options: [
                 NSApplication.AboutPanelOptionKey.applicationName: "DropDrive",
-                NSApplication.AboutPanelOptionKey.applicationVersion: "2.0.0 Development",
+                NSApplication.AboutPanelOptionKey.applicationVersion: "2.0.1 Development",
                 NSApplication.AboutPanelOptionKey.credits: credits
             ]
         )

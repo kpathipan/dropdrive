@@ -21,7 +21,6 @@ final class DropDriveViewModel {
         }
     }
     var selectedDestinationURL: URL?
-    var statusMessage = "Sign in, paste a Drive link, and choose where it should land."
     var googleAccount: GoogleAccount?
     var isSigningIn = false
 
@@ -53,14 +52,6 @@ final class DropDriveViewModel {
         self.folderSelectionService = folderSelectionService
     }
 
-    var isGoogleSignedIn: Bool {
-        googleAccount != nil
-    }
-
-    var destinationDisplayName: String {
-        selectedDestinationURL?.path(percentEncoded: false) ?? "No folder selected"
-    }
-
     var canDownload: Bool {
         guard case .ready = linkAnalysisState else { return false }
         return selectedDestinationURL != nil && !downloadPhase.isActive && !isSigningIn
@@ -70,41 +61,24 @@ final class DropDriveViewModel {
         downloadPhase.isActive
     }
 
-    var footerStatusText: String {
-        switch downloadPhase {
-        case .idle:
-            isGoogleSignedIn ? "Ready" : "Not connected"
-        case .downloading:
-            "Downloading…"
-        case .success:
-            "Completed"
-        case .failed:
-            "Failed"
-        case .cancelled:
-            "Cancelled"
-        }
-    }
-
     func restoreLogin() {
         Task {
             googleAccount = await loginManager.restoreSavedAccount()
-            statusMessage = googleAccount == nil ? "Connect Google Drive to continue." : "Google Drive connected."
         }
     }
 
     func signInWithGoogle() {
         Task {
             isSigningIn = true
-            statusMessage = "Opening Google sign-in…"
             defer { isSigningIn = false }
 
             do {
                 let account = try await loginManager.signIn()
                 googleAccount = account
-                statusMessage = "Google Drive connected."
                 scheduleAnalysis()
             } catch {
-                statusMessage = error.localizedDescription
+                // Sign-in was cancelled or failed; the Connect button simply
+                // becomes available again for the user to retry.
             }
         }
     }
@@ -112,7 +86,6 @@ final class DropDriveViewModel {
     func signOut() {
         loginManager.signOut()
         googleAccount = nil
-        statusMessage = "Signed out of Google Drive."
         Task { await downloadService.clearAnalysisCache() }
     }
 
@@ -127,7 +100,6 @@ final class DropDriveViewModel {
             }
 
             selectedDestinationURL = folderURL
-            statusMessage = "Destination folder selected."
             DestinationStore.save(folderURL)
         }
     }
@@ -202,21 +174,12 @@ final class DropDriveViewModel {
     // MARK: - Download
 
     func download() {
-        guard let destinationURL = selectedDestinationURL else {
-            statusMessage = "Choose a destination folder before downloading."
+        guard let destinationURL = selectedDestinationURL,
+              let itemID = GoogleDriveLinkParser.itemID(from: driveLink) else {
             return
         }
 
-        guard let itemID = GoogleDriveLinkParser.itemID(from: driveLink) else {
-            statusMessage = "Paste a valid Google Drive link."
-            return
-        }
-
-        let request = DownloadRequest(
-            driveLink: driveLink.trimmingCharacters(in: .whitespacesAndNewlines),
-            itemID: itemID,
-            destinationURL: destinationURL
-        )
+        let request = DownloadRequest(itemID: itemID, destinationURL: destinationURL)
 
         downloadPhase = .downloading
         downloadProgress = DownloadProgress(currentFileName: "Preparing…")

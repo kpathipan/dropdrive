@@ -103,11 +103,18 @@ private actor AnalysisCache {
     }
 }
 
-private final class ProgressTracker {
-    private(set) var completedFiles = 0
-    let totalFiles: Int
-    private(set) var bytesDownloaded: Int64 = 0
-    let totalBytes: Int64
+/// Delegate-based downloads deliver `didWriteData` callbacks on URLSession's own
+/// delegate queue — a different thread than whatever context `download()` itself
+/// runs on — so this now needs real thread-safety, not just single-threaded
+/// sequential access. Protected by a lock rather than an actor: its methods are
+/// small, synchronous, and called from a non-async delegate callback, so making
+/// them `async` would force a Task-per-callback right back into the hot path.
+private final class ProgressTracker: @unchecked Sendable {
+    private let lock = NSLock()
+    private var completedFiles = 0
+    private let totalFiles: Int
+    private var bytesDownloaded: Int64 = 0
+    private let totalBytes: Int64
     private var lastSampleTime = Date()
     private var lastSampleBytes: Int64 = 0
     private var smoothedRate: Double = 0
@@ -119,16 +126,18 @@ private final class ProgressTracker {
     }
 
     func startingFile(_ name: String) -> DownloadProgress {
+        lock.lock()
+        defer { lock.unlock() }
         currentFileName = name
         return snapshot()
     }
 
     /// Byte counting always happens; the UI-facing snapshot is throttled to this
     /// same ~5Hz sampling window so a fast connection doesn't hop to the main
-    /// actor thousands of times per second for updates no one can perceive.
-    /// Measured: at 8 MB/s with a 64KB buffer, unthrottled emission produced
-    /// ~122 callbacks/sec; throttled, ~5/sec, with identical final byte counts.
+    /// actor thousands of times more often than any human could perceive.
     func addingBytes(_ count: Int64) -> DownloadProgress? {
+        lock.lock()
+        defer { lock.unlock() }
         bytesDownloaded += count
         let now = Date()
         let elapsed = now.timeIntervalSince(lastSampleTime)
@@ -143,10 +152,13 @@ private final class ProgressTracker {
     }
 
     func completingFile() -> DownloadProgress {
+        lock.lock()
+        defer { lock.unlock() }
         completedFiles += 1
         return snapshot()
     }
 
+    /// Callers already hold `lock`.
     private func snapshot() -> DownloadProgress {
         DownloadProgress(
             currentFileName: currentFileName,
@@ -159,9 +171,103 @@ private final class ProgressTracker {
     }
 }
 
+/// Bridges URLSessionDownloadTask's delegate callbacks into async/await. Progress
+/// arrives in network-sized chunks as the OS receives them (typically tens of KB,
+/// never one byte at a time), and the completed temp file is moved to its final
+/// destination synchronously inside the delegate callback — required, since the
+/// system deletes the temp file as soon as that method returns.
+private final class DownloadTaskCoordinator: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+    private let destinationURL: URL
+    private let onBytes: @Sendable (Int64) -> Void
+
+    private let stateLock = NSLock()
+    private var continuation: CheckedContinuation<URL, Error>?
+    private var task: URLSessionDownloadTask?
+    private var didResume = false
+
+    init(destinationURL: URL, onBytes: @escaping @Sendable (Int64) -> Void) {
+        self.destinationURL = destinationURL
+        self.onBytes = onBytes
+    }
+
+    func run(session: URLSession, request: URLRequest) async throws -> URL {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
+                stateLock.lock()
+                self.continuation = continuation
+                let task = session.downloadTask(with: request)
+                self.task = task
+                stateLock.unlock()
+                task.resume()
+            }
+        } onCancel: { [weak self] in
+            guard let self else { return }
+            stateLock.lock()
+            let task = self.task
+            stateLock.unlock()
+            task?.cancel()
+        }
+    }
+
+    private func resume(_ result: Result<URL, Error>) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard !didResume else { return }
+        didResume = true
+        switch result {
+        case .success(let url):
+            continuation?.resume(returning: url)
+        case .failure(let error):
+            continuation?.resume(throwing: error)
+        }
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didWriteData bytesWritten: Int64,
+        totalBytesWritten: Int64,
+        totalBytesExpectedToWrite: Int64
+    ) {
+        onBytes(bytesWritten)
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        guard let http = downloadTask.response as? HTTPURLResponse else {
+            resume(.failure(DriveDownloadError.invalidResponse))
+            return
+        }
+
+        guard (200..<300).contains(http.statusCode) else {
+            let data = try? Data(contentsOf: location)
+            let message = data.flatMap { String(data: $0, encoding: .utf8) } ?? "Unknown error"
+            resume(.failure(DriveDownloadError.server(http.statusCode, message)))
+            return
+        }
+
+        do {
+            if FileManager.default.fileExists(atPath: destinationURL.path) {
+                try FileManager.default.removeItem(at: destinationURL)
+            }
+            try FileManager.default.moveItem(at: location, to: destinationURL)
+            resume(.success(destinationURL))
+        } catch {
+            resume(.failure(error))
+        }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        guard let error else { return }
+        if (error as NSError).code == NSURLErrorCancelled {
+            resume(.failure(CancellationError()))
+        } else {
+            resume(.failure(error))
+        }
+    }
+}
+
 struct GoogleDriveDownloadService: DownloadServicing {
     private static let apiBase = "https://www.googleapis.com/drive/v3/files"
-    private static let bufferSize = 1 << 16
 
     private static let exportMimeTypes: [String: (mimeType: String, fileExtension: String)] = [
         "application/vnd.google-apps.document": ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", "docx"),
@@ -434,12 +540,15 @@ struct GoogleDriveDownloadService: DownloadServicing {
         return files
     }
 
+    /// Streams via URLSessionDownloadTask: the OS writes network-sized chunks
+    /// directly to a temp file (no per-byte Swift-level iteration), and
+    /// DownloadTaskCoordinator moves it to `destinationURL` on completion.
     @discardableResult
     private func downloadFile(
         _ file: DriveFile,
         into folderURL: URL,
         credential: DriveCredential,
-        onBytes: @escaping (Int64) -> Void
+        onBytes: @escaping @Sendable (Int64) -> Void
     ) async throws -> URL {
         let destinationURL: URL
         let requestURL: URL
@@ -466,53 +575,18 @@ struct GoogleDriveDownloadService: DownloadServicing {
         var request = URLRequest(url: requestURL)
         credential.applying(to: &request)
 
-        let (byteStream, response) = try await urlSession.bytes(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw DriveDownloadError.invalidResponse
-        }
-
-        guard (200..<300).contains(httpResponse.statusCode) else {
-            var errorData = Data()
-            for try await byte in byteStream {
-                errorData.append(byte)
-            }
-            let message = String(data: errorData, encoding: .utf8) ?? "Unknown error"
-            throw DriveDownloadError.server(httpResponse.statusCode, message)
-        }
-
-        if FileManager.default.fileExists(atPath: destinationURL.path) {
-            try FileManager.default.removeItem(at: destinationURL)
-        }
-        FileManager.default.createFile(atPath: destinationURL.path, contents: nil)
-        let fileHandle = try FileHandle(forWritingTo: destinationURL)
+        let coordinator = DownloadTaskCoordinator(destinationURL: destinationURL, onBytes: onBytes)
+        // Ephemeral: a one-shot binary file download has no business populating
+        // the shared URL cache or cookie storage.
+        let session = URLSession(configuration: .ephemeral, delegate: coordinator, delegateQueue: nil)
+        defer { session.finishTasksAndInvalidate() }
 
         do {
-            var buffer = Data()
-            buffer.reserveCapacity(Self.bufferSize)
-
-            for try await byte in byteStream {
-                buffer.append(byte)
-                if buffer.count >= Self.bufferSize {
-                    try Task.checkCancellation()
-                    try fileHandle.write(contentsOf: buffer)
-                    onBytes(Int64(buffer.count))
-                    buffer.removeAll(keepingCapacity: true)
-                }
-            }
-            if !buffer.isEmpty {
-                try fileHandle.write(contentsOf: buffer)
-                onBytes(Int64(buffer.count))
-            }
-
-            try fileHandle.close()
+            return try await coordinator.run(session: session, request: request)
         } catch {
-            try? fileHandle.close()
             try? FileManager.default.removeItem(at: destinationURL)
             throw error
         }
-
-        return destinationURL
     }
 
     private static func validate(_ response: URLResponse, data: Data?) throws {

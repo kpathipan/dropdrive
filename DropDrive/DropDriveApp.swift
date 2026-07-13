@@ -14,7 +14,7 @@ struct DropDriveApp: App {
                     NSApplication.shared.orderFrontStandardAboutPanel(
                         options: [
                             NSApplication.AboutPanelOptionKey.applicationName: "DropDrive",
-                            NSApplication.AboutPanelOptionKey.applicationVersion: "1.0.0 Beta",
+                            NSApplication.AboutPanelOptionKey.applicationVersion: "2.0.0 Development",
                             NSApplication.AboutPanelOptionKey.credits: NSAttributedString(
                                 string: "Download Google Drive files and folders directly to your Mac.",
                                 attributes: [.foregroundColor: NSColor.secondaryLabelColor]

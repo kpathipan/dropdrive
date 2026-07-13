@@ -14,19 +14,26 @@ enum DownloadPhase: Equatable {
 @MainActor
 @Observable
 final class DropDriveViewModel {
-    var driveLink = ""
+    var driveLink = "" {
+        didSet {
+            guard driveLink != oldValue else { return }
+            scheduleAnalysis()
+        }
+    }
     var selectedDestinationURL: URL?
-    var statusMessage = "Sign in, paste a Drive folder link, and choose where it should land."
+    var statusMessage = "Sign in, paste a Drive link, and choose where it should land."
     var googleAccount: GoogleAccount?
     var isSigningIn = false
 
     var downloadPhase: DownloadPhase = .idle
     var downloadProgress: DownloadProgress?
+    var linkAnalysisState: LinkAnalysisState = .idle
 
     private let loginManager: LoginManaging
     private let downloadService: DownloadServicing
     private let folderSelectionService: FolderSelectionServicing
     private var downloadTask: Task<Void, Never>?
+    private var analysisTask: Task<Void, Never>?
 
     init() {
         let loginManager = LoginManager.shared
@@ -54,10 +61,8 @@ final class DropDriveViewModel {
     }
 
     var canDownload: Bool {
-        GoogleDriveLinkParser.folderID(from: driveLink) != nil
-            && selectedDestinationURL != nil
-            && !downloadPhase.isActive
-            && !isSigningIn
+        guard case .ready = linkAnalysisState else { return false }
+        return selectedDestinationURL != nil && !downloadPhase.isActive && !isSigningIn
     }
 
     var isFormLocked: Bool {
@@ -96,6 +101,7 @@ final class DropDriveViewModel {
                 let account = try await loginManager.signIn()
                 googleAccount = account
                 statusMessage = "Google Drive connected."
+                scheduleAnalysis()
             } catch {
                 statusMessage = error.localizedDescription
             }
@@ -123,20 +129,68 @@ final class DropDriveViewModel {
         }
     }
 
+    // MARK: - Link analysis
+
+    private func scheduleAnalysis() {
+        analysisTask?.cancel()
+        linkAnalysisState = .idle
+
+        guard let itemID = GoogleDriveLinkParser.itemID(from: driveLink) else {
+            return
+        }
+
+        analysisTask = Task {
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            await performAnalysis(itemID: itemID)
+        }
+    }
+
+    private func performAnalysis(itemID: String) async {
+        linkAnalysisState = .analyzing
+
+        do {
+            let result = try await downloadService.analyzeLink(itemID: itemID)
+            guard !Task.isCancelled else { return }
+
+            switch result {
+            case .success(let analysis):
+                linkAnalysisState = .ready(analysis)
+            case .needsAuthentication:
+                linkAnalysisState = .needsConnection
+            }
+        } catch {
+            guard !Task.isCancelled else { return }
+            linkAnalysisState = .failed(error.localizedDescription)
+        }
+    }
+
+    func cancelAnalysis() {
+        analysisTask?.cancel()
+        linkAnalysisState = .idle
+        driveLink = ""
+    }
+
+    func retryAnalysis() {
+        scheduleAnalysis()
+    }
+
+    // MARK: - Download
+
     func download() {
         guard let destinationURL = selectedDestinationURL else {
             statusMessage = "Choose a destination folder before downloading."
             return
         }
 
-        guard let folderID = GoogleDriveLinkParser.folderID(from: driveLink) else {
-            statusMessage = "Paste a valid Google Drive folder link."
+        guard let itemID = GoogleDriveLinkParser.itemID(from: driveLink) else {
+            statusMessage = "Paste a valid Google Drive link."
             return
         }
 
         let request = DownloadRequest(
             driveLink: driveLink.trimmingCharacters(in: .whitespacesAndNewlines),
-            folderID: folderID,
+            itemID: itemID,
             destinationURL: destinationURL
         )
 
@@ -177,5 +231,6 @@ final class DropDriveViewModel {
     func dismissDownloadResult() {
         downloadPhase = .idle
         downloadProgress = nil
+        scheduleAnalysis()
     }
 }

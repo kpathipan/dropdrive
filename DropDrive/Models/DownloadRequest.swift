@@ -2,6 +2,6 @@ import Foundation
 
 struct DownloadRequest: Equatable {
     let driveLink: String
-    let folderID: String
+    let itemID: String
     let destinationURL: URL
 }

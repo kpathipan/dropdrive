@@ -3,6 +3,7 @@ import Foundation
 protocol DownloadServicing {
     @discardableResult
     func download(_ request: DownloadRequest, progress: @escaping @Sendable (DownloadProgress) -> Void) async throws -> URL
+    func analyzeLink(itemID: String) async throws -> LinkAnalysisResult
 }
 
 struct DriveFile: Decodable {
@@ -38,6 +39,7 @@ private struct DriveListResponse: Decodable {
 enum DriveDownloadError: LocalizedError {
     case invalidResponse
     case server(Int, String)
+    case unsupportedFileType
 
     var errorDescription: String? {
         switch self {
@@ -45,6 +47,29 @@ enum DriveDownloadError: LocalizedError {
             "Received an unexpected response from Google Drive."
         case .server(let statusCode, let message):
             "Google Drive returned an error (\(statusCode)): \(message)"
+        case .unsupportedFileType:
+            "This file type can't be downloaded directly from Google Drive."
+        }
+    }
+}
+
+/// Either an OAuth bearer token (private, user-authorized access) or a project API key
+/// (anonymous access to publicly-shared files/folders, no sign-in required).
+private enum DriveCredential {
+    case oauth(String)
+    case apiKey(String)
+
+    func applying(to components: inout URLComponents) {
+        if case .apiKey(let key) = self {
+            var items = components.queryItems ?? []
+            items.append(URLQueryItem(name: "key", value: key))
+            components.queryItems = items
+        }
+    }
+
+    func applying(to request: inout URLRequest) {
+        if case .oauth(let token) = self {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
     }
 }
@@ -111,6 +136,18 @@ struct GoogleDriveDownloadService: DownloadServicing {
         "application/vnd.google-apps.drawing": ("image/png", "png")
     ]
 
+    private static var configuredAPIKey: String? {
+        guard let key = Bundle.main.object(forInfoDictionaryKey: "GoogleAPIKey") as? String,
+              !key.isEmpty, !key.contains("YOUR_") else {
+            return nil
+        }
+        return key
+    }
+
+    private static func isDownloadable(mimeType: String) -> Bool {
+        exportMimeTypes[mimeType] != nil || !mimeType.hasPrefix("application/vnd.google-apps.")
+    }
+
     private let loginManager: LoginManaging
     private let urlSession: URLSession
 
@@ -119,12 +156,91 @@ struct GoogleDriveDownloadService: DownloadServicing {
         self.urlSession = urlSession
     }
 
+    // MARK: - Link analysis
+
+    func analyzeLink(itemID: String) async throws -> LinkAnalysisResult {
+        if let apiKey = Self.configuredAPIKey,
+           let metadata = try? await fetchMetadata(fileID: itemID, credential: .apiKey(apiKey)) {
+            let analysis = try await buildAnalysis(for: metadata, credential: .apiKey(apiKey), isPublic: true)
+            return .success(analysis)
+        }
+
+        guard let token = await loginManager.cachedAccessTokenIfAvailable() else {
+            return .needsAuthentication
+        }
+
+        let metadata = try await fetchMetadata(fileID: itemID, credential: .oauth(token))
+        let analysis = try await buildAnalysis(for: metadata, credential: .oauth(token), isPublic: false)
+        return .success(analysis)
+    }
+
+    private func buildAnalysis(for metadata: DriveFile, credential: DriveCredential, isPublic: Bool) async throws -> DriveLinkAnalysis {
+        guard metadata.isFolder else {
+            return DriveLinkAnalysis(
+                itemID: metadata.id,
+                name: metadata.name,
+                type: .file,
+                isPublic: isPublic,
+                requiresAuthentication: !isPublic,
+                totalBytes: metadata.size,
+                fileCount: nil
+            )
+        }
+
+        let (fileCount, totalBytes) = try await estimateFolderContents(folderID: metadata.id, credential: credential)
+        return DriveLinkAnalysis(
+            itemID: metadata.id,
+            name: metadata.name,
+            type: .folder,
+            isPublic: isPublic,
+            requiresAuthentication: !isPublic,
+            totalBytes: totalBytes,
+            fileCount: fileCount
+        )
+    }
+
+    private func estimateFolderContents(folderID: String, credential: DriveCredential) async throws -> (fileCount: Int, totalBytes: Int64) {
+        try Task.checkCancellation()
+        let children = try await listChildren(of: folderID, credential: credential)
+        var count = 0
+        var bytes: Int64 = 0
+
+        for child in children {
+            if child.isFolder {
+                let (childCount, childBytes) = try await estimateFolderContents(folderID: child.id, credential: credential)
+                count += childCount
+                bytes += childBytes
+            } else if Self.isDownloadable(mimeType: child.mimeType) {
+                count += 1
+                bytes += child.size ?? 0
+            }
+        }
+
+        return (count, bytes)
+    }
+
+    // MARK: - Download
+
     @discardableResult
     func download(_ request: DownloadRequest, progress: @escaping @Sendable (DownloadProgress) -> Void) async throws -> URL {
-        let accessToken = try await loginManager.validAccessToken()
+        let credential = try await resolveCredential(for: request.itemID)
 
-        progress(DownloadProgress(currentFileName: "Reading folder details…"))
-        let rootMetadata = try await fetchMetadata(fileID: request.folderID, accessToken: accessToken)
+        progress(DownloadProgress(currentFileName: "Reading details…"))
+        let rootMetadata = try await fetchMetadata(fileID: request.itemID, credential: credential)
+
+        guard rootMetadata.isFolder else {
+            guard Self.isDownloadable(mimeType: rootMetadata.mimeType) else {
+                throw DriveDownloadError.unsupportedFileType
+            }
+
+            progress(DownloadProgress(currentFileName: rootMetadata.name, totalFiles: 1, totalBytes: rootMetadata.size ?? 0))
+            let tracker = ProgressTracker(totalFiles: 1, totalBytes: rootMetadata.size ?? 0)
+            let fileURL = try await downloadFile(rootMetadata, into: request.destinationURL, credential: credential) { chunkSize in
+                progress(tracker.addingBytes(chunkSize))
+            }
+            progress(tracker.completingFile())
+            return fileURL
+        }
 
         let rootFolderURL = request.destinationURL.appendingPathComponent(
             Self.sanitizedName(rootMetadata.name),
@@ -133,7 +249,7 @@ struct GoogleDriveDownloadService: DownloadServicing {
         try FileManager.default.createDirectory(at: rootFolderURL, withIntermediateDirectories: true)
 
         progress(DownloadProgress(currentFileName: "Scanning folder contents…"))
-        let plan = try await enumerate(folderID: request.folderID, into: rootFolderURL, accessToken: accessToken)
+        let plan = try await enumerate(folderID: request.itemID, into: rootFolderURL, credential: credential)
 
         let totalBytes = plan.reduce(Int64(0)) { $0 + ($1.file.size ?? 0) }
         let tracker = ProgressTracker(totalFiles: plan.count, totalBytes: totalBytes)
@@ -141,13 +257,25 @@ struct GoogleDriveDownloadService: DownloadServicing {
         for item in plan {
             try Task.checkCancellation()
             progress(tracker.startingFile(item.file.name))
-            try await downloadFile(item.file, into: item.destinationFolderURL, accessToken: accessToken) { chunkSize in
+            try await downloadFile(item.file, into: item.destinationFolderURL, credential: credential) { chunkSize in
                 progress(tracker.addingBytes(chunkSize))
             }
             progress(tracker.completingFile())
         }
 
         return rootFolderURL
+    }
+
+    /// Prefers anonymous API-key access when the item is publicly reachable; falls back
+    /// to an authenticated OAuth token (prompting sign-in if necessary) otherwise.
+    private func resolveCredential(for itemID: String) async throws -> DriveCredential {
+        if let apiKey = Self.configuredAPIKey,
+           (try? await fetchMetadata(fileID: itemID, credential: .apiKey(apiKey))) != nil {
+            return .apiKey(apiKey)
+        }
+
+        let token = try await loginManager.validAccessToken()
+        return .oauth(token)
     }
 
     private struct PlanItem {
@@ -158,18 +286,18 @@ struct GoogleDriveDownloadService: DownloadServicing {
     private func enumerate(
         folderID: String,
         into localFolderURL: URL,
-        accessToken: String
+        credential: DriveCredential
     ) async throws -> [PlanItem] {
         try Task.checkCancellation()
-        let children = try await listChildren(of: folderID, accessToken: accessToken)
+        let children = try await listChildren(of: folderID, credential: credential)
         var items: [PlanItem] = []
 
         for child in children {
             if child.isFolder {
                 let childURL = localFolderURL.appendingPathComponent(Self.sanitizedName(child.name), isDirectory: true)
                 try FileManager.default.createDirectory(at: childURL, withIntermediateDirectories: true)
-                items.append(contentsOf: try await enumerate(folderID: child.id, into: childURL, accessToken: accessToken))
-            } else if Self.exportMimeTypes[child.mimeType] != nil || !child.mimeType.hasPrefix("application/vnd.google-apps.") {
+                items.append(contentsOf: try await enumerate(folderID: child.id, into: childURL, credential: credential))
+            } else if Self.isDownloadable(mimeType: child.mimeType) {
                 items.append(PlanItem(file: child, destinationFolderURL: localFolderURL))
             }
         }
@@ -177,22 +305,23 @@ struct GoogleDriveDownloadService: DownloadServicing {
         return items
     }
 
-    private func fetchMetadata(fileID: String, accessToken: String) async throws -> DriveFile {
+    private func fetchMetadata(fileID: String, credential: DriveCredential) async throws -> DriveFile {
         var components = URLComponents(string: "\(Self.apiBase)/\(fileID)")!
         components.queryItems = [
             URLQueryItem(name: "fields", value: "id,name,mimeType,size"),
             URLQueryItem(name: "supportsAllDrives", value: "true")
         ]
+        credential.applying(to: &components)
 
         var request = URLRequest(url: components.url!)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        credential.applying(to: &request)
 
         let (data, response) = try await urlSession.data(for: request)
         try Self.validate(response, data: data)
         return try JSONDecoder().decode(DriveFile.self, from: data)
     }
 
-    private func listChildren(of folderID: String, accessToken: String) async throws -> [DriveFile] {
+    private func listChildren(of folderID: String, credential: DriveCredential) async throws -> [DriveFile] {
         var files: [DriveFile] = []
         var pageToken: String?
 
@@ -210,9 +339,10 @@ struct GoogleDriveDownloadService: DownloadServicing {
                 queryItems.append(URLQueryItem(name: "pageToken", value: pageToken))
             }
             components.queryItems = queryItems
+            credential.applying(to: &components)
 
             var request = URLRequest(url: components.url!)
-            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+            credential.applying(to: &request)
 
             let (data, response) = try await urlSession.data(for: request)
             try Self.validate(response, data: data)
@@ -225,12 +355,13 @@ struct GoogleDriveDownloadService: DownloadServicing {
         return files
     }
 
+    @discardableResult
     private func downloadFile(
         _ file: DriveFile,
         into folderURL: URL,
-        accessToken: String,
+        credential: DriveCredential,
         onBytes: @escaping (Int64) -> Void
-    ) async throws {
+    ) async throws -> URL {
         let destinationURL: URL
         let requestURL: URL
 
@@ -240,6 +371,7 @@ struct GoogleDriveDownloadService: DownloadServicing {
             )
             var components = URLComponents(string: "\(Self.apiBase)/\(file.id)/export")!
             components.queryItems = [URLQueryItem(name: "mimeType", value: export.mimeType)]
+            credential.applying(to: &components)
             requestURL = components.url!
         } else {
             destinationURL = folderURL.appendingPathComponent(Self.sanitizedName(file.name))
@@ -248,11 +380,12 @@ struct GoogleDriveDownloadService: DownloadServicing {
                 URLQueryItem(name: "alt", value: "media"),
                 URLQueryItem(name: "supportsAllDrives", value: "true")
             ]
+            credential.applying(to: &components)
             requestURL = components.url!
         }
 
         var request = URLRequest(url: requestURL)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        credential.applying(to: &request)
 
         let (byteStream, response) = try await urlSession.bytes(for: request)
 
@@ -299,6 +432,8 @@ struct GoogleDriveDownloadService: DownloadServicing {
             try? FileManager.default.removeItem(at: destinationURL)
             throw error
         }
+
+        return destinationURL
     }
 
     private static func validate(_ response: URLResponse, data: Data?) throws {

@@ -10,32 +10,23 @@ struct ContentView: View {
                 VStack(spacing: 22) {
                     header
 
-                    VStack(spacing: 20) {
-                        DownloadFormView(
-                            driveLink: $viewModel.driveLink,
-                            destinationURL: viewModel.selectedDestinationURL,
-                            isLocked: viewModel.isFormLocked,
-                            onChooseDestination: viewModel.chooseDestinationFolder
-                        )
-
-                        if case .idle = viewModel.downloadPhase {
-                            Button(action: viewModel.download) {
-                                Label("Download", systemImage: "arrow.down.circle.fill")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 4)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.large)
-                            .disabled(!viewModel.canDownload)
-                        }
-                    }
+                    DownloadFormView(
+                        driveLink: $viewModel.driveLink,
+                        destinationURL: viewModel.selectedDestinationURL,
+                        isLocked: viewModel.isFormLocked,
+                        onChooseDestination: viewModel.chooseDestinationFolder
+                    )
                     .frame(maxWidth: 360)
+
+                    if case .idle = viewModel.downloadPhase {
+                        analysisArea
+                            .frame(maxWidth: 360)
+                    }
 
                     resultArea
                         .frame(maxWidth: 360)
 
-                    if case .idle = viewModel.downloadPhase, recentDownloads.isEmpty {
+                    if case .idle = viewModel.downloadPhase, viewModel.linkAnalysisState == .idle, recentDownloads.isEmpty {
                         EmptyStateView()
                             .frame(maxWidth: 360)
                     } else if !recentDownloads.isEmpty {
@@ -66,6 +57,7 @@ struct ContentView: View {
             }
         }
         .animation(.easeInOut(duration: 0.25), value: viewModel.downloadPhase)
+        .animation(.easeInOut(duration: 0.2), value: viewModel.linkAnalysisState)
         .task {
             viewModel.restoreLogin()
         }
@@ -82,7 +74,7 @@ struct ContentView: View {
         case .success(let folderURL, _):
             recentDownloads.insert(DownloadHistoryItem(name: folderURL.lastPathComponent, date: .now, status: .completed), at: 0)
         case .failed:
-            let name = GoogleDriveLinkParser.folderID(from: viewModel.driveLink) != nil ? "Google Drive download" : "Download"
+            let name = GoogleDriveLinkParser.itemID(from: viewModel.driveLink) != nil ? "Google Drive download" : "Download"
             recentDownloads.insert(DownloadHistoryItem(name: name, date: .now, status: .failed), at: 0)
         case .cancelled:
             recentDownloads.insert(DownloadHistoryItem(name: "Google Drive download", date: .now, status: .cancelled), at: 0)
@@ -125,6 +117,27 @@ struct ContentView: View {
             )
         case .cancelled:
             DownloadCancelledView(onDismiss: viewModel.dismissDownloadResult)
+        }
+    }
+
+    @ViewBuilder
+    private var analysisArea: some View {
+        switch viewModel.linkAnalysisState {
+        case .idle:
+            EmptyView()
+        case .analyzing:
+            LinkAnalyzingView()
+        case .needsConnection:
+            LinkNeedsConnectionView(isSigningIn: viewModel.isSigningIn, onConnect: viewModel.signInWithGoogle)
+        case .ready(let analysis):
+            LinkAnalysisResultView(
+                analysis: analysis,
+                canDownload: viewModel.canDownload,
+                onDownload: viewModel.download,
+                onCancel: viewModel.cancelAnalysis
+            )
+        case .failed(let message):
+            LinkAnalysisErrorView(message: message, onRetry: viewModel.retryAnalysis)
         }
     }
 

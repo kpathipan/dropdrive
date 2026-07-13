@@ -4,6 +4,8 @@
 <dict>
 	<key>GIDClientID</key>
 	<string>657178095066-1uhb851427dlcc7komllr8sm4cjukl6h.apps.googleusercontent.com</string>
+	<key>GoogleAPIKey</key>
+	<string>YOUR_GOOGLE_API_KEY</string>
 	<key>REVERSED_CLIENT_ID</key>
 	<string>com.googleusercontent.apps.657178095066-1uhb851427dlcc7komllr8sm4cjukl6h</string>
 	<key>CFBundleURLTypes</key>

@@ -8,6 +8,7 @@ protocol LoginManaging {
     func signOut()
     func handleCallbackURL(_ url: URL) -> Bool
     func validAccessToken() async throws -> String
+    func cachedAccessTokenIfAvailable() async -> String?
 }
 
 @MainActor
@@ -75,6 +76,17 @@ final class LoginManager: LoginManaging {
 
     func handleCallbackURL(_ url: URL) -> Bool {
         GIDSignIn.sharedInstance.handle(url)
+    }
+
+    /// Returns a valid access token only if the user is already signed in with the
+    /// required scope, refreshing silently if needed. Never prompts for interaction.
+    func cachedAccessTokenIfAvailable() async -> String? {
+        guard let user = GIDSignIn.sharedInstance.currentUser,
+              user.grantedScopes?.contains(Self.driveReadonlyScope) == true else {
+            return nil
+        }
+
+        return try? await Self.refreshedAccessToken(for: user)
     }
 
     func validAccessToken() async throws -> String {

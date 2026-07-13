@@ -1,7 +1,11 @@
 import Foundation
 
 enum GoogleDriveLinkParser {
-    static func folderID(from link: String) -> String? {
+    /// Extracts a Drive item ID (file or folder) from a variety of Google Drive link formats:
+    /// - .../drive/folders/<id>
+    /// - .../file/d/<id>/...
+    /// - ...?id=<id>
+    static func itemID(from link: String) -> String? {
         let trimmedLink = link.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard let components = URLComponents(string: trimmedLink) else {
@@ -13,12 +17,19 @@ enum GoogleDriveLinkParser {
         }
 
         let pathComponents = components.path.split(separator: "/").map(String.init)
-        guard let folderIndex = pathComponents.firstIndex(of: "folders"),
-              pathComponents.indices.contains(folderIndex + 1) else {
-            return nil
+
+        if let folderIndex = pathComponents.firstIndex(of: "folders"),
+           pathComponents.indices.contains(folderIndex + 1) {
+            let id = pathComponents[folderIndex + 1]
+            return id.isEmpty ? nil : id
         }
 
-        let folderID = pathComponents[folderIndex + 1]
-        return folderID.isEmpty ? nil : folderID
+        if let fileIndex = pathComponents.firstIndex(of: "d"),
+           pathComponents.indices.contains(fileIndex + 1) {
+            let id = pathComponents[fileIndex + 1]
+            return id.isEmpty ? nil : id
+        }
+
+        return nil
     }
 }

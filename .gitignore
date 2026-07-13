@@ -2,6 +2,7 @@
 .claude/settings.local.json
 build/
 DerivedData/
+dist/
 *.xcuserstate
 xcuserdata/
 .swiftpm/

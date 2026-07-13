@@ -145,9 +145,9 @@ final class DropDriveViewModel {
 
         downloadTask = Task {
             do {
-                let resultURL = try await downloadService.download(request) { [weak self] progress in
-                    Task { @MainActor in
-                        self?.downloadProgress = progress
+                let resultURL = try await downloadService.download(request) { progress in
+                    Task { @MainActor [self] in
+                        self.downloadProgress = progress
                     }
                 }
 

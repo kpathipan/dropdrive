@@ -79,6 +79,6 @@ struct EmptyStateView: View {
                 .frame(maxWidth: 260)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 28)
+        .padding(.vertical, 10)
     }
 }

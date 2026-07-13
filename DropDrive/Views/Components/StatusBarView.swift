@@ -3,9 +3,9 @@ import SwiftUI
 struct StatusBarView: View {
     let statusText: String
 
-    private var appVersion: String {
+    private var versionLabel: String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0"
-        return "Version \(version) Beta"
+        return "DropDrive • v\(version) Beta"
     }
 
     var body: some View {
@@ -16,15 +16,11 @@ struct StatusBarView: View {
 
             Spacer()
 
-            Text("DropDrive")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
-
-            Text(appVersion)
+            Text(versionLabel)
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.vertical, 9)
     }
 }

@@ -16,14 +16,23 @@ struct ConnectionToolbarControl: View {
                 Button {
                     showAccountPopover = true
                 } label: {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 5) {
                         AvatarView(account: account, size: 20)
+
                         Text(account.name)
                             .font(.system(size: 12, weight: .medium))
                             .lineLimit(1)
+                            .truncationMode(.tail)
+                            .layoutPriority(-1)
+
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.secondary)
                     }
+                    .frame(maxWidth: 170, alignment: .leading)
                 }
                 .buttonStyle(.plain)
+                .padding(.leading, 6)
                 .disabled(isLocked)
                 .popover(isPresented: $showAccountPopover, arrowEdge: .bottom) {
                     AccountPopoverContent(account: account, onDisconnect: {

@@ -7,7 +7,7 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
-                VStack(spacing: 28) {
+                VStack(spacing: 22) {
                     header
 
                     VStack(spacing: 20) {
@@ -21,6 +21,7 @@ struct ContentView: View {
                         if case .idle = viewModel.downloadPhase {
                             Button(action: viewModel.download) {
                                 Label("Download", systemImage: "arrow.down.circle.fill")
+                                    .font(.system(size: 14, weight: .semibold))
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 4)
                             }
@@ -43,8 +44,8 @@ struct ContentView: View {
                     }
                 }
                 .padding(.horizontal, 32)
-                .padding(.top, 20)
-                .padding(.bottom, 28)
+                .padding(.top, 16)
+                .padding(.bottom, 20)
                 .frame(maxWidth: .infinity)
             }
 
@@ -136,10 +137,11 @@ struct ContentView: View {
                 .font(.system(size: 12.5))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-                .frame(maxWidth: 320)
+                .lineSpacing(2)
+                .frame(maxWidth: 264)
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 8)
+        .padding(.top, 4)
     }
 }
 

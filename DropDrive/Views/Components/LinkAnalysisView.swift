@@ -14,6 +14,25 @@ struct LinkAnalyzingView: View {
         .padding(14)
         .cardBackground()
         .transition(.opacity)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+struct LinkInvalidView: View {
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+
+            Text("That doesn't look like a Google Drive link.")
+                .font(.system(size: 12.5))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(14)
+        .cardBackground()
+        .transition(.opacity)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -35,6 +54,7 @@ struct LinkNeedsConnectionView: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
                 .disabled(isSigningIn)
+                .accessibilityLabel("Connect Google Drive")
         }
         .padding(14)
         .cardBackground()
@@ -99,15 +119,21 @@ struct LinkAnalysisResultView: View {
 
             Divider()
 
-            HStack(spacing: 16) {
-                if let totalBytes = analysis.totalBytes {
-                    detail(Formatters.byteCount(totalBytes), icon: "internaldrive")
-                } else {
-                    detail("Size unknown", icon: "internaldrive")
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 16) {
+                    if let totalBytes = analysis.totalBytes {
+                        detail(Formatters.byteCount(totalBytes), icon: "internaldrive")
+                    } else {
+                        detail("Size unknown", icon: "internaldrive")
+                    }
+
+                    if let fileCount = analysis.fileCount {
+                        detail("\(fileCount) \(fileCount == 1 ? "file" : "files")", icon: "doc.on.doc")
+                    }
                 }
 
-                if let fileCount = analysis.fileCount {
-                    detail("\(fileCount) \(fileCount == 1 ? "file" : "files")", icon: "doc.on.doc")
+                if let ownerName = analysis.ownerName {
+                    detail("Owned by \(ownerName)", icon: "person.crop.circle")
                 }
             }
             .font(.system(size: 11))
@@ -144,5 +170,7 @@ struct LinkAnalysisResultView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(.quaternary.opacity(0.6), in: Capsule())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(analysis.isPublic ? "Public" : "Private")
     }
 }

@@ -14,7 +14,9 @@ struct ContentView: View {
                         driveLink: $viewModel.driveLink,
                         destinationURL: viewModel.selectedDestinationURL,
                         isLocked: viewModel.isFormLocked,
-                        onChooseDestination: viewModel.chooseDestinationFolder
+                        onChooseDestination: viewModel.chooseDestinationFolder,
+                        onSubmit: viewModel.handleSubmit,
+                        onEscape: viewModel.cancelAnalysis
                     )
                     .frame(maxWidth: 360)
 
@@ -45,6 +47,7 @@ struct ContentView: View {
             StatusBarView(statusText: statusBarText)
         }
         .frame(minWidth: 460, idealWidth: 520, minHeight: 480, idealHeight: 600)
+        .background(WindowAccessor(autosaveName: "DropDriveMainWindow"))
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 ConnectionToolbarControl(
@@ -125,6 +128,8 @@ struct ContentView: View {
         switch viewModel.linkAnalysisState {
         case .idle:
             EmptyView()
+        case .invalidLink:
+            LinkInvalidView()
         case .analyzing:
             LinkAnalyzingView()
         case .needsConnection:

@@ -1,22 +1,48 @@
 import SwiftUI
+import AppKit
 
 struct DownloadFormView: View {
     @Binding var driveLink: String
     let destinationURL: URL?
     let isLocked: Bool
     let onChooseDestination: () -> Void
+    let onSubmit: () -> Void
+    let onEscape: () -> Void
 
     var body: some View {
         VStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 8) {
                 sectionLabel("Paste Google Drive link")
 
-                TextField("https://drive.google.com/...", text: $driveLink)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 13))
-                    .padding(11)
-                    .inputFieldBackground()
-                    .disabled(isLocked)
+                HStack(spacing: 8) {
+                    TextField("https://drive.google.com/...", text: $driveLink)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 13))
+                        .disabled(isLocked)
+                        .onSubmit(onSubmit)
+                        .onExitCommand(perform: onEscape)
+                        .accessibilityLabel("Google Drive link")
+
+                    if driveLink.isEmpty {
+                        Button(action: pasteFromClipboard) {
+                            Image(systemName: "doc.on.clipboard")
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .disabled(isLocked)
+                        .accessibilityLabel("Paste")
+                    } else {
+                        Button(action: { driveLink = "" }) {
+                            Image(systemName: "xmark.circle.fill")
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .disabled(isLocked)
+                        .accessibilityLabel("Clear")
+                    }
+                }
+                .padding(11)
+                .inputFieldBackground()
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -35,14 +61,21 @@ struct DownloadFormView: View {
 
                     Spacer(minLength: 12)
 
-                    Button("Choose…", action: onChooseDestination)
+                    Button(destinationURL == nil ? "Choose…" : "Change…", action: onChooseDestination)
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                         .disabled(isLocked)
+                        .accessibilityLabel(destinationURL == nil ? "Choose destination folder" : "Change destination folder")
                 }
                 .padding(11)
                 .inputFieldBackground()
             }
+        }
+    }
+
+    private func pasteFromClipboard() {
+        if let text = NSPasteboard.general.string(forType: .string) {
+            driveLink = text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }
 

@@ -34,6 +34,8 @@ struct ConnectionToolbarControl: View {
                 .buttonStyle(.plain)
                 .padding(.leading, 6)
                 .disabled(isLocked)
+                .accessibilityLabel("Account: \(account.name)")
+                .accessibilityHint("Opens account options")
                 .popover(isPresented: $showAccountPopover, arrowEdge: .bottom) {
                     AccountPopoverContent(account: account, onDisconnect: {
                         showAccountPopover = false

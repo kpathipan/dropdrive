@@ -4,18 +4,24 @@ protocol DownloadServicing {
     @discardableResult
     func download(_ request: DownloadRequest, progress: @escaping @Sendable (DownloadProgress) -> Void) async throws -> URL
     func analyzeLink(itemID: String) async throws -> LinkAnalysisResult
+    func clearAnalysisCache() async
 }
 
 struct DriveFile: Decodable {
+    private struct Owner: Decodable {
+        let displayName: String?
+    }
+
     let id: String
     let name: String
     let mimeType: String
     let size: Int64?
+    let ownerName: String?
 
     var isFolder: Bool { mimeType == "application/vnd.google-apps.folder" }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, mimeType, size
+        case id, name, mimeType, size, owners
     }
 
     init(from decoder: Decoder) throws {
@@ -28,6 +34,8 @@ struct DriveFile: Decodable {
         } else {
             size = nil
         }
+        let owners = try container.decodeIfPresent([Owner].self, forKey: .owners)
+        ownerName = owners?.first?.displayName
     }
 }
 
@@ -71,6 +79,27 @@ private enum DriveCredential {
         if case .oauth(let token) = self {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
+    }
+}
+
+/// In-memory cache of successful link analyses, keyed by item ID, shared across
+/// service instances for the lifetime of the process. Avoids re-scanning the same
+/// folder (which can involve many API calls) every time its link is re-analyzed.
+private actor AnalysisCache {
+    static let shared = AnalysisCache()
+
+    private var storage: [String: LinkAnalysisResult] = [:]
+
+    func get(_ key: String) -> LinkAnalysisResult? {
+        storage[key]
+    }
+
+    func set(_ key: String, _ value: LinkAnalysisResult) {
+        storage[key] = value
+    }
+
+    func clear() {
+        storage.removeAll()
     }
 }
 
@@ -158,7 +187,25 @@ struct GoogleDriveDownloadService: DownloadServicing {
 
     // MARK: - Link analysis
 
+    func clearAnalysisCache() async {
+        await AnalysisCache.shared.clear()
+    }
+
     func analyzeLink(itemID: String) async throws -> LinkAnalysisResult {
+        if let cached = await AnalysisCache.shared.get(itemID) {
+            return cached
+        }
+
+        let result = try await performAnalysis(itemID: itemID)
+
+        if case .success = result {
+            await AnalysisCache.shared.set(itemID, result)
+        }
+
+        return result
+    }
+
+    private func performAnalysis(itemID: String) async throws -> LinkAnalysisResult {
         if let apiKey = Self.configuredAPIKey,
            let metadata = try? await fetchMetadata(fileID: itemID, credential: .apiKey(apiKey)) {
             let analysis = try await buildAnalysis(for: metadata, credential: .apiKey(apiKey), isPublic: true)
@@ -183,7 +230,8 @@ struct GoogleDriveDownloadService: DownloadServicing {
                 isPublic: isPublic,
                 requiresAuthentication: !isPublic,
                 totalBytes: metadata.size,
-                fileCount: nil
+                fileCount: nil,
+                ownerName: metadata.ownerName
             )
         }
 
@@ -195,7 +243,8 @@ struct GoogleDriveDownloadService: DownloadServicing {
             isPublic: isPublic,
             requiresAuthentication: !isPublic,
             totalBytes: totalBytes,
-            fileCount: fileCount
+            fileCount: fileCount,
+            ownerName: metadata.ownerName
         )
     }
 
@@ -269,7 +318,15 @@ struct GoogleDriveDownloadService: DownloadServicing {
     /// Prefers anonymous API-key access when the item is publicly reachable; falls back
     /// to an authenticated OAuth token (prompting sign-in if necessary) otherwise.
     private func resolveCredential(for itemID: String) async throws -> DriveCredential {
+        // Prior analysis already determined public/private for this item — reuse that
+        // instead of re-probing anonymous access with another network round trip.
         if let apiKey = Self.configuredAPIKey,
+           case .success(let analysis) = await AnalysisCache.shared.get(itemID),
+           analysis.isPublic {
+            return .apiKey(apiKey)
+        }
+
+        if await AnalysisCache.shared.get(itemID) == nil, let apiKey = Self.configuredAPIKey,
            (try? await fetchMetadata(fileID: itemID, credential: .apiKey(apiKey))) != nil {
             return .apiKey(apiKey)
         }
@@ -308,7 +365,7 @@ struct GoogleDriveDownloadService: DownloadServicing {
     private func fetchMetadata(fileID: String, credential: DriveCredential) async throws -> DriveFile {
         var components = URLComponents(string: "\(Self.apiBase)/\(fileID)")!
         components.queryItems = [
-            URLQueryItem(name: "fields", value: "id,name,mimeType,size"),
+            URLQueryItem(name: "fields", value: "id,name,mimeType,size,owners(displayName)"),
             URLQueryItem(name: "supportsAllDrives", value: "true")
         ]
         credential.applying(to: &components)

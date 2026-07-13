@@ -24,11 +24,11 @@ struct DownloadSuccessView: View {
             }
 
             HStack(spacing: 14) {
-                Button("Done", action: onDone)
+                Button("Download Another", action: onDone)
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
 
-                Button("Open in Finder", action: onOpenInFinder)
+                Button("Open Folder", action: onOpenInFinder)
                     .buttonStyle(.borderedProminent)
             }
         }

@@ -40,6 +40,7 @@ final class DropDriveViewModel {
         self.loginManager = loginManager
         self.downloadService = GoogleDriveDownloadService(loginManager: loginManager)
         self.folderSelectionService = FolderSelectionService()
+        self.selectedDestinationURL = DestinationStore.restore()
     }
 
     init(
@@ -112,6 +113,7 @@ final class DropDriveViewModel {
         loginManager.signOut()
         googleAccount = nil
         statusMessage = "Signed out of Google Drive."
+        Task { await downloadService.clearAnalysisCache() }
     }
 
     func handleCallbackURL(_ url: URL) {
@@ -126,6 +128,7 @@ final class DropDriveViewModel {
 
             selectedDestinationURL = folderURL
             statusMessage = "Destination folder selected."
+            DestinationStore.save(folderURL)
         }
     }
 
@@ -135,18 +138,22 @@ final class DropDriveViewModel {
         analysisTask?.cancel()
         linkAnalysisState = .idle
 
-        guard let itemID = GoogleDriveLinkParser.itemID(from: driveLink) else {
-            return
-        }
+        let trimmed = driveLink.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
 
         analysisTask = Task {
             try? await Task.sleep(for: .milliseconds(500))
             guard !Task.isCancelled else { return }
-            await performAnalysis(itemID: itemID)
+            await runAnalysis(for: trimmed)
         }
     }
 
-    private func performAnalysis(itemID: String) async {
+    private func runAnalysis(for trimmedLink: String) async {
+        guard let itemID = GoogleDriveLinkParser.itemID(from: trimmedLink) else {
+            linkAnalysisState = .invalidLink
+            return
+        }
+
         linkAnalysisState = .analyzing
 
         do {
@@ -161,7 +168,7 @@ final class DropDriveViewModel {
             }
         } catch {
             guard !Task.isCancelled else { return }
-            linkAnalysisState = .failed(error.localizedDescription)
+            linkAnalysisState = .failed(Self.friendlyMessage(for: error))
         }
     }
 
@@ -173,6 +180,23 @@ final class DropDriveViewModel {
 
     func retryAnalysis() {
         scheduleAnalysis()
+    }
+
+    /// Bypasses the debounce for an immediate confirm action (Return key): downloads
+    /// right away if analysis is already ready, otherwise runs analysis immediately.
+    func handleSubmit() {
+        if canDownload {
+            download()
+            return
+        }
+
+        let trimmed = driveLink.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        analysisTask?.cancel()
+        analysisTask = Task {
+            await runAnalysis(for: trimmed)
+        }
     }
 
     // MARK: - Download
@@ -209,11 +233,12 @@ final class DropDriveViewModel {
                     downloadPhase = .cancelled
                 } else {
                     downloadPhase = .success(folderURL: resultURL, fileCount: downloadProgress?.totalFiles ?? 0)
+                    NotificationService.notifyDownloadComplete(name: resultURL.lastPathComponent, folderURL: resultURL)
                 }
             } catch is CancellationError {
                 downloadPhase = .cancelled
             } catch {
-                downloadPhase = Task.isCancelled ? .cancelled : .failed(message: error.localizedDescription)
+                downloadPhase = Task.isCancelled ? .cancelled : .failed(message: Self.friendlyMessage(for: error))
             }
         }
     }
@@ -228,9 +253,36 @@ final class DropDriveViewModel {
         download()
     }
 
+    /// Used by every dismiss-style action (Download Another, error/cancelled dismiss):
+    /// clears the current link/analysis so the form is ready for a fresh paste. The
+    /// destination folder is intentionally kept.
     func dismissDownloadResult() {
         downloadPhase = .idle
         downloadProgress = nil
-        scheduleAnalysis()
+        driveLink = ""
+    }
+
+    private static func friendlyMessage(for error: Error) -> String {
+        if let driveError = error as? DriveDownloadError {
+            switch driveError {
+            case .server(let statusCode, _):
+                switch statusCode {
+                case 404:
+                    return "This link doesn't point to an existing Google Drive file or folder."
+                case 403:
+                    return "You don't have permission to access this item."
+                default:
+                    return "Google Drive couldn't process this link right now."
+                }
+            case .invalidResponse, .unsupportedFileType:
+                return driveError.errorDescription ?? "Google Drive couldn't process this link right now."
+            }
+        }
+
+        if error is URLError {
+            return "Check your internet connection and try again."
+        }
+
+        return "Something went wrong. Please try again."
     }
 }

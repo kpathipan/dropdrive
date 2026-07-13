@@ -2,13 +2,26 @@ import SwiftUI
 
 struct RecentDownloadsView: View {
     let items: [DownloadHistoryItem]
+    let onRevealInFinder: (DownloadHistoryItem) -> Void
+    let onCopyLink: (DownloadHistoryItem) -> Void
+    let onClearHistory: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Recent Downloads")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .tracking(0.4)
+            HStack {
+                Text("Recent Downloads")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .tracking(0.4)
+
+                Spacer()
+
+                Button("Clear History", action: onClearHistory)
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Clear download history")
+            }
 
             VStack(spacing: 0) {
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
@@ -16,7 +29,7 @@ struct RecentDownloadsView: View {
                         Divider()
                             .padding(.leading, 38)
                     }
-                    RecentDownloadRow(item: item)
+                    RecentDownloadRow(item: item, onRevealInFinder: onRevealInFinder, onCopyLink: onCopyLink)
                 }
             }
             .cardBackground()
@@ -26,6 +39,8 @@ struct RecentDownloadsView: View {
 
 private struct RecentDownloadRow: View {
     let item: DownloadHistoryItem
+    let onRevealInFinder: (DownloadHistoryItem) -> Void
+    let onCopyLink: (DownloadHistoryItem) -> Void
 
     var body: some View {
         HStack(spacing: 10) {
@@ -47,6 +62,13 @@ private struct RecentDownloadRow: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
+        .contentShape(Rectangle())
+        .contextMenu {
+            if item.itemURL != nil {
+                Button("Reveal in Finder") { onRevealInFinder(item) }
+            }
+            Button("Copy Google Drive Link") { onCopyLink(item) }
+        }
         .accessibilityElement(children: .combine)
     }
 

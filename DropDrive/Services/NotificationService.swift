@@ -11,21 +11,32 @@ enum NotificationService {
         center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
 
         let openAction = UNNotificationAction(identifier: openFolderActionID, title: "Open Folder", options: [])
-        let category = UNNotificationCategory(
+        let downloadCategory = UNNotificationCategory(
             identifier: downloadCategoryID,
             actions: [openAction],
             intentIdentifiers: [],
             options: []
         )
-        center.setNotificationCategories([category])
+
+        let updateCategory = UNNotificationCategory(
+            identifier: UpdateChecker.updateAvailableCategoryID,
+            actions: [],
+            intentIdentifiers: [],
+            options: []
+        )
+
+        center.setNotificationCategories([downloadCategory, updateCategory])
     }
 
-    static func notifyDownloadComplete(name: String, folderURL: URL) {
+    static func notifyDownloadComplete(name: String, folderURL: URL, playSound: Bool) {
         let content = UNMutableNotificationContent()
         content.title = "Download Complete"
         content.body = name
         content.categoryIdentifier = downloadCategoryID
         content.userInfo = [folderPathKey: folderURL.path]
+        if playSound {
+            content.sound = .default
+        }
 
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
@@ -41,14 +52,22 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
-        guard response.actionIdentifier == NotificationService.openFolderActionID
-            || response.actionIdentifier == UNNotificationDefaultActionIdentifier,
-            let path = response.notification.request.content.userInfo[NotificationService.folderPathKey] as? String else {
-            return
-        }
+        let content = response.notification.request.content
+        let acted = response.actionIdentifier == NotificationService.openFolderActionID
+            || response.actionIdentifier == UNNotificationDefaultActionIdentifier
+        guard acted else { return }
 
-        await MainActor.run {
-            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+        if content.categoryIdentifier == NotificationService.downloadCategoryID,
+           let path = content.userInfo[NotificationService.folderPathKey] as? String {
+            await MainActor.run {
+                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+            }
+        } else if content.categoryIdentifier == UpdateChecker.updateAvailableCategoryID,
+                  let urlString = content.userInfo[UpdateChecker.releaseURLKey] as? String,
+                  let url = URL(string: urlString) {
+            await MainActor.run {
+                _ = NSWorkspace.shared.open(url)
+            }
         }
     }
 

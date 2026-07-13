@@ -1,10 +1,18 @@
 import SwiftUI
 
 struct DownloadSuccessView: View {
-    let folderURL: URL
+    let itemURL: URL
+    let isFolder: Bool
     let fileCount: Int
     let onOpenInFinder: () -> Void
     let onDone: () -> Void
+
+    private var completionMessage: String {
+        guard isFolder else {
+            return "File saved to \(itemURL.deletingLastPathComponent().lastPathComponent)"
+        }
+        return fileCount == 1 ? "1 file saved to \(itemURL.lastPathComponent)" : "\(fileCount) files saved to \(itemURL.lastPathComponent)"
+    }
 
     var body: some View {
         VStack(spacing: 14) {
@@ -17,7 +25,7 @@ struct DownloadSuccessView: View {
                 Text("Download Complete")
                     .font(.system(size: 16, weight: .semibold))
 
-                Text(fileCount == 1 ? "1 file saved to \(folderURL.lastPathComponent)" : "\(fileCount) files saved to \(folderURL.lastPathComponent)")
+                Text(completionMessage)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

@@ -1,10 +1,11 @@
+import AppKit
 import Foundation
 import Observation
 
 enum DownloadPhase: Equatable {
     case idle
     case downloading
-    case success(folderURL: URL, fileCount: Int)
+    case success(itemURL: URL, isFolder: Bool, fileCount: Int)
     case failed(message: String)
     case cancelled
 
@@ -39,7 +40,7 @@ final class DropDriveViewModel {
         self.loginManager = loginManager
         self.downloadService = GoogleDriveDownloadService(loginManager: loginManager)
         self.folderSelectionService = FolderSelectionService()
-        self.selectedDestinationURL = DestinationStore.restore()
+        self.selectedDestinationURL = DestinationStore.restore() ?? PreferencesStore.shared.defaultDownloadFolderURL
     }
 
     init(
@@ -179,7 +180,8 @@ final class DropDriveViewModel {
             return
         }
 
-        let request = DownloadRequest(itemID: itemID, destinationURL: destinationURL)
+        let trimmedLink = driveLink.trimmingCharacters(in: .whitespacesAndNewlines)
+        let request = DownloadRequest(driveLink: trimmedLink, itemID: itemID, destinationURL: destinationURL)
 
         downloadPhase = .downloading
         downloadProgress = DownloadProgress(currentFileName: "Preparing…")
@@ -191,17 +193,31 @@ final class DropDriveViewModel {
                         self.downloadProgress = progress
                     }
                 }
+                try Task.checkCancellation()
 
-                if Task.isCancelled {
-                    downloadPhase = .cancelled
-                } else {
-                    downloadPhase = .success(folderURL: resultURL, fileCount: downloadProgress?.totalFiles ?? 0)
-                    NotificationService.notifyDownloadComplete(name: resultURL.lastPathComponent, folderURL: resultURL)
+                let isFolder = (try? resultURL.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+                downloadPhase = .success(itemURL: resultURL, isFolder: isFolder, fileCount: downloadProgress?.totalFiles ?? 0)
+                if PreferencesStore.shared.openFinderWhenComplete {
+                    NSWorkspace.shared.activateFileViewerSelecting([resultURL])
                 }
+                NotificationService.notifyDownloadComplete(
+                    name: resultURL.lastPathComponent,
+                    folderURL: resultURL,
+                    playSound: PreferencesStore.shared.playNotificationSound
+                )
+                DownloadHistoryStore.shared.record(DownloadHistoryItem(
+                    name: resultURL.lastPathComponent, date: .now, status: .completed, itemURL: resultURL, driveLink: trimmedLink
+                ))
             } catch is CancellationError {
                 downloadPhase = .cancelled
+                DownloadHistoryStore.shared.record(DownloadHistoryItem(
+                    name: "Google Drive download", date: .now, status: .cancelled, driveLink: trimmedLink
+                ))
             } catch {
-                downloadPhase = Task.isCancelled ? .cancelled : .failed(message: Self.friendlyMessage(for: error))
+                downloadPhase = .failed(message: Self.friendlyMessage(for: error))
+                DownloadHistoryStore.shared.record(DownloadHistoryItem(
+                    name: "Google Drive download", date: .now, status: .failed, driveLink: trimmedLink
+                ))
             }
         }
     }

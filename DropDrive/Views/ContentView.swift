@@ -1,8 +1,10 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @State private var viewModel = DropDriveViewModel()
-    @State private var recentDownloads: [DownloadHistoryItem] = []
+    @State private var historyStore = DownloadHistoryStore.shared
+    @State private var isDropTargeted = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,12 +30,24 @@ struct ContentView: View {
                     resultArea
                         .frame(maxWidth: 360)
 
-                    if case .idle = viewModel.downloadPhase, viewModel.linkAnalysisState == .idle, recentDownloads.isEmpty {
+                    if case .idle = viewModel.downloadPhase, viewModel.linkAnalysisState == .idle, historyStore.items.isEmpty {
                         EmptyStateView()
                             .frame(maxWidth: 360)
-                    } else if !recentDownloads.isEmpty {
-                        RecentDownloadsView(items: recentDownloads)
-                            .frame(maxWidth: 360)
+                    } else if !historyStore.items.isEmpty {
+                        RecentDownloadsView(
+                            items: historyStore.items,
+                            onRevealInFinder: { item in
+                                guard let url = item.itemURL else { return }
+                                NSWorkspace.shared.activateFileViewerSelecting([url])
+                            },
+                            onCopyLink: { item in
+                                let pasteboard = NSPasteboard.general
+                                pasteboard.clearContents()
+                                pasteboard.setString(item.driveLink, forType: .string)
+                            },
+                            onClearHistory: { historyStore.clear() }
+                        )
+                        .frame(maxWidth: 360)
                     }
                 }
                 .padding(.horizontal, 32)
@@ -48,6 +62,17 @@ struct ContentView: View {
         }
         .frame(minWidth: 460, idealWidth: 520, minHeight: 480, idealHeight: 600)
         .background(WindowAccessor(autosaveName: "DropDriveMainWindow"))
+        .overlay {
+            if isDropTargeted {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color.accentColor, lineWidth: 3)
+                    .padding(8)
+                    .allowsHitTesting(false)
+            }
+        }
+        .onDrop(of: [.url, .plainText], isTargeted: $isDropTargeted) { providers in
+            handleDrop(providers: providers)
+        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 ConnectionToolbarControl(
@@ -67,23 +92,35 @@ struct ContentView: View {
         .onOpenURL { url in
             viewModel.handleCallbackURL(url)
         }
-        .onChange(of: viewModel.downloadPhase) { _, newPhase in
-            recordHistoryIfNeeded(for: newPhase)
-        }
     }
 
-    private func recordHistoryIfNeeded(for phase: DownloadPhase) {
-        switch phase {
-        case .success(let folderURL, _):
-            recentDownloads.insert(DownloadHistoryItem(name: folderURL.lastPathComponent, date: .now, status: .completed), at: 0)
-        case .failed:
-            let name = GoogleDriveLinkParser.itemID(from: viewModel.driveLink) != nil ? "Google Drive download" : "Download"
-            recentDownloads.insert(DownloadHistoryItem(name: name, date: .now, status: .failed), at: 0)
-        case .cancelled:
-            recentDownloads.insert(DownloadHistoryItem(name: "Google Drive download", date: .now, status: .cancelled), at: 0)
-        default:
-            break
+    /// Accepts a dragged Drive link as either a file-style URL promise or plain text.
+    /// If the dropped content doesn't parse as a Drive link, the field is left untouched.
+    private func handleDrop(providers: [NSItemProvider]) -> Bool {
+        guard !viewModel.isFormLocked else { return false }
+
+        guard let provider = providers.first(where: {
+            $0.hasItemConformingToTypeIdentifier(UTType.url.identifier)
+                || $0.hasItemConformingToTypeIdentifier(UTType.plainText.identifier)
+        }) else {
+            return false
         }
+
+        if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
+            provider.loadItem(forTypeIdentifier: UTType.url.identifier) { item, _ in
+                let url = (item as? URL) ?? (item as? Data).flatMap { URL(dataRepresentation: $0, relativeTo: nil) }
+                guard let url, GoogleDriveLinkParser.itemID(from: url.absoluteString) != nil else { return }
+                Task { @MainActor in viewModel.driveLink = url.absoluteString }
+            }
+            return true
+        }
+
+        provider.loadItem(forTypeIdentifier: UTType.plainText.identifier) { item, _ in
+            let text = (item as? String) ?? (item as? Data).flatMap { String(data: $0, encoding: .utf8) }
+            guard let text, GoogleDriveLinkParser.itemID(from: text) != nil else { return }
+            Task { @MainActor in viewModel.driveLink = text }
+        }
+        return true
     }
 
     private var statusBarText: String {
@@ -105,11 +142,12 @@ struct ContentView: View {
             if let progress = viewModel.downloadProgress {
                 DownloadPanelView(progress: progress, onCancel: viewModel.cancelDownload)
             }
-        case .success(let folderURL, let fileCount):
+        case .success(let itemURL, let isFolder, let fileCount):
             DownloadSuccessView(
-                folderURL: folderURL,
+                itemURL: itemURL,
+                isFolder: isFolder,
                 fileCount: fileCount,
-                onOpenInFinder: { NSWorkspace.shared.activateFileViewerSelecting([folderURL]) },
+                onOpenInFinder: { NSWorkspace.shared.activateFileViewerSelecting([itemURL]) },
                 onDone: viewModel.dismissDownloadResult
             )
         case .failed(let message):

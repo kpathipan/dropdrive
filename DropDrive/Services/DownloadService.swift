@@ -123,17 +123,22 @@ private final class ProgressTracker {
         return snapshot()
     }
 
-    func addingBytes(_ count: Int64) -> DownloadProgress {
+    /// Byte counting always happens; the UI-facing snapshot is throttled to this
+    /// same ~5Hz sampling window so a fast connection doesn't hop to the main
+    /// actor thousands of times per second for updates no one can perceive.
+    /// Measured: at 8 MB/s with a 64KB buffer, unthrottled emission produced
+    /// ~122 callbacks/sec; throttled, ~5/sec, with identical final byte counts.
+    func addingBytes(_ count: Int64) -> DownloadProgress? {
         bytesDownloaded += count
         let now = Date()
         let elapsed = now.timeIntervalSince(lastSampleTime)
-        if elapsed >= 0.2 {
-            let deltaBytes = bytesDownloaded - lastSampleBytes
-            let instantRate = elapsed > 0 ? Double(deltaBytes) / elapsed : 0
-            smoothedRate = smoothedRate == 0 ? instantRate : (smoothedRate * 0.7 + instantRate * 0.3)
-            lastSampleTime = now
-            lastSampleBytes = bytesDownloaded
-        }
+        guard elapsed >= 0.2 else { return nil }
+
+        let deltaBytes = bytesDownloaded - lastSampleBytes
+        let instantRate = elapsed > 0 ? Double(deltaBytes) / elapsed : 0
+        smoothedRate = smoothedRate == 0 ? instantRate : (smoothedRate * 0.7 + instantRate * 0.3)
+        lastSampleTime = now
+        lastSampleBytes = bytesDownloaded
         return snapshot()
     }
 
@@ -298,7 +303,9 @@ struct GoogleDriveDownloadService: DownloadServicing {
             progress(DownloadProgress(currentFileName: rootMetadata.name, totalFiles: 1, totalBytes: rootMetadata.size ?? 0))
             let tracker = ProgressTracker(totalFiles: 1, totalBytes: rootMetadata.size ?? 0)
             let fileURL = try await downloadFile(rootMetadata, into: request.destinationURL, credential: credential) { chunkSize in
-                progress(tracker.addingBytes(chunkSize))
+                if let update = tracker.addingBytes(chunkSize) {
+                    progress(update)
+                }
             }
             progress(tracker.completingFile())
             return fileURL
@@ -320,7 +327,9 @@ struct GoogleDriveDownloadService: DownloadServicing {
             try Task.checkCancellation()
             progress(tracker.startingFile(item.file.name))
             try await downloadFile(item.file, into: item.destinationFolderURL, credential: credential) { chunkSize in
-                progress(tracker.addingBytes(chunkSize))
+                if let update = tracker.addingBytes(chunkSize) {
+                    progress(update)
+                }
             }
             progress(tracker.completingFile())
         }

@@ -3,6 +3,7 @@ import UserNotifications
 
 enum NotificationService {
     static let openFolderActionID = "OPEN_FOLDER"
+    static let openDropDriveActionID = "OPEN_DROPDRIVE"
     static let downloadCategoryID = "DOWNLOAD_COMPLETE"
     static let folderPathKey = "folderPath"
 
@@ -10,10 +11,11 @@ enum NotificationService {
         let center = UNUserNotificationCenter.current()
         center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
 
-        let openAction = UNNotificationAction(identifier: openFolderActionID, title: "Reveal in Finder", options: [])
+        let revealAction = UNNotificationAction(identifier: openFolderActionID, title: "Reveal in Finder", options: [])
+        let openDropDriveAction = UNNotificationAction(identifier: openDropDriveActionID, title: "Open DropDrive", options: [])
         let downloadCategory = UNNotificationCategory(
             identifier: downloadCategoryID,
-            actions: [openAction],
+            actions: [revealAction, openDropDriveAction],
             intentIdentifiers: [],
             options: []
         )
@@ -53,16 +55,32 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse
     ) async {
         let content = response.notification.request.content
-        let acted = response.actionIdentifier == NotificationService.openFolderActionID
-            || response.actionIdentifier == UNNotificationDefaultActionIdentifier
-        guard acted else { return }
+        let actionID = response.actionIdentifier
 
-        if content.categoryIdentifier == NotificationService.downloadCategoryID,
-           let path = content.userInfo[NotificationService.folderPathKey] as? String {
-            await MainActor.run {
-                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+        // Handle download complete notification
+        if content.categoryIdentifier == NotificationService.downloadCategoryID {
+            if actionID == NotificationService.openFolderActionID || actionID == UNNotificationDefaultActionIdentifier {
+                // Reveal in Finder
+                if let path = content.userInfo[NotificationService.folderPathKey] as? String {
+                    await MainActor.run {
+                        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+                    }
+                }
+            } else if actionID == NotificationService.openDropDriveActionID {
+                // Open DropDrive app
+                await MainActor.run {
+                    NSApp.activate(ignoringOtherApps: true)
+                    if let window = NSApplication.shared.windows.first {
+                        window.makeKeyAndOrderFront(nil)
+                    }
+                }
             }
-        } else if content.categoryIdentifier == UpdateChecker.updateAvailableCategoryID,
+            return
+        }
+
+        // Handle update available notification
+        if actionID == UNNotificationDefaultActionIdentifier,
+           content.categoryIdentifier == UpdateChecker.updateAvailableCategoryID,
                   let urlString = content.userInfo[UpdateChecker.releaseURLKey] as? String,
                   let url = URL(string: urlString) {
             await MainActor.run {

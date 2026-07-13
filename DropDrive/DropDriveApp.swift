@@ -11,6 +11,7 @@ struct DropDriveApp: App {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
     @State private var historyStore = DownloadHistoryStore.shared
+    @State private var pendingDeepLinkURL: URL?
 
     init() {
         UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
@@ -37,45 +38,7 @@ struct DropDriveApp: App {
         }
 
         MenuBarExtra("DropDrive", systemImage: "tray.and.arrow.down.fill") {
-            Button("Open DropDrive") {
-                NSApp.activate(ignoringOtherApps: true)
-                openWindow(id: Self.mainWindowID)
-            }
-
-            recentDownloadsMenu
-
-            Divider()
-
-            Button("Preferences…") {
-                NSApp.activate(ignoringOtherApps: true)
-                openSettings()
-            }
-            .keyboardShortcut(",")
-
-            Divider()
-
-            Button("Quit DropDrive") {
-                NSApp.terminate(nil)
-            }
-            .keyboardShortcut("q")
-        }
-    }
-
-    @ViewBuilder
-    private var recentDownloadsMenu: some View {
-        Menu("Recent Downloads") {
-            if historyStore.items.isEmpty {
-                Text("No Recent Downloads")
-            } else {
-                ForEach(historyStore.items.prefix(5)) { item in
-                    Button(item.name) {
-                        guard let url = item.itemURL else { return }
-                        NSApp.activate(ignoringOtherApps: true)
-                        NSWorkspace.shared.activateFileViewerSelecting([url])
-                    }
-                    .disabled(item.itemURL == nil)
-                }
-            }
+            MenuBarView()
         }
     }
 
@@ -100,5 +63,25 @@ struct DropDriveApp: App {
                 NSApplication.AboutPanelOptionKey.credits: credits
             ]
         )
+    }
+
+    private func handleDeepLink(_ url: URL) {
+        // Handle dropdrive://download?url=<share-link>
+        guard url.scheme == "dropdrive" else { return }
+        guard url.host == "download" else { return }
+
+        // Extract URL query parameter
+        guard let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let queryItems = urlComponents.queryItems,
+              let urlItem = queryItems.first(where: { $0.name == "url" }),
+              let downloadURLString = urlItem.value,
+              !downloadURLString.isEmpty else {
+            return
+        }
+
+        // Bring app to front and set the deep link URL for ContentView to process
+        NSApp.activate(ignoringOtherApps: true)
+        openWindow(id: Self.mainWindowID)
+        pendingDeepLinkURL = URL(string: downloadURLString)
     }
 }

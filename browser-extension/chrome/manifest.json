@@ -1,17 +1,34 @@
 {
   "manifest_version": 3,
-  "name": "DropDrive for Google Drive",
-  "version": "1.0.0",
-  "description": "Send Google Drive files and folders straight to DropDrive for macOS.",
-  "permissions": ["contextMenus"],
+  "name": "DropDrive",
+  "short_name": "DropDrive",
+  "description": "Download Google Drive files directly to your Mac with DropDrive",
+  "version": "5.1.0",
+  "permissions": [
+    "scripting",
+    "contextMenus",
+    "activeTab"
+  ],
   "host_permissions": [
-    "*://drive.google.com/*",
-    "*://docs.google.com/*"
+    "https://drive.google.com/*"
   ],
   "background": {
     "service_worker": "background.js"
   },
+  "content_scripts": [
+    {
+      "matches": ["https://drive.google.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ],
   "action": {
-    "default_title": "Download with DropDrive"
+    "default_popup": "popup.html",
+    "default_title": "DropDrive"
+  },
+  "icons": {
+    "16": "images/icon-16.png",
+    "48": "images/icon-48.png",
+    "128": "images/icon-128.png"
   }
 }

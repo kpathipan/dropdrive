@@ -1,8 +1,7 @@
-// DropDrive Chrome Extension - Background Service Worker
-// Handles context menu and messaging
+// DropDrive Background Service Worker
 
+// Create context menu items for downloading from Google Drive
 chrome.runtime.onInstalled.addListener(() => {
-  // Create context menu for Google Drive links
   chrome.contextMenus.create({
     id: 'sendToDropDrive',
     title: 'Send to DropDrive',
@@ -14,6 +13,7 @@ chrome.runtime.onInstalled.addListener(() => {
 // Handle context menu clicks
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === 'sendToDropDrive') {
+    // Get the current tab's URL (for files/folders) or link URL
     let driveLink = info.linkUrl || tab.url;
 
     // Ensure it's a proper Google Drive link
@@ -24,37 +24,23 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
         driveLink = `https://drive.google.com/file/d/${idMatch[1]}/view`;
       }
 
-      // Send message to content script
+      // Send to DropDrive via deep link
+      const deepLink = `dropdrive://add?url=${encodeURIComponent(driveLink)}`;
       chrome.tabs.sendMessage(tab.id, {
         action: 'downloadFileFromDrive',
         url: driveLink
-      }).catch((error) => {
-        console.log('Could not send message to content script:', error);
-        // Fall back to direct deep link
-        openDropDrive(driveLink);
       });
+
+      // Also try to open the deep link directly
+      chrome.tabs.update(tab.id, { url: deepLink });
     }
   }
 });
 
 // Listen for messages from content scripts
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'contextMenuClicked' || request.action === 'downloadFileFromDrive') {
-    if (request.url) {
-      openDropDrive(request.url);
-      sendResponse({ success: true });
-    }
+  if (request.action === 'contextMenuClicked') {
+    const deepLink = `dropdrive://add?url=${encodeURIComponent(request.url)}`;
+    chrome.tabs.update(sender.tab.id, { url: deepLink });
   }
 });
-
-function openDropDrive(driveLink) {
-  const deepLink = `dropdrive://add?url=${encodeURIComponent(driveLink)}`;
-  chrome.tabs.update(
-    { url: deepLink },
-    () => {
-      if (chrome.runtime.lastError) {
-        console.log('Error opening DropDrive:', chrome.runtime.lastError);
-      }
-    }
-  );
-}

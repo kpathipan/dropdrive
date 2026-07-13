@@ -19,6 +19,12 @@ DropDrive is a native macOS app that downloads Google Drive files and folders di
 - macOS 14 or later
 - A Google account (only required for private files/folders)
 
+## Installing
+
+Download the latest DMG from the project's Releases, open it, and drag
+DropDrive.app to Applications. See [CHANGELOG.md](CHANGELOG.md) for what's
+in each version.
+
 ## Building
 
 1. Open `DropDrive.xcodeproj` in Xcode.
@@ -34,6 +40,11 @@ DropDrive is a native macOS app that downloads Google Drive files and folders di
 - `Services/` — Google Sign-In, Drive API access, downloading, notifications, preferences, update checking
 - `ViewModels/` — `DropDriveViewModel` drives the main window's state machine
 - `Views/` — SwiftUI views, kept presentation-only
+
+## Privacy
+
+See [PRIVACY.md](PRIVACY.md) for what DropDrive does and doesn't do with
+your data.
 
 ## License
 

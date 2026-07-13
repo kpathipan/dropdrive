@@ -95,7 +95,10 @@ struct ContentView: View {
     }
 
     /// Accepts a dragged Drive link as either a file-style URL promise or plain text.
-    /// If the dropped content doesn't parse as a Drive link, the field is left untouched.
+    /// Tries the URL representation first, then falls back to plain text if the URL
+    /// doesn't parse as a Drive link (a provider can offer both, and the URL one isn't
+    /// always the useful one — e.g. dragging selected text from a page). If neither
+    /// yields a valid link, the field is left untouched.
     private func handleDrop(providers: [NSItemProvider]) -> Bool {
         guard !viewModel.isFormLocked else { return false }
 
@@ -106,21 +109,42 @@ struct ContentView: View {
             return false
         }
 
-        if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
-            provider.loadItem(forTypeIdentifier: UTType.url.identifier) { item, _ in
-                let url = (item as? URL) ?? (item as? Data).flatMap { URL(dataRepresentation: $0, relativeTo: nil) }
-                guard let url, GoogleDriveLinkParser.itemID(from: url.absoluteString) != nil else { return }
-                Task { @MainActor in viewModel.driveLink = url.absoluteString }
+        Task { @MainActor in
+            if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier),
+               let candidate = await Self.loadedString(from: provider, typeIdentifier: UTType.url.identifier),
+               GoogleDriveLinkParser.itemID(from: candidate) != nil {
+                viewModel.driveLink = candidate
+                return
             }
-            return true
-        }
 
-        provider.loadItem(forTypeIdentifier: UTType.plainText.identifier) { item, _ in
-            let text = (item as? String) ?? (item as? Data).flatMap { String(data: $0, encoding: .utf8) }
-            guard let text, GoogleDriveLinkParser.itemID(from: text) != nil else { return }
-            Task { @MainActor in viewModel.driveLink = text }
+            if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier),
+               let candidate = await Self.loadedString(from: provider, typeIdentifier: UTType.plainText.identifier),
+               GoogleDriveLinkParser.itemID(from: candidate) != nil {
+                viewModel.driveLink = candidate
+            }
         }
         return true
+    }
+
+    private static func loadedString(from provider: NSItemProvider, typeIdentifier: String) async -> String? {
+        await withCheckedContinuation { continuation in
+            provider.loadItem(forTypeIdentifier: typeIdentifier) { item, _ in
+                switch item {
+                case let url as URL:
+                    continuation.resume(returning: url.absoluteString)
+                case let string as String:
+                    continuation.resume(returning: string)
+                case let data as Data:
+                    if typeIdentifier == UTType.url.identifier, let url = URL(dataRepresentation: data, relativeTo: nil) {
+                        continuation.resume(returning: url.absoluteString)
+                    } else {
+                        continuation.resume(returning: String(data: data, encoding: .utf8))
+                    }
+                default:
+                    continuation.resume(returning: nil)
+                }
+            }
+        }
     }
 
     private var statusBarText: String {

@@ -42,3 +42,8 @@ Use the bug report issue template and include:
 If you find a security issue (e.g. related to credential handling or the
 sandboxed file access), please do not open a public issue — see
 [SECURITY policy / contact information to be added].
+
+## Privacy
+
+Changes that add network calls, new local storage, or new data collection
+should be reflected in [PRIVACY.md](PRIVACY.md) as part of the same PR.

@@ -5,6 +5,27 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [2.1.1] - Final release sprint
+
+### Fixed
+- Drag-and-drop now correctly falls back to a dropped item's plain-text
+  representation when its URL representation doesn't parse as a Drive
+  link, instead of giving up (a provider can offer both, and the URL one
+  isn't always the useful one)
+
+### Added
+- PRIVACY.md — a concrete description of what DropDrive does and doesn't
+  do with your data
+- RELEASE_NOTES.md for this release
+
+### Verified
+- Full project audit: no dead code, no duplicate logic, no unused assets,
+  no TODO/FIXME/HACK markers, zero warnings in Debug and Release
+- All documented user flows reviewed against source: public/private
+  file/folder downloads, invalid/deleted links, OAuth, cancel/retry,
+  progress, Recent Downloads, drag-and-drop, Preferences, menu bar, About
+  panel, accessibility, keyboard navigation, Dark/Light Mode
+
 ## [2.1.0] - Production polish sprint
 
 ### Added

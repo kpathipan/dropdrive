@@ -231,11 +231,12 @@ struct GoogleDriveDownloadService: DownloadServicing {
                 requiresAuthentication: !isPublic,
                 totalBytes: metadata.size,
                 fileCount: nil,
-                ownerName: metadata.ownerName
+                ownerName: metadata.ownerName,
+                categoryBreakdown: nil
             )
         }
 
-        let (fileCount, totalBytes) = try await estimateFolderContents(folderID: metadata.id, credential: credential)
+        let (fileCount, totalBytes, breakdown) = try await estimateFolderContents(folderID: metadata.id, credential: credential)
         return DriveLinkAnalysis(
             itemID: metadata.id,
             name: metadata.name,
@@ -244,28 +245,40 @@ struct GoogleDriveDownloadService: DownloadServicing {
             requiresAuthentication: !isPublic,
             totalBytes: totalBytes,
             fileCount: fileCount,
-            ownerName: metadata.ownerName
+            ownerName: metadata.ownerName,
+            categoryBreakdown: breakdown
         )
     }
 
-    private func estimateFolderContents(folderID: String, credential: DriveCredential) async throws -> (fileCount: Int, totalBytes: Int64) {
+    private func estimateFolderContents(
+        folderID: String,
+        credential: DriveCredential
+    ) async throws -> (fileCount: Int, totalBytes: Int64, breakdown: DriveLinkAnalysis.CategoryBreakdown) {
         try Task.checkCancellation()
         let children = try await listChildren(of: folderID, credential: credential)
         var count = 0
         var bytes: Int64 = 0
+        var breakdown = DriveLinkAnalysis.CategoryBreakdown()
 
         for child in children {
             if child.isFolder {
-                let (childCount, childBytes) = try await estimateFolderContents(folderID: child.id, credential: credential)
+                let (childCount, childBytes, childBreakdown) = try await estimateFolderContents(folderID: child.id, credential: credential)
                 count += childCount
                 bytes += childBytes
+                breakdown.images += childBreakdown.images
+                breakdown.videos += childBreakdown.videos
+                breakdown.documents += childBreakdown.documents
+                breakdown.archives += childBreakdown.archives
+                breakdown.other += childBreakdown.other
             } else if Self.isDownloadable(mimeType: child.mimeType) {
                 count += 1
                 bytes += child.size ?? 0
+                let category = FileCategoryClassifier.categorize(mimeType: child.mimeType, name: child.name)
+                breakdown[keyPath: category] += 1
             }
         }
 
-        return (count, bytes)
+        return (count, bytes, breakdown)
     }
 
     // MARK: - Download

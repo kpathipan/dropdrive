@@ -8,52 +8,81 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView {
-                VStack(spacing: 22) {
-                    header
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: 22) {
+                        header
 
-                    DownloadFormView(
-                        driveLink: $viewModel.driveLink,
-                        destinationURL: viewModel.selectedDestinationURL,
-                        isLocked: viewModel.isFormLocked,
-                        onChooseDestination: viewModel.chooseDestinationFolder,
-                        onSubmit: viewModel.handleSubmit,
-                        onEscape: viewModel.cancelAnalysis
-                    )
-                    .frame(maxWidth: 360)
-
-                    if case .idle = viewModel.downloadPhase {
-                        analysisArea
-                            .frame(maxWidth: 360)
-                    }
-
-                    resultArea
-                        .frame(maxWidth: 360)
-
-                    if case .idle = viewModel.downloadPhase, viewModel.linkAnalysisState == .idle, historyStore.items.isEmpty {
-                        EmptyStateView()
-                            .frame(maxWidth: 360)
-                    } else if !historyStore.items.isEmpty {
-                        RecentDownloadsView(
-                            items: historyStore.items,
-                            onRevealInFinder: { item in
-                                guard let url = item.itemURL else { return }
-                                NSWorkspace.shared.activateFileViewerSelecting([url])
-                            },
-                            onCopyLink: { item in
-                                let pasteboard = NSPasteboard.general
-                                pasteboard.clearContents()
-                                pasteboard.setString(item.driveLink, forType: .string)
-                            },
-                            onClearHistory: { historyStore.clear() }
+                        DownloadFormView(
+                            driveLink: $viewModel.driveLink,
+                            destinationURL: viewModel.selectedDestinationURL,
+                            isLocked: viewModel.isSigningIn,
+                            onChooseDestination: viewModel.chooseDestinationFolder,
+                            onSubmit: viewModel.handleSubmit,
+                            onEscape: viewModel.cancelAnalysis
                         )
                         .frame(maxWidth: 360)
+
+                        analysisArea
+                            .frame(maxWidth: 360)
+
+                        if !viewModel.queue.isEmpty {
+                            QueueView(
+                                queue: viewModel.queue,
+                                summary: viewModel.queueSummary,
+                                canStartQueue: viewModel.canStartQueue,
+                                isLargeDownload: viewModel.isLargeDownload,
+                                showLargeDownloadWarning: viewModel.showLargeDownloadWarning,
+                                activeProgress: viewModel.activeProgress,
+                                highlightedItemID: viewModel.highlightedQueueItemID,
+                                onStartQueue: viewModel.startQueueDownloads,
+                                onConfirmLargeDownload: viewModel.confirmLargeDownloadAndStart,
+                                onCancelLargeDownload: viewModel.cancelLargeDownloadWarning,
+                                onRemove: viewModel.removeQueueItem,
+                                onRetry: viewModel.retryQueueItem,
+                                onCancelActive: viewModel.cancelActiveDownload,
+                                onRevealInFinder: { item in
+                                    guard let url = item.resultURL else { return }
+                                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                                },
+                                onClearCompleted: viewModel.clearCompletedQueueItems
+                            )
+                            .frame(maxWidth: 360)
+                        }
+
+                        if viewModel.linkAnalysisState == .idle, viewModel.queue.isEmpty, historyStore.items.isEmpty {
+                            EmptyStateView()
+                                .frame(maxWidth: 360)
+                        } else if !historyStore.items.isEmpty {
+                            RecentDownloadsView(
+                                items: historyStore.items,
+                                onRevealInFinder: { item in
+                                    guard let url = item.itemURL else { return }
+                                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                                },
+                                onCopyLink: { item in
+                                    let pasteboard = NSPasteboard.general
+                                    pasteboard.clearContents()
+                                    pasteboard.setString(item.driveLink, forType: .string)
+                                },
+                                onClearHistory: { historyStore.clear() }
+                            )
+                            .frame(maxWidth: 360)
+                        }
                     }
+                    .padding(.horizontal, 32)
+                    .padding(.top, 16)
+                    .padding(.bottom, 20)
+                    .frame(maxWidth: .infinity)
                 }
-                .padding(.horizontal, 32)
-                .padding(.top, 16)
-                .padding(.bottom, 20)
-                .frame(maxWidth: .infinity)
+                .onChange(of: viewModel.activeQueueItemID) { _, newValue in
+                    guard let newValue else { return }
+                    withAnimation { proxy.scrollTo(newValue, anchor: .center) }
+                }
+                .onChange(of: viewModel.queue.count) { _, _ in
+                    guard let lastID = viewModel.queue.last?.id else { return }
+                    withAnimation { proxy.scrollTo(lastID, anchor: .bottom) }
+                }
             }
 
             Divider()
@@ -78,20 +107,31 @@ struct ContentView: View {
                 ConnectionToolbarControl(
                     account: viewModel.googleAccount,
                     isSigningIn: viewModel.isSigningIn,
-                    isLocked: viewModel.isFormLocked,
+                    isLocked: viewModel.isQueueProcessing,
                     onSignIn: viewModel.signInWithGoogle,
                     onSignOut: viewModel.signOut
                 )
             }
         }
-        .animation(.easeInOut(duration: 0.25), value: viewModel.downloadPhase)
         .animation(.easeInOut(duration: 0.2), value: viewModel.linkAnalysisState)
+        .animation(.easeInOut(duration: 0.2), value: viewModel.queue)
         .task {
             viewModel.restoreLogin()
         }
         .onOpenURL { url in
             viewModel.handleCallbackURL(url)
         }
+        .alert("Restore previous queue?", isPresented: $viewModel.showRestorePrompt) {
+            Button("Discard", role: .destructive) { viewModel.discardSavedQueue() }
+            Button("Restore") { viewModel.restoreSavedQueue() }
+        } message: {
+            Text(restoreMessage)
+        }
+    }
+
+    private var restoreMessage: String {
+        let count = viewModel.pendingRestoreQueue?.count ?? 0
+        return "You have \(count) item\(count == 1 ? "" : "s") from your last session."
     }
 
     /// Accepts a dragged Drive link as either a file-style URL promise or plain text.
@@ -100,7 +140,7 @@ struct ContentView: View {
     /// always the useful one — e.g. dragging selected text from a page). If neither
     /// yields a valid link, the field is left untouched.
     private func handleDrop(providers: [NSItemProvider]) -> Bool {
-        guard !viewModel.isFormLocked else { return false }
+        guard !viewModel.isSigningIn else { return false }
 
         guard let provider = providers.first(where: {
             $0.hasItemConformingToTypeIdentifier(UTType.url.identifier)
@@ -148,41 +188,9 @@ struct ContentView: View {
     }
 
     private var statusBarText: String {
-        switch viewModel.downloadPhase {
-        case .idle: "Ready"
-        case .downloading: "Downloading"
-        case .success: "Completed"
-        case .failed: "Error"
-        case .cancelled: "Ready"
-        }
-    }
-
-    @ViewBuilder
-    private var resultArea: some View {
-        switch viewModel.downloadPhase {
-        case .idle:
-            EmptyView()
-        case .downloading:
-            if let progress = viewModel.downloadProgress {
-                DownloadPanelView(progress: progress, onCancel: viewModel.cancelDownload)
-            }
-        case .success(let itemURL, let isFolder, let fileCount):
-            DownloadSuccessView(
-                itemURL: itemURL,
-                isFolder: isFolder,
-                fileCount: fileCount,
-                onOpenInFinder: { NSWorkspace.shared.activateFileViewerSelecting([itemURL]) },
-                onDone: viewModel.dismissDownloadResult
-            )
-        case .failed(let message):
-            DownloadErrorView(
-                message: message,
-                onRetry: viewModel.retryDownload,
-                onDismiss: viewModel.dismissDownloadResult
-            )
-        case .cancelled:
-            DownloadCancelledView(onDismiss: viewModel.dismissDownloadResult)
-        }
+        if viewModel.isQueueProcessing { return "Downloading" }
+        if viewModel.queue.contains(where: { $0.status == .failed }) { return "Error" }
+        return "Ready"
     }
 
     @ViewBuilder
@@ -196,15 +204,16 @@ struct ContentView: View {
             LinkAnalyzingView()
         case .needsConnection:
             LinkNeedsConnectionView(isSigningIn: viewModel.isSigningIn, onConnect: viewModel.signInWithGoogle)
-        case .ready(let analysis):
-            LinkAnalysisResultView(
-                analysis: analysis,
-                canDownload: viewModel.canDownload,
-                onDownload: viewModel.download,
-                onCancel: viewModel.cancelAnalysis
-            )
         case .failed(let message):
             LinkAnalysisErrorView(message: message, onRetry: viewModel.retryAnalysis)
+        case .duplicateActive:
+            LinkDuplicateActiveView()
+        case .duplicateCompleted(let analysis):
+            DuplicateCompletedPromptView(
+                analysis: analysis,
+                onDownloadAgain: viewModel.confirmDuplicateRedownload,
+                onCancel: viewModel.cancelAnalysis
+            )
         }
     }
 

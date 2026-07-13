@@ -62,6 +62,24 @@ struct LinkNeedsConnectionView: View {
     }
 }
 
+struct LinkDuplicateActiveView: View {
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.secondary)
+
+            Text("Already in queue.")
+                .font(.system(size: 12.5))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(14)
+        .cardBackground()
+        .transition(.opacity)
+        .accessibilityElement(children: .combine)
+    }
+}
+
 struct LinkAnalysisErrorView: View {
     let message: String
     let onRetry: () -> Void
@@ -87,10 +105,11 @@ struct LinkAnalysisErrorView: View {
     }
 }
 
-struct LinkAnalysisResultView: View {
+/// Shown when a pasted link matches an item that already completed this session,
+/// asking whether to queue a fresh copy of it.
+struct DuplicateCompletedPromptView: View {
     let analysis: DriveLinkAnalysis
-    let canDownload: Bool
-    let onDownload: () -> Void
+    let onDownloadAgain: () -> Void
     let onCancel: () -> Void
 
     var body: some View {
@@ -107,7 +126,7 @@ struct LinkAnalysisResultView: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
 
-                    Text(analysis.type == .folder ? "Folder" : "File")
+                    Text("Already downloaded this session")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
@@ -139,16 +158,18 @@ struct LinkAnalysisResultView: View {
             .font(.system(size: 11))
             .foregroundStyle(.secondary)
 
+            Text("Download again?")
+                .font(.system(size: 12.5, weight: .medium))
+
             HStack(spacing: 10) {
                 Button("Cancel", role: .cancel, action: onCancel)
                     .buttonStyle(.bordered)
 
-                Button(action: onDownload) {
-                    Label("Download", systemImage: "arrow.down.circle.fill")
+                Button(action: onDownloadAgain) {
+                    Label("Download Again", systemImage: "arrow.down.circle.fill")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(!canDownload)
             }
         }
         .padding(16)

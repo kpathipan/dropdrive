@@ -4,24 +4,61 @@ struct ContentView: View {
     @State private var viewModel = DropDriveViewModel()
 
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [Color(red: 0.05, green: 0.06, blue: 0.08), Color(red: 0.08, green: 0.10, blue: 0.13)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-
-            VStack(alignment: .leading, spacing: 24) {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 22) {
                 header
-                accountSection
-                form
-                footer
+
+                AccountCardView(
+                    account: viewModel.googleAccount,
+                    isSigningIn: viewModel.isSigningIn,
+                    isLocked: viewModel.isFormLocked,
+                    onSignIn: viewModel.signInWithGoogle,
+                    onSignOut: viewModel.signOut
+                )
+
+                DownloadFormView(
+                    driveLink: $viewModel.driveLink,
+                    destinationURL: viewModel.selectedDestinationURL,
+                    isLocked: viewModel.isFormLocked,
+                    onChooseDestination: viewModel.chooseDestinationFolder
+                )
+
+                resultArea
+
+                if case .idle = viewModel.downloadPhase {
+                    Button(action: viewModel.download) {
+                        Label("Download", systemImage: "arrow.down.circle.fill")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 4)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .disabled(!viewModel.canDownload)
+                }
+
+                if !viewModel.statusMessage.isEmpty, viewModel.downloadPhase == .idle {
+                    Text(viewModel.statusMessage)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
-            .padding(32)
-            .frame(width: 620, height: 520)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 24)
+            .padding(.top, 40)
+
+            Divider()
+
+            StatusBarView(
+                statusText: viewModel.footerStatusText,
+                isConnected: viewModel.isGoogleSignedIn
+            )
         }
-        .preferredColorScheme(.dark)
+        .frame(width: 440)
+        .fixedSize(horizontal: false, vertical: true)
+        .background(.background)
+        .animation(.easeInOut(duration: 0.25), value: viewModel.downloadPhase)
         .task {
             viewModel.restoreLogin()
         }
@@ -30,159 +67,42 @@ struct ContentView: View {
         }
     }
 
+    @ViewBuilder
+    private var resultArea: some View {
+        switch viewModel.downloadPhase {
+        case .idle:
+            EmptyView()
+        case .downloading:
+            if let progress = viewModel.downloadProgress {
+                DownloadProgressView(progress: progress, onCancel: viewModel.cancelDownload)
+            }
+        case .success(let folderURL, let fileCount):
+            DownloadSuccessView(
+                folderURL: folderURL,
+                fileCount: fileCount,
+                onOpenInFinder: { NSWorkspace.shared.activateFileViewerSelecting([folderURL]) },
+                onDone: viewModel.dismissDownloadResult
+            )
+        case .failed(let message):
+            DownloadErrorView(
+                message: message,
+                onRetry: viewModel.retryDownload,
+                onDismiss: viewModel.dismissDownloadResult
+            )
+        case .cancelled:
+            DownloadCancelledView(onDismiss: viewModel.dismissDownloadResult)
+        }
+    }
+
     private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 4) {
             Text("DropDrive")
-                .font(.system(size: 36, weight: .semibold, design: .rounded))
+                .font(.system(size: 24, weight: .semibold, design: .rounded))
 
-            Text("Download Google Drive folders to a local destination.")
-                .font(.callout)
+            Text("Download Google Drive folders effortlessly.")
+                .font(.system(size: 12))
                 .foregroundStyle(.secondary)
         }
-    }
-
-    private var accountSection: some View {
-        Group {
-            if let account = viewModel.googleAccount {
-                HStack(spacing: 12) {
-                    Image(systemName: "person.crop.circle.fill.badge.checkmark")
-                        .font(.system(size: 28))
-                        .foregroundStyle(.green, .white.opacity(0.85))
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Connected as:")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                        Text(account.name)
-                            .font(.headline)
-                            .lineLimit(1)
-
-                        Text(account.email)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-
-                    Spacer(minLength: 16)
-
-                    Button(action: viewModel.signOut) {
-                        Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
-                    }
-                    .buttonStyle(SecondaryButtonStyle())
-                    .disabled(viewModel.isWorking)
-                }
-                .padding(14)
-                .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(.white.opacity(0.12), lineWidth: 1)
-                }
-            } else {
-                Button(action: viewModel.signInWithGoogle) {
-                    Label(viewModel.isWorking ? "Opening Google..." : "Connect Google Drive", systemImage: "g.circle.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(PrimaryButtonStyle(isProminent: false))
-                .disabled(viewModel.isWorking)
-            }
-        }
-    }
-
-    private var form: some View {
-        VStack(spacing: 18) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Google Drive Link")
-                    .font(.headline)
-
-                TextField("https://drive.google.com/drive/folders/...", text: $viewModel.driveLink)
-                    .textFieldStyle(.plain)
-                    .padding(12)
-                    .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(.white.opacity(0.12), lineWidth: 1)
-                    }
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Destination")
-                    .font(.headline)
-
-                HStack(spacing: 12) {
-                    Text(viewModel.destinationDisplayName)
-                        .foregroundStyle(viewModel.selectedDestinationURL == nil ? .secondary : .primary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-
-                    Spacer(minLength: 16)
-
-                    Button(action: viewModel.chooseDestinationFolder) {
-                        Label("Choose", systemImage: "folder")
-                    }
-                    .buttonStyle(SecondaryButtonStyle())
-                    .disabled(viewModel.isWorking)
-                }
-                .padding(12)
-                .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(.white.opacity(0.12), lineWidth: 1)
-                }
-            }
-        }
-    }
-
-    private var footer: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Button(action: viewModel.download) {
-                Label("Download", systemImage: "arrow.down.circle.fill")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(PrimaryButtonStyle(isProminent: true))
-            .disabled(!viewModel.canDownload)
-
-            Text(viewModel.statusMessage)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-}
-
-private struct PrimaryButtonStyle: ButtonStyle {
-    let isProminent: Bool
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.headline)
-            .foregroundStyle(.white)
-            .padding(.vertical, 12)
-            .background(backgroundColor(isPressed: configuration.isPressed), in: RoundedRectangle(cornerRadius: 8))
-            .overlay {
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(.white.opacity(isProminent ? 0.18 : 0.12), lineWidth: 1)
-            }
-    }
-
-    private func backgroundColor(isPressed: Bool) -> Color {
-        if isProminent {
-            return isPressed ? Color.accentColor.opacity(0.75) : Color.accentColor
-        }
-
-        return isPressed ? .white.opacity(0.10) : .white.opacity(0.07)
-    }
-}
-
-private struct SecondaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.callout.weight(.medium))
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(.white.opacity(configuration.isPressed ? 0.14 : 0.09), in: RoundedRectangle(cornerRadius: 8))
     }
 }
 

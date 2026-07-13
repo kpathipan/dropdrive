@@ -1,6 +1,16 @@
 import Foundation
 import Observation
 
+enum DownloadPhase: Equatable {
+    case idle
+    case downloading
+    case success(folderURL: URL, fileCount: Int)
+    case failed(message: String)
+    case cancelled
+
+    var isActive: Bool { self == .downloading }
+}
+
 @MainActor
 @Observable
 final class DropDriveViewModel {
@@ -8,11 +18,15 @@ final class DropDriveViewModel {
     var selectedDestinationURL: URL?
     var statusMessage = "Sign in, paste a Drive folder link, and choose where it should land."
     var googleAccount: GoogleAccount?
-    var isWorking = false
+    var isSigningIn = false
+
+    var downloadPhase: DownloadPhase = .idle
+    var downloadProgress: DownloadProgress?
 
     private let loginManager: LoginManaging
     private let downloadService: DownloadServicing
     private let folderSelectionService: FolderSelectionServicing
+    private var downloadTask: Task<Void, Never>?
 
     init() {
         let loginManager = LoginManager.shared
@@ -40,7 +54,29 @@ final class DropDriveViewModel {
     }
 
     var canDownload: Bool {
-        GoogleDriveLinkParser.folderID(from: driveLink) != nil && selectedDestinationURL != nil && !isWorking
+        GoogleDriveLinkParser.folderID(from: driveLink) != nil
+            && selectedDestinationURL != nil
+            && !downloadPhase.isActive
+            && !isSigningIn
+    }
+
+    var isFormLocked: Bool {
+        downloadPhase.isActive
+    }
+
+    var footerStatusText: String {
+        switch downloadPhase {
+        case .idle:
+            isGoogleSignedIn ? "Ready" : "Not connected"
+        case .downloading:
+            "Downloading…"
+        case .success:
+            "Completed"
+        case .failed:
+            "Failed"
+        case .cancelled:
+            "Cancelled"
+        }
     }
 
     func restoreLogin() {
@@ -52,10 +88,16 @@ final class DropDriveViewModel {
 
     func signInWithGoogle() {
         Task {
-            await performWork(startMessage: "Opening Google sign-in...") {
-                let account = try await self.loginManager.signIn()
-                self.googleAccount = account
-                self.statusMessage = "Google Drive connected."
+            isSigningIn = true
+            statusMessage = "Opening Google sign-in…"
+            defer { isSigningIn = false }
+
+            do {
+                let account = try await loginManager.signIn()
+                googleAccount = account
+                statusMessage = "Google Drive connected."
+            } catch {
+                statusMessage = error.localizedDescription
             }
         }
     }
@@ -82,42 +124,58 @@ final class DropDriveViewModel {
     }
 
     func download() {
-        Task {
-            guard let destinationURL = selectedDestinationURL else {
-                statusMessage = "Choose a destination folder before downloading."
-                return
-            }
+        guard let destinationURL = selectedDestinationURL else {
+            statusMessage = "Choose a destination folder before downloading."
+            return
+        }
 
-            guard let folderID = GoogleDriveLinkParser.folderID(from: driveLink) else {
-                statusMessage = "Paste a valid Google Drive folder link."
-                return
-            }
+        guard let folderID = GoogleDriveLinkParser.folderID(from: driveLink) else {
+            statusMessage = "Paste a valid Google Drive folder link."
+            return
+        }
 
-            let request = DownloadRequest(
-                driveLink: driveLink.trimmingCharacters(in: .whitespacesAndNewlines),
-                folderID: folderID,
-                destinationURL: destinationURL
-            )
+        let request = DownloadRequest(
+            driveLink: driveLink.trimmingCharacters(in: .whitespacesAndNewlines),
+            folderID: folderID,
+            destinationURL: destinationURL
+        )
 
-            await performWork(startMessage: "Preparing download...") {
-                try await self.downloadService.download(request) { message in
-                    Task { @MainActor [self] in
-                        self.statusMessage = message
+        downloadPhase = .downloading
+        downloadProgress = DownloadProgress(currentFileName: "Preparing…")
+
+        downloadTask = Task {
+            do {
+                let resultURL = try await downloadService.download(request) { [weak self] progress in
+                    Task { @MainActor in
+                        self?.downloadProgress = progress
                     }
                 }
+
+                if Task.isCancelled {
+                    downloadPhase = .cancelled
+                } else {
+                    downloadPhase = .success(folderURL: resultURL, fileCount: downloadProgress?.totalFiles ?? 0)
+                }
+            } catch is CancellationError {
+                downloadPhase = .cancelled
+            } catch {
+                downloadPhase = Task.isCancelled ? .cancelled : .failed(message: error.localizedDescription)
             }
         }
     }
 
-    private func performWork(startMessage: String, operation: @escaping () async throws -> Void) async {
-        isWorking = true
-        statusMessage = startMessage
-        defer { isWorking = false }
+    func cancelDownload() {
+        downloadTask?.cancel()
+    }
 
-        do {
-            try await operation()
-        } catch {
-            statusMessage = error.localizedDescription
-        }
+    func retryDownload() {
+        downloadPhase = .idle
+        downloadProgress = nil
+        download()
+    }
+
+    func dismissDownloadResult() {
+        downloadPhase = .idle
+        downloadProgress = nil
     }
 }

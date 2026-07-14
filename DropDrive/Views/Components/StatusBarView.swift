@@ -4,7 +4,7 @@ struct StatusBarView: View {
     let statusText: String
 
     private var versionLabel: String {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "5.2.0"
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "5.3.0"
         return "DropDrive • v\(version) Dev"
     }
 

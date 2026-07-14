@@ -56,7 +56,7 @@ struct DropDriveApp: App {
     }
 
     private func showAboutPanel() {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "5.2.0"
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "5.3.0"
 
         let credits = NSMutableAttributedString(
             string: "Download Google Drive files and folders directly to your Mac.\n\nLicense: All Rights Reserved",

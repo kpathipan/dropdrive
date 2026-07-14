@@ -1,8 +1,8 @@
 // DropDrive Chrome Extension - Background Service Worker
 // Single source of truth for building the dropdrive:// deep link and
-// launching the app; the content script never builds this URL itself, it
-// just asks the background worker to do it (chrome.tabs.update is only
-// available here, not in a content script).
+// launching the app; content.js never builds this URL itself, it just asks
+// the background worker to do it (chrome.tabs.update is only available
+// here, not in a content script).
 
 const DRIVE_URL_PATTERN = "https://drive.google.com/*";
 
@@ -16,20 +16,24 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
+// Native browser right-click menu (only reachable on a plain link/page —
+// Google Drive's own file rows render a custom menu that suppresses this
+// entirely, which is what content.js's in-page menu injection is for).
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId !== "sendToDropDrive") return;
 
   const driveLink = normalizedDriveLink(info.linkUrl || tab.url);
   if (driveLink) {
-    openDropDrive(driveLink, tab.id);
+    openDropDrive([driveLink], tab.id);
   }
 });
 
-// Messages from content.js (the injected per-page button) and popup.html.
+// Messages from content.js: a toolbar-button or in-page-menu click carrying
+// one or more selected item links, in selection order.
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === "openDropDrive" && request.url) {
+  if (request.action === "openDropDrive" && Array.isArray(request.urls) && request.urls.length > 0) {
     const tabId = sender.tab ? sender.tab.id : undefined;
-    openDropDrive(request.url, tabId);
+    openDropDrive(request.urls, tabId);
     sendResponse({ success: true });
   }
 });
@@ -40,8 +44,13 @@ function normalizedDriveLink(url) {
   return idMatch ? `https://drive.google.com/file/d/${idMatch[1]}/view` : url;
 }
 
-function openDropDrive(driveLink, tabId) {
-  const deepLink = `dropdrive://download?url=${encodeURIComponent(driveLink)}`;
+/// Every integration hands off through the one `dropdrive://download?url=`
+/// endpoint. A multi-selection is still that same endpoint, just with the
+/// `url` query parameter repeated once per link in order — not a second
+/// endpoint or a made-up batch format.
+function openDropDrive(driveLinks, tabId) {
+  const query = driveLinks.map((link) => `url=${encodeURIComponent(link)}`).join("&");
+  const deepLink = `dropdrive://download?${query}`;
   const update = { url: deepLink };
   const callback = () => {
     if (chrome.runtime.lastError) {

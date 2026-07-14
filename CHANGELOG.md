@@ -5,6 +5,54 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [5.3.0] - Final Chrome integration sprint
+
+### Changed
+- Rewrote the Chrome extension's selection model. It previously only
+  detected a Drive item from the page URL (`/file/.../` or `/folders/...`),
+  which meant it did nothing on Drive's actual file-listing/selection UI —
+  the primary way people use Drive. It now reads the real selection
+  (`[aria-selected="true"][data-id]`), works in both List and Grid view,
+  and supports single, multiple, folder, and mixed selections, sent to
+  DropDrive in the order they appear in Drive's own list/grid.
+- Toolbar integration: instead of an always-injected custom-styled button,
+  DropDrive's icon is now inserted directly next to Drive's own Download
+  button (matched primarily via `data-tooltip`/`aria-label="Download"`),
+  sized to match, with a "Download with DropDrive" tooltip. It appears and
+  disappears with Drive's own Download button rather than being always
+  present.
+- Context menu integration: previously only used `chrome.contextMenus`,
+  which only affects the browser's native right-click menu — Google Drive
+  renders its own custom right-click menu and suppresses the native one
+  entirely, so that never actually appeared on a file/folder row. Now also
+  detects Drive's own menu opening and inserts a "DropDrive" item directly
+  below "Download" inside it, cloned from Drive's own item so it matches
+  styling automatically.
+- Added a "✓ Sent to DropDrive" toast on send, single-instance (re-sending
+  resets its timer rather than stacking a second one).
+- `dropdrive://download?url=` now accepts the `url` parameter repeated
+  once per selected item (`?url=A&url=B`) for a multi-selection, still the
+  one endpoint — not a new one. Minimal corresponding change on the
+  DropDrive app side: multi-item deep links are analyzed and queued in
+  order, silently (no per-item duplicate-redownload prompt interrupting a
+  batch).
+- Added real extension icons (16/48/128), derived from DropDrive's own app
+  icon, replacing the missing-icon manifest gap.
+- Simplified the MutationObserver-driven re-sync logic (the previous
+  version's "is this mutation relevant" filtering was dead code — it always
+  evaluated true — removed rather than fixed in place, since the
+  requestAnimationFrame debounce already bounds the cost without it).
+
+### Known limitation
+- None of the Chrome-side changes in this release could be verified against
+  the live drive.google.com DOM — interactive browser automation
+  (Computer Use write access, Claude-in-Chrome) was unavailable this
+  session. Selectors are layered/defensive and reasoned from documented
+  Google Drive DOM conventions, but are unverified. See RELEASE_NOTES.md
+  for what was and wasn't checked, including a concrete, observed risk
+  (the account seen mid-session had Drive set to Thai, which may affect
+  text-based matching).
+
 ## [5.2.0] - Production readiness
 
 ### Fixed

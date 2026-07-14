@@ -133,21 +133,46 @@ final class DropDriveViewModel {
     /// link the same way rather than talking to the app directly. The host segment
     /// isn't actually inspected below, so any `dropdrive://<host>?url=...` works,
     /// but `download` is the one canonical form every integration emits.
+    ///
+    /// A multi-selection in the Chrome extension arrives as several `url` query
+    /// items on the same deep link (`?url=A&url=B&url=C`) rather than a second
+    /// endpoint — still the one `dropdrive://download?url=` form, just repeated.
     func handleIncomingURL(_ url: URL) {
         guard url.scheme?.caseInsensitiveCompare("dropdrive") == .orderedSame else {
             handleCallbackURL(url)
             return
         }
 
-        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let linkValue = components.queryItems?.first(where: { $0.name == "url" })?.value,
-              !linkValue.isEmpty else {
-            return
-        }
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
+        let links = (components.queryItems ?? [])
+            .filter { $0.name == "url" }
+            .compactMap { $0.value }
+            .filter { !$0.isEmpty }
+        guard !links.isEmpty else { return }
 
         NSApp.activate(ignoringOtherApps: true)
-        driveLink = linkValue
-        handleSubmit()
+
+        if links.count == 1 {
+            driveLink = links[0]
+            handleSubmit()
+        } else {
+            Task { await enqueueBatch(links) }
+        }
+    }
+
+    /// Analyzes and enqueues several links in order, silently (no inline analysis
+    /// UI, no duplicate-redownload prompt) — used for a multi-file/folder selection
+    /// handed off in one deep link. Items that fail to analyze (invalid, needs
+    /// sign-in, already downloaded) are simply skipped rather than interrupting the
+    /// rest of the batch.
+    private func enqueueBatch(_ links: [String]) async {
+        for link in links {
+            guard let itemID = GoogleDriveLinkParser.itemID(from: link) else { continue }
+            let resourceKey = GoogleDriveLinkParser.resourceKey(from: link)
+            guard let result = try? await downloadService.analyzeLink(itemID: itemID, resourceKey: resourceKey),
+                  case .success(let analysis) = result else { continue }
+            handleSuccessfulAnalysis(analysis, trimmedLink: link, reportInline: false)
+        }
     }
 
     func chooseDestinationFolder() {
@@ -204,9 +229,13 @@ final class DropDriveViewModel {
 
     /// Each successful analysis becomes one queue item, unless its Drive item ID is
     /// already in the queue: a still-active duplicate is highlighted and rejected, a
-    /// completed one asks whether to queue a fresh copy.
-    private func handleSuccessfulAnalysis(_ analysis: DriveLinkAnalysis, trimmedLink: String) {
+    /// completed one asks whether to queue a fresh copy. `reportInline` gates the
+    /// paste-box UI state (analysis card, highlight, clearing the field) — off for
+    /// a batch add from a multi-selection deep link, where a duplicate is simply
+    /// skipped rather than surfaced as a prompt.
+    private func handleSuccessfulAnalysis(_ analysis: DriveLinkAnalysis, trimmedLink: String, reportInline: Bool = true) {
         if let existing = queue.first(where: { $0.itemID == analysis.itemID }) {
+            guard reportInline else { return }
             if existing.status == .completed {
                 linkAnalysisState = .duplicateCompleted(analysis)
             } else {
@@ -218,12 +247,13 @@ final class DropDriveViewModel {
         }
 
         if hasCompletedDownloadPreviously(itemID: analysis.itemID) {
+            guard reportInline else { return }
             linkAnalysisState = .duplicateCompleted(analysis)
             return
         }
 
         enqueue(analysis: analysis, driveLink: trimmedLink)
-        driveLink = ""
+        if reportInline { driveLink = "" }
     }
 
     /// Checks Recent Downloads (which spans past app sessions), not just this

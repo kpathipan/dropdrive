@@ -26,6 +26,53 @@ final class DropDriveAppDelegate: NSObject, NSApplicationDelegate {
         for url in urls {
             DropDriveViewModel.shared.handleIncomingURL(url)
         }
+        // The window this creates apparently never becomes key/main (observed:
+        // the didBecomeMainNotification-based sweep below never caught it), so
+        // this is deliberately also swept explicitly, right where it's created,
+        // rather than relying only on that notification firing.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            Self.closeDuplicateMainWindows()
+        }
+    }
+
+    /// A separate, observed bug from the two above: `WindowGroup` can spawn more
+    /// than one main-content window instance — on a plain cold launch with zero
+    /// user interaction, and again later whenever a deep link arrives while the
+    /// app is already running. Rather than chase the exact SwiftUI/AppKit
+    /// scene-lifecycle cause, this enforces "exactly one main window" every time
+    /// any window becomes main, not just once at launch.
+    func applicationDidFinishLaunching(_ notification: Foundation.Notification) {
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeMainNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Self.closeDuplicateMainWindows()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            Self.closeDuplicateMainWindows()
+        }
+    }
+
+    /// `WindowAccessor` tags its window with `frameAutosaveName` from inside a
+    /// `DispatchQueue.main.async` block (needed since `view.window` isn't set
+    /// synchronously in `makeNSView`) — logged proof from a real repro showed that
+    /// when multiple main windows appear together, that async tagging only wins
+    /// the race for one of them, leaving the others with an empty autosave name.
+    /// Filtering on that name alone was therefore missing most of the actual
+    /// duplicates. `title == "DropDrive"` is set synchronously by SwiftUI for
+    /// every `WindowGroup` window and was reliably present on all of them in that
+    /// same log, so it's the one used here — Settings/Preferences windows get
+    /// their own distinct system-provided title, not the app's display name.
+    private static func closeDuplicateMainWindows() {
+        let mainWindows = NSApplication.shared.windows.filter {
+            $0.title == "DropDrive" && $0.canBecomeMain && $0.isVisible
+        }
+        guard mainWindows.count > 1 else { return }
+        let keep = mainWindows.first(where: { $0.isKeyWindow }) ?? mainWindows.first
+        for window in mainWindows where window !== keep {
+            window.close()
+        }
     }
 }
 

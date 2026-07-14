@@ -5,7 +5,7 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
-## [5.4.3] - Three real bugs found from live use, not testing
+## [5.4.4] - Three real bugs found from live use, not testing
 
 Reported directly from using the app, not found by QA: a redundant login
 prompt despite already being signed in, a new hidden window piling up on
@@ -20,14 +20,20 @@ every Chrome deep link, and occasional corrupted downloads.
   conclude "not signed in" even though a valid session existed. Now
   attempts the same silent restore itself instead of assuming another,
   unsynchronized call already finished first.
-- **A new hidden window on every Chrome deep link.** SwiftUI's
-  `WindowGroup` + `.onOpenURL` treats each incoming `dropdrive://` link as
-  a fresh scene-activation request and can spawn an entirely new window
-  per link on macOS instead of routing to the one already open — the same
-  class of bug `applicationShouldHandleReopen` already worked around for
-  the menu bar's "Open Window" button, just not for this path. URL
-  handling now goes through `NSApplicationDelegate.application(_:open:)`
-  once, directly against the shared view model, instead of `.onOpenURL`.
+- **A new hidden window piling up, both on plain launch and on every Chrome
+  deep link.** Confirmed by direct reproduction (not just reasoned about):
+  a clean launch alone could produce 2+ main windows with zero user
+  interaction, and each incoming `dropdrive://` link while already running
+  added another. `.onOpenURL` was removed — incoming URLs now go through
+  `NSApplicationDelegate.application(_:open:)` once, directly against the
+  shared view model — but SwiftUI's `WindowGroup` still independently
+  spawned extra window instances regardless, so this is enforced directly:
+  the app delegate now sweeps for windows titled "DropDrive" (SwiftUI sets
+  this synchronously and consistently, unlike `WindowAccessor`'s own
+  `frameAutosaveName` tagging, which a live repro showed losing a race and
+  silently missing 2 of 3 real duplicates) after launch, after every
+  incoming URL, and whenever any window becomes main, closing every extra
+  down to one.
 - **Occasional corrupted downloads.** The multi-threaded ranged-download
   path probes once for `Range` header support before starting, but never
   re-checked that each of the 4 concurrent part-requests actually got back

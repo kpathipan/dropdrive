@@ -97,7 +97,7 @@ struct ContentView: View {
             StatusBarView(statusText: statusBarText)
         }
         .frame(minWidth: 460, idealWidth: 520, minHeight: 480, idealHeight: 600)
-        .background(WindowAccessor(autosaveName: "DropDriveMainWindow"))
+        .background(WindowAccessor(autosaveName: WindowAccessor.mainWindowAutosaveName))
         .overlay {
             if isDropTargeted {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -124,6 +124,12 @@ struct ContentView: View {
         .animation(.easeInOut(duration: 0.2), value: viewModel.queue)
         .task {
             viewModel.restoreLogin()
+        }
+        .onAppear {
+            viewModel.openMainWindowCount += 1
+        }
+        .onDisappear {
+            viewModel.openMainWindowCount -= 1
         }
         .onOpenURL { url in
             viewModel.handleIncomingURL(url)

@@ -731,7 +731,15 @@ struct GoogleDriveDownloadService: DownloadServicing {
                 return destinationURL
             } catch {
                 try? FileManager.default.removeItem(at: destinationURL)
-                // Falls through to the single-stream path below.
+                // A cancelled/paused part surfaces the same DownloadInterruption error as a
+                // genuinely failed one, so the only reliable signal for "the user stopped
+                // this, don't silently start a fresh single-stream download instead" is
+                // whether the task itself was cancelled — not the error type.
+                if Task.isCancelled {
+                    throw CancellationError()
+                }
+                // Otherwise a real per-part failure (not a cancellation): falls through to
+                // the single-stream path below.
             }
         }
 

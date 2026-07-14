@@ -42,6 +42,12 @@ final class DropDriveViewModel {
     var pendingRestoreQueue: [QueueItem]?
     var showRestorePrompt = false
 
+    /// How many main-window instances are currently on screen, tracked via
+    /// ContentView's onAppear/onDisappear. `openWindow(id:)` always creates a new
+    /// window rather than refocusing an existing one, so MenuBarView's "Open Window"
+    /// checks this first and only asks WindowGroup for one when none are open.
+    var openMainWindowCount = 0
+
     private let loginManager: LoginManaging
     private let downloadService: DownloadServicing
     private let folderSelectionService: FolderSelectionServicing

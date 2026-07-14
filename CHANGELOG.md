@@ -5,6 +5,40 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [5.2.0] - Production readiness
+
+### Fixed
+- Cancelling or pausing a large file mid-download while it was using the
+  multi-threaded ranged path silently ignored the cancellation and started
+  a brand-new single-stream download instead of stopping — the error
+  handling didn't distinguish "the user stopped this" from "one part had a
+  transient failure," since both surface the same error type. Now checks
+  actual task-cancellation state instead of inferring it from the error.
+- Menu Bar Mode's popover rendered far narrower than designed, breaking
+  the action-button row layout (buttons wrapped instead of sitting side by
+  side). `MenuBarExtra` needs `.menuBarExtraStyle(.window)` for custom
+  SwiftUI layouts — without it, rich content gets squeezed into a
+  traditional-menu sizing model it wasn't designed for.
+- "Open Window" in the menu bar could spawn a duplicate main window
+  instead of focusing the existing one. The actual cause wasn't the
+  button's own logic (which was already correctly guarding against it) —
+  activating the app was triggering AppKit's default window-reopen
+  handling independently. Fixed with an `NSApplicationDelegate` that makes
+  reopen a no-op whenever a window already exists.
+- Menu Bar Mode showed the raw Drive URL instead of the file/folder name
+  for the active download and queue rows (main window already showed the
+  name; this was a menu-bar-only regression from the same v5.1 change).
+- Added accessibility labels to several icon-only buttons in Menu Bar Mode
+  (quit, preferences, reveal/retry/remove) that had a tooltip but no
+  VoiceOver label.
+
+### Verified (no code change)
+- Zero leaks and stable idle CPU/memory across repeated menu bar
+  open/close cycles.
+- Debug and Release builds clean with zero app-code warnings; Safari
+  extension project rebuilds clean (no Safari-specific changes this
+  release, per scope — Chrome remains the only browser worked on).
+
 ## [5.1.0] - Chrome integration
 
 ### Added

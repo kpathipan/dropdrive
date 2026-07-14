@@ -41,6 +41,8 @@ struct MenuBarView: View {
                         .font(.system(size: 14))
                 }
                 .buttonStyle(.plain)
+                .help("Quit DropDrive")
+                .accessibilityLabel("Quit DropDrive")
             }
             .padding(12)
             .background(Color(nsColor: .controlBackgroundColor))
@@ -52,7 +54,7 @@ struct MenuBarView: View {
                let activeItem = viewModel.queue.first(where: { $0.id == activeID }),
                let progress = viewModel.activeProgress {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(activeItem.driveLink)
+                    Text(activeItem.analysis.name)
                         .font(.caption)
                         .lineLimit(2)
                         .foregroundColor(.primary)
@@ -128,10 +130,7 @@ struct MenuBarView: View {
 
             // Action Buttons
             HStack(spacing: 8) {
-                Button(action: {
-                    NSApp.activate(ignoringOtherApps: true)
-                    openWindow(id: Self.mainWindowID)
-                }) {
+                Button(action: openMainWindow) {
                     Label("Open Window", systemImage: "arrow.up.left")
                         .font(.caption)
                         .frame(maxWidth: .infinity)
@@ -146,6 +145,8 @@ struct MenuBarView: View {
                         .font(.caption)
                 }
                 .buttonStyle(.bordered)
+                .help("Preferences…")
+                .accessibilityLabel("Preferences")
             }
             .padding(12)
         }
@@ -153,6 +154,17 @@ struct MenuBarView: View {
         .task {
             viewModel.restoreLogin()
         }
+    }
+
+    /// Focuses the existing main window if one is already open, rather than asking
+    /// WindowGroup for another instance — `openWindow(id:)` always creates a new
+    /// window, it doesn't refocus an existing one.
+    private func openMainWindow() {
+        NSApp.activate(ignoringOtherApps: true)
+        // Activating the app alone brings its existing window(s) forward; only ask
+        // WindowGroup for a new one if none are open at all.
+        guard viewModel.openMainWindowCount == 0 else { return }
+        openWindow(id: Self.mainWindowID)
     }
 }
 
@@ -205,7 +217,7 @@ struct QueueItemRowView: View {
                 .frame(width: 14)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.driveLink)
+                Text(item.analysis.name)
                     .font(.caption)
                     .lineLimit(1)
                     .foregroundColor(isActive ? .accentColor : .primary)
@@ -224,6 +236,7 @@ struct QueueItemRowView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Reveal in Finder")
+                    .accessibilityLabel("Reveal in Finder")
                 }
 
                 if item.status == .failed {
@@ -233,6 +246,7 @@ struct QueueItemRowView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Retry")
+                    .accessibilityLabel("Retry")
                 }
 
                 Button(action: onRemove) {
@@ -242,6 +256,7 @@ struct QueueItemRowView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Remove")
+                .accessibilityLabel("Remove")
             }
         }
         .padding(6)

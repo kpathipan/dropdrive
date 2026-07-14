@@ -55,13 +55,21 @@
 
   // ---- Toolbar injection ---------------------------------------------------
 
+  /// "Download" as Drive itself renders it in `data-tooltip`/`aria-label` —
+  /// confirmed BOTH attributes are localized (not just visible text), by
+  /// live inspection of a real Thai-locale Drive session on 2026-07-14
+  /// ("ดาวน์โหลด"). Only English and Thai are verified against the live
+  /// site; the rest are best-effort and unverified — extend this list (or
+  /// replace the strategy) once more locales can be checked for real.
+  const DOWNLOAD_LABELS = ["Download", "ดาวน์โหลด"];
+
   function findToolbarDownloadButton() {
-    return (
-      document.querySelector('[role="toolbar"] [data-tooltip="Download" i]') ||
-      document.querySelector('[role="toolbar"] [aria-label="Download" i]') ||
-      document.querySelector('[data-tooltip="Download" i]') ||
-      document.querySelector('[aria-label="Download" i]')
-    );
+    for (const label of DOWNLOAD_LABELS) {
+      const match =
+        document.querySelector(`[data-tooltip="${label}"]`) || document.querySelector(`[aria-label="${label}"]`);
+      if (match) return match;
+    }
+    return null;
   }
 
   function makeToolbarButton(referenceButton) {
@@ -145,11 +153,12 @@
 
   // ---- Context menu injection ---------------------------------------------
 
-  function findMenuItemByText(menu, text) {
+  function findDownloadMenuItem(menu) {
     const items = menu.querySelectorAll('[role="menuitem"]');
     for (const item of items) {
-      if ((item.textContent || "").trim().toLowerCase() === text.toLowerCase()) {
-        return item;
+      const text = (item.textContent || "").trim().toLowerCase();
+      for (const label of DOWNLOAD_LABELS) {
+        if (text === label.toLowerCase()) return item;
       }
     }
     return null;
@@ -158,7 +167,7 @@
   function injectContextMenuItem(menu) {
     if (menu.querySelector(`.${MENU_ITEM_CLASS}`)) return; // already inserted for this menu instance
 
-    const downloadItem = findMenuItemByText(menu, "Download");
+    const downloadItem = findDownloadMenuItem(menu);
     if (!downloadItem) return;
 
     const dropDriveItem = downloadItem.cloneNode(true);

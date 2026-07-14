@@ -72,6 +72,12 @@
     return null;
   }
 
+  /// Two layers on purpose: the outer box is sized to match the reference
+  /// Download button exactly, so this sits in the same vertical band as
+  /// every other icon in the row regardless of how that row aligns its
+  /// children (flexbox cross-axis centering, line-height, etc. — all
+  /// unknown/unstable in Drive's own markup). The inner pill is the small
+  /// visible chip, centered inside that box independent of its height.
   function makeToolbarButton(referenceButton) {
     const button = document.createElement("div");
     button.id = TOOLBAR_BUTTON_ID;
@@ -81,34 +87,30 @@
     button.setAttribute("data-tooltip", TOOLTIP_TEXT);
     button.title = TOOLTIP_TEXT;
 
-    // Match the reference button's box size instead of inventing our own —
-    // keeps this from ever becoming an "oversized" button next to Drive's
-    // own compact Material icon-buttons.
     const refRect = referenceButton.getBoundingClientRect();
-    const size = Math.max(28, Math.min(40, Math.round(refRect.height) || 36));
+    const boxHeight = Math.round(refRect.height) || 36;
 
     button.style.cssText = `
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 4px;
-      padding: 0 8px;
-      height: ${size}px;
+      height: ${boxHeight}px;
       margin: 0 2px;
-      border-radius: 4px;
       cursor: pointer;
-      color: #5f6368;
-      font-size: 12px;
-      font-weight: 500;
       flex-shrink: 0;
     `;
-    button.innerHTML = dropDriveGlyphSVG() + '<span>DropDrive</span>';
+    button.innerHTML =
+      '<span style="display:inline-flex;align-items:center;gap:2px;padding:2px 6px;border-radius:999px;background-color:#2563eb;color:#ffffff;font-size:10px;font-weight:500;">' +
+      dropDriveGlyphSVG() +
+      "<span>DropDrive</span>" +
+      "</span>";
 
+    const pill = button.firstElementChild;
     button.addEventListener("mouseenter", () => {
-      button.style.backgroundColor = "rgba(60,64,67,0.08)";
+      pill.style.backgroundColor = "#1d4ed8";
     });
     button.addEventListener("mouseleave", () => {
-      button.style.backgroundColor = "transparent";
+      pill.style.backgroundColor = "#2563eb";
     });
 
     button.addEventListener("click", (event) => {
@@ -120,9 +122,16 @@
     return button;
   }
 
-  /// DropDrive icon: simple inbox-download emoji, instantly recognizable
+  /// DropDrive icon: a cloud-with-down-arrow glyph in white, so it reads
+  /// clearly against the button's solid blue fill (distinct from Drive's
+  /// own gray/outline icon language, by design).
   function dropDriveGlyphSVG() {
-    return '<span style="font-size: 16px; line-height: 1;">📥</span>';
+    return (
+      '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+      '<path d="M7 18a4 4 0 01-.6-7.96A5.5 5.5 0 0117.5 9.5 4 4 0 0117 18H7z" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<path d="M12 11v6m0 0l-2.3-2.3M12 17l2.3-2.3" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>' +
+      "</svg>"
+    );
   }
 
   function syncToolbarButton() {
@@ -150,22 +159,39 @@
 
   // ---- Context menu injection ---------------------------------------------
 
+  /// Drive renders this menu in two passes — a quick partial menu first,
+  /// then a fuller one moments later — and can carry more than one node
+  /// whose text is "Download" while that settles (a compact quick-actions
+  /// row plus the full list). The last match in DOM order is the one that
+  /// survives Drive's later re-render; anchoring to an earlier duplicate
+  /// left our item stranded in the wrong place once Drive's own re-render
+  /// reshuffled its children around it.
   function findDownloadMenuItem(menu) {
     const items = menu.querySelectorAll('[role="menuitem"]');
+    let match = null;
     for (const item of items) {
       const text = (item.textContent || "").trim().toLowerCase();
       for (const label of DOWNLOAD_LABELS) {
-        if (text === label.toLowerCase()) return item;
+        if (text === label.toLowerCase()) match = item;
       }
     }
-    return null;
+    return match;
   }
 
+  /// Re-entrant by design: called again on every later mutation of an
+  /// already-open menu (not just once at creation), since Drive's second
+  /// render pass can otherwise leave a previously-inserted item stranded
+  /// in the wrong spot. Always removes any stale copy first and re-anchors
+  /// fresh off the current DOM rather than trusting a one-time insertion.
   function injectContextMenuItem(menu) {
-    if (menu.querySelector(`.${MENU_ITEM_CLASS}`)) return; // already inserted for this menu instance
-
     const downloadItem = findDownloadMenuItem(menu);
     if (!downloadItem) return;
+
+    const stale = menu.querySelector(`.${MENU_ITEM_CLASS}`);
+    if (stale) {
+      if (stale.previousElementSibling === downloadItem) return; // already correctly placed
+      stale.remove();
+    }
 
     const dropDriveItem = downloadItem.cloneNode(true);
     dropDriveItem.classList.add(MENU_ITEM_CLASS);
@@ -282,21 +308,42 @@
     });
   }
 
+  let pendingMenuSync = false;
+
+  /// Re-checks every currently-open menu, not just the one that was open
+  /// when this was scheduled — Drive's own two-pass render means a menu
+  /// can keep mutating internally for a bit after it first appears, and
+  /// injectContextMenuItem is cheap to re-run (it short-circuits once
+  /// correctly placed) so a debounced sweep is simpler and more reliable
+  /// than trying to track exactly which mutation matters.
+  function scheduleMenuSync() {
+    if (pendingMenuSync) return;
+    pendingMenuSync = true;
+    requestAnimationFrame(() => {
+      pendingMenuSync = false;
+      document.querySelectorAll('[role="menu"]').forEach((menu) => {
+        if (menu.offsetParent !== null) injectContextMenuItem(menu);
+      });
+    });
+  }
+
   /// Every mutation batch schedules at most one debounced toolbar re-sync
   /// (rAF-coalesced, so a burst of DOM churn during navigation still only
-  /// costs one pass) and separately checks only the newly-added nodes for a
-  /// freshly-opened context menu — no full-document re-scanning either way.
+  /// costs one pass) and, whenever a mutation touches anything inside an
+  /// open menu (its first render or Drive's later re-render pass), one
+  /// debounced menu re-check.
   function handleMutations(mutations) {
     scheduleSync();
 
     for (const mutation of mutations) {
+      const target = mutation.target;
+      if (target.nodeType === Node.ELEMENT_NODE && target.closest?.('[role="menu"]')) {
+        scheduleMenuSync();
+      }
       for (const node of mutation.addedNodes || []) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;
         const menu = node.matches?.('[role="menu"]') ? node : node.querySelector?.('[role="menu"]');
-        if (menu) {
-          // The menu still needs to finish rendering its own items.
-          requestAnimationFrame(() => injectContextMenuItem(menu));
-        }
+        if (menu) scheduleMenuSync();
       }
     }
   }

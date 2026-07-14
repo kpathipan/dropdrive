@@ -80,8 +80,9 @@ struct QueueView: View {
                         view
                             .draggable(item.id.uuidString)
                             .dropDestination(for: String.self) { draggedIDs, _ in
-                                guard let draggedIDString = draggedIDs.first, let draggedID = UUID(uuidString: draggedIDString) else { return }
+                                guard let draggedIDString = draggedIDs.first, let draggedID = UUID(uuidString: draggedIDString) else { return false }
                                 onReorder(draggedID, item.id)
+                                return true
                             }
                     }
                 }

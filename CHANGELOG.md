@@ -5,6 +5,65 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [5.4.0] - Chrome integration verified end-to-end
+
+### Fixed
+- Chrome extension couldn't launch DropDrive at all in practice: none of the
+  Chrome-side selector fixes from 5.3.0 had ever been checked against a real,
+  live Drive session. Live testing this release found and fixed two real
+  selector bugs (the selection toolbar's actual ARIA role is `region`, not
+  `toolbar`; `data-tooltip`/`aria-label` values are localized, not just the
+  visible text — confirmed against a Thai-locale account), a drag-and-drop
+  return-value bug in the queue reorder handler, and a macOS 26.0-only
+  `dropDestination` overload the compiler was silently picking over the
+  macOS 13+ one available at this app's actual deployment target.
+- Auth flow: opening a private file via the Chrome extension before signing
+  in previously left the user stuck after login with no next step. The
+  pending link is now stored and automatically retried once sign-in
+  succeeds, with no need to re-select the file in Chrome.
+- Chrome's own item context menu renders in two passes — a quick partial
+  menu, then a fuller one moments later — and the second pass was
+  reshuffling the DOM in a way that stranded the injected "DropDrive" entry
+  at the top of the menu instead of directly under "Download". Injection is
+  now re-entrant (re-checked on every later menu mutation, not just once)
+  and anchors off the last matching "Download" node rather than the first.
+- Lowered `MACOSX_DEPLOYMENT_TARGET` from the Xcode-default `26.5` down to
+  `14.0`, the actual floor set by `@Observable`/`Observation` usage — this
+  had never been revisited since project creation.
+
+### Changed
+- Chrome toolbar button redesigned: a small solid-blue pill (cloud-down
+  glyph + "DropDrive" label) instead of a bare gray icon that read too
+  close to Drive's own Download button. Sized off a two-layer box — an
+  outer box matching the reference Download button's height for row
+  alignment, an inner pill for the small visible chip — so it lines up with
+  neighboring icons regardless of how Drive's own row aligns its children.
+
+### Verified (real, live, end-to-end — not simulated)
+This is the first release where the full Chrome → DropDrive workflow was
+actually exercised against the live drive.google.com UI rather than reasoned
+about from documented DOM conventions:
+- Selecting a real private file and clicking the Chrome toolbar button sends
+  it to DropDrive via `dropdrive://download?url=...`.
+- The app receives the link, detects it needs Google sign-in, and — after
+  signing in — automatically queues the file without any manual re-entry.
+- A real 1.95 GB file downloaded to completion; the resulting file was
+  verified on disk (correct size, valid, unstructured video data).
+- "Reveal in Finder" opened Finder with the completed file selected.
+- The right-click "DropDrive" entry appears directly under Drive's own
+  "Download" item in the file context menu.
+
+### Known gaps
+- Multiple-file selection, folder selection, and the Safari extension were
+  not re-verified this round (only a single private file was exercised
+  through the full live flow above).
+- Still signed with a local "Apple Development" certificate, not notarized
+  — same standing limitation since 4.0.0. A machine building this needs an
+  Apple ID added under Xcode's own Accounts settings for
+  `-allowProvisioningUpdates` to register the device automatically;
+  without one, the signed build fails outright with "No Accounts" rather
+  than a signing error.
+
 ## [5.3.0] - Final Chrome integration sprint
 
 ### Changed

@@ -1,110 +1,94 @@
-# DropDrive v5.3.0 Release Notes
+# DropDrive v5.4.0 Release Notes
 
-The final Chrome integration sprint: an Internet-Download-Manager-style
-workflow on the real Google Drive selection UI, not just single-file detail
-pages. **This release could not be verified against the live Google Drive
-website** — see "What could not be verified" below before relying on it.
+The first release where the Chrome integration was actually exercised
+against the live drive.google.com UI, end to end, rather than reasoned
+about from documented DOM conventions. Every bug below was found and fixed
+by watching the real thing fail, not by inspection.
 
 ## What changed
 
-### The extension now understands Drive's actual selection UI
-The previous version only recognized a Drive item from the page URL
-(`/file/d/<id>/...` or `/folders/<id>`), which only exists when you're
-already on that item's own detail page. It did nothing on Drive's normal
-file-listing view, which is how selection actually works day to day. It now
-reads Drive's real selection state (`aria-selected="true"` elements carrying
-Drive's own `data-id`), which works for:
-- a single file or folder,
-- multiple files,
-- multiple folders,
-- a mixed selection of both,
-- in both List and Grid view,
+### Chrome extension actually works now
+Three real, live-confirmed bugs were blocking the whole workflow:
+- The selection toolbar's actual ARIA role is `region`, not `toolbar` as
+  originally assumed — the toolbar-button selector was scoped to a role
+  that never matched.
+- `data-tooltip`/`aria-label` values are localized by Google, not just the
+  visible text (confirmed on a Thai-locale account: `data-tooltip` reads
+  "ดาวน์โหลด", not "Download"). The Download-button and menu-item matchers
+  now check a small list of confirmed labels instead of English only.
+- The item context menu renders in two passes — a quick partial menu, then
+  a fuller one moments later — and the second pass was silently reshuffling
+  the DOM, leaving the injected "DropDrive" entry stranded at the top of
+  the menu instead of directly under "Download". Injection now re-checks
+  itself on every later menu mutation instead of running once.
 
-sent to DropDrive in the order they appear in Drive's own list/grid.
+### Auth flow no longer strands the user
+Clicking the Chrome toolbar button on a private file opens DropDrive and
+asks you to sign in — previously that was a dead end; nothing happened
+after signing in. The pending link is now stored and retried automatically
+once sign-in succeeds, so the file queues itself with no need to go back to
+Chrome and re-click.
 
-### Toolbar button, next to Download, not a new one floating alone
-Finds Drive's own Download button (`data-tooltip`/`aria-label="Download"`)
-and inserts DropDrive's icon directly beside it, sized to match rather than
-an oversized custom button, with a "Download with DropDrive" tooltip. It
-appears and disappears along with Drive's own Download button (i.e., only
-when something is selected).
+### Toolbar button redesign
+A small solid-blue pill (cloud-down icon + "DropDrive" text) instead of a
+bare gray icon that read too close to Drive's own Download button at a
+glance. Sized and positioned off Drive's own Download button so it sits
+level with the rest of the row regardless of how Drive lays it out.
 
-### Context menu, inside Drive's own menu this time
-The previous version only registered a `chrome.contextMenus` entry, which
-is the *browser's* native right-click menu — Google Drive renders its own
-custom right-click menu and prevents the native one from appearing on a
-file/folder row at all, so that entry never actually showed up where it was
-supposed to. This release detects Drive's own menu opening and inserts a
-"DropDrive" item directly below "Download" inside it, cloned from Drive's
-own DOM so it inherits the surrounding styling automatically.
+### macOS 14.0, not 26.5
+`MACOSX_DEPLOYMENT_TARGET` was left at Xcode's project-creation default
+(`26.5`) rather than the app's actual floor. Lowered to `14.0`, the real
+requirement set by `@Observable`/`Observation`. Along the way, a
+`.dropDestination` call in the queue reorder handler was silently binding
+to a macOS-26.0-only overload because its closure returned `Void` instead
+of `Bool` — an SDK-driven trap, not an intentional 26.0 requirement — fixed
+by matching the older overload's signature.
 
-### Toast, deep link, multi-selection plumbing
-- "✓ Sent to DropDrive" toast on send; re-sending resets its timer instead
-  of stacking a second toast.
-- `dropdrive://download?url=` is unchanged as the one endpoint; a
-  multi-selection repeats the `url` parameter once per item in order
-  (`?url=A&url=B`) rather than introducing a new endpoint or format. The
-  DropDrive app was given a small, corresponding change to analyze and
-  queue multiple links from one deep link, in order, without interrupting
-  a batch with per-item duplicate-download prompts.
-- Real extension icons (16/48/128), derived from DropDrive's own app icon.
+## What was verified — for real this time
 
-## What could not be verified
+Every item below was watched happening live against a real Google account
+and a real file, not simulated:
 
-This is the important section. Per your instruction, I'm stating plainly
-what wasn't verified rather than claiming the QA checklist passed:
+- Selected a private file on drive.google.com, clicked the Chrome toolbar
+  button, confirmed the "Sent to DropDrive" toast.
+- DropDrive launched via `dropdrive://download?url=...`, received the link,
+  and pre-filled it automatically.
+- The file needed Google sign-in; after signing in, it queued itself
+  automatically — no re-pasting the link.
+- A real 1.95 GB file downloaded to 100%; the resulting file was confirmed
+  on disk at the correct size and as valid, unstructured video data (not
+  truncated or corrupted).
+- "Reveal in Finder" opened Finder with the completed file already
+  selected.
+- Right-clicking a file in Drive shows "DropDrive" directly under
+  Drive's own "Download" entry.
 
-**Interactive browser access was unavailable this entire session.** Computer
-Use grants browsers screenshot-only access by design (no clicks or typing),
-and the Claude-in-Chrome extension wasn't connected. I could not: load the
-unpacked extension via the real Chrome UI, open drive.google.com
-interactively, select files, click the toolbar button or context menu item,
-switch List/Grid view, check the DevTools console, or confirm the
-DropDrive-launches → queue → download → notification → Reveal-in-Finder
-chain from the Chrome side.
+## What still isn't verified
 
-**What I did instead:**
-- Wrote every selector defensively (layered primary + fallback strategies)
-  based on documented/well-established Google Drive DOM conventions
-  (`data-tooltip`, `aria-label`, `role="menuitem"`, `data-id`,
-  `aria-selected`) rather than guessing at Drive's own generated CSS class
-  names, which are unstable.
-- Syntax-checked both `content.js` and `background.js` (no parse errors).
-- Validated `manifest.json` as well-formed JSON with real icon files
-  present (no missing-icon gap).
-- Verified, as an isolated and directly testable unit, that Swift's
-  `URLComponents` correctly preserves multiple same-named `url=` query
-  items in order — the specific mechanism multi-selection ordering depends
-  on.
-- Sent a real (fake-content) multi-item deep link to a running DropDrive
-  and confirmed the app doesn't crash and its UI stays clean (no error
-  state leaking into the paste box from a silent background batch).
-- Confirmed the companion Safari extension project still builds clean
-  (no regression — Safari shares the same JS source files and wasn't
-  otherwise touched, per this sprint's scope).
-
-**A concrete, observed risk, not just a theoretical one:** mid-session, a
-real Chrome window with Google Drive already open was visible (Computer
-Use's screenshot-only access shows what's on screen even though it can't
-click). That Drive session was in **Thai** ("หน้าแรก - Google ไดรฟ์"). The
-context-menu matching in this release looks for the word "Download" in
-English. If Google localizes `data-tooltip`/`aria-label` values (not just
-the visible menu text) for non-English UI, the toolbar-button selector
-would also fail. This could not be confirmed either way without DOM
-inspection access. If Drive's own internal data attributes stay in English
-regardless of display language, this is a non-issue; if not, the extension
-will currently do nothing (fail silently, not break) for non-English Drive
-locales. This needs a real check before wide distribution.
+- Multiple-file selection and folder selection weren't re-exercised this
+  round — only a single private file went through the full live flow
+  above. The underlying selection-reading code is unchanged from 5.3.0's
+  design (`[aria-selected="true"][data-id]`, meant to work for both), but
+  hasn't been re-watched live since the selector fixes landed.
+- Safari extension wasn't touched or re-tested this release.
+- Still signed with a local Apple Development certificate, not a Developer
+  ID — not notarized, same as every release since 4.0.0. A machine building
+  this from source needs an Apple ID added under Xcode's own Accounts
+  settings (Xcode → Settings → Accounts) before `-allowProvisioningUpdates`
+  can register the building device automatically; without one, the build
+  fails outright with "No Accounts", not a signing error, which cost real
+  time to trace back to on this machine.
 
 ## Upgrading
 
-Download `DropDrive-v5.3.0.dmg`, open it, and drag DropDrive.app to
+Download `DropDrive-v5.4.0.dmg`, open it, and drag DropDrive.app to
 Applications, replacing the previous version. For the extension: reload it
-from `chrome://extensions` (unpacked, not on the Chrome Web Store).
+from `chrome://extensions` (unpacked, not on the Chrome Web Store), then
+refresh any open drive.google.com tabs.
 
 ## Known limitations
 
-- Everything above in "What could not be verified."
-- Everything listed in v5.2.0's, v5.1.0's, and v4.0.0's known limitations
-  still applies (`GoogleAPIKey` unset, update checker inactive pending a
-  real repo, not notarized).
+- Everything above in "What still isn't verified."
+- `GoogleAPIKey`/OAuth client is configured and working (confirmed live
+  this release — earlier notes describing it as unset are stale).
+- Update checker inactive pending a public repository; not notarized.

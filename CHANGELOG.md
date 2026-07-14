@@ -5,6 +5,19 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [5.4.1] - Chrome-only
+
+### Removed
+- Dropped the Safari extension entirely. Its Xcode project only ever
+  referenced `background.js` and `manifest.json` from the shared Chrome
+  source — `content.js` (the toolbar-button and context-menu injection
+  logic that's the actual point of the extension) and the icon images
+  `manifest.json` points at were never wired in, so Safari never actually
+  had a working "Download with DropDrive" button or menu entry, only the
+  inert message-handling half. Rather than fix and re-verify a second
+  browser target, DropDrive is Chrome-only going forward, matching the
+  scope this integration was always primarily built and tested for.
+
 ## [5.4.0] - Chrome integration verified end-to-end
 
 ### Fixed

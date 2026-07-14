@@ -12,7 +12,7 @@ DropDrive is a native macOS app that downloads Google Drive files and folders di
 - Recent download history, persisted across launches and **searchable**, with **Reveal in Finder** and **Copy Google Drive Link** on every entry, plus lightweight local download statistics in Preferences
 - Duplicate-download detection across sessions, not just the current one
 - Drag and drop a Drive link straight onto the window (from a browser, as text, or as a dragged URL file)
-- Send a link into DropDrive without copy/paste: a [Chrome extension](browser-extension/chrome), a [Safari extension](browser-extension/safari), or the macOS **Share menu**
+- Send a link into DropDrive without copy/paste: a [Chrome extension](browser-extension/chrome), or the macOS **Share menu**
 - Native notifications on completion, with **Reveal in Finder** and **Open DropDrive** actions
 - Menu bar item (**Menu Bar Mode**) for quick access without keeping the main window open — shows the live queue and progress, with Pause/Resume/Cancel, kept in sync with the main window
 - Preferences for default download folder, auto-open in Finder, notification sound, launch at login, and bandwidth limit

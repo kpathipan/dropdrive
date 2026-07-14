@@ -137,7 +137,7 @@ final class DropDriveViewModel {
 
     /// Entry point for every URL the app is opened with: Google Sign-In's OAuth
     /// callback, or `dropdrive://download?url=<Drive link>` from the Chrome
-    /// extension, Safari extension, or Share Extension — all of which hand off a
+    /// extension or Share Extension — both of which hand off a
     /// link the same way rather than talking to the app directly. The host segment
     /// isn't actually inspected below, so any `dropdrive://<host>?url=...` works,
     /// but `download` is the one canonical form every integration emits.

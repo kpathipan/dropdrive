@@ -5,6 +5,13 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [5.4.2] - Beta label
+
+### Changed
+- The status bar and About panel read "Dev" — a leftover from before this
+  release had been verified against a real Chrome/Drive workflow. Now
+  that it has (see 5.4.0/5.4.1), relabeled to "Beta".
+
 ## [5.4.1] - Chrome-only
 
 ### Removed

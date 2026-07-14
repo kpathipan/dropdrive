@@ -29,6 +29,7 @@ final class DropDriveViewModel {
     var selectedDestinationURL: URL?
     var googleAccount: GoogleAccount?
     var isSigningIn = false
+    var pendingDownloadLink: String?  // Store link when auth needed, retry after login
 
     var linkAnalysisState: LinkAnalysisState = .idle
 
@@ -109,7 +110,14 @@ final class DropDriveViewModel {
             do {
                 let account = try await loginManager.signIn()
                 googleAccount = account
-                scheduleAnalysis()
+
+                // If a download was pending auth, retry it automatically
+                if let pending = pendingDownloadLink {
+                    driveLink = pending
+                    pendingDownloadLink = nil
+                } else {
+                    scheduleAnalysis()
+                }
             } catch {
                 // Sign-in was cancelled or failed; the Connect button simply
                 // becomes available again for the user to retry.
@@ -219,6 +227,8 @@ final class DropDriveViewModel {
             case .success(let analysis):
                 handleSuccessfulAnalysis(analysis, trimmedLink: trimmedLink)
             case .needsAuthentication:
+                // Store link to retry after login succeeds
+                pendingDownloadLink = trimmedLink
                 linkAnalysisState = .needsConnection
             }
         } catch {

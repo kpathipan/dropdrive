@@ -91,15 +91,18 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: ${size}px;
+      gap: 4px;
+      padding: 0 8px;
       height: ${size}px;
       margin: 0 2px;
-      border-radius: 50%;
+      border-radius: 4px;
       cursor: pointer;
       color: #5f6368;
+      font-size: 12px;
+      font-weight: 500;
       flex-shrink: 0;
     `;
-    button.innerHTML = dropDriveGlyphSVG();
+    button.innerHTML = dropDriveGlyphSVG() + '<span>DropDrive</span>';
 
     button.addEventListener("mouseenter", () => {
       button.style.backgroundColor = "rgba(60,64,67,0.08)";
@@ -117,15 +120,9 @@
     return button;
   }
 
-  /// A small circular download-to-device glyph, drawn inline so the
-  /// extension doesn't need to ship/load a separate icon asset for this.
+  /// DropDrive icon: simple inbox-download emoji, instantly recognizable
   function dropDriveGlyphSVG() {
-    return (
-      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
-      '<path d="M12 3v10m0 0l-4-4m4 4l4-4" stroke="#5f6368" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
-      '<path d="M5 17v2a2 2 0 002 2h10a2 2 0 002-2v-2" stroke="#5f6368" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
-      "</svg>"
-    );
+    return '<span style="font-size: 16px; line-height: 1;">📥</span>';
   }
 
   function syncToolbarButton() {

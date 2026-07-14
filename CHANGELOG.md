@@ -5,6 +5,41 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [5.4.3] - Three real bugs found from live use, not testing
+
+Reported directly from using the app, not found by QA: a redundant login
+prompt despite already being signed in, a new hidden window piling up on
+every Chrome deep link, and occasional corrupted downloads.
+
+### Fixed
+- **Redundant login prompt.** `cachedAccessTokenIfAvailable()` only checked
+  `GIDSignIn.sharedInstance.currentUser`, which can still be `nil`
+  immediately after launch — restoring a previous session happens
+  asynchronously and separately (`restoreLogin()`, triggered from the
+  UI). A deep link's analysis could race ahead of that restore and wrongly
+  conclude "not signed in" even though a valid session existed. Now
+  attempts the same silent restore itself instead of assuming another,
+  unsynchronized call already finished first.
+- **A new hidden window on every Chrome deep link.** SwiftUI's
+  `WindowGroup` + `.onOpenURL` treats each incoming `dropdrive://` link as
+  a fresh scene-activation request and can spawn an entirely new window
+  per link on macOS instead of routing to the one already open — the same
+  class of bug `applicationShouldHandleReopen` already worked around for
+  the menu bar's "Open Window" button, just not for this path. URL
+  handling now goes through `NSApplicationDelegate.application(_:open:)`
+  once, directly against the shared view model, instead of `.onOpenURL`.
+- **Occasional corrupted downloads.** The multi-threaded ranged-download
+  path probes once for `Range` header support before starting, but never
+  re-checked that each of the 4 concurrent part-requests actually got back
+  `206 Partial Content` rather than `200` with the *entire* file — some
+  CDNs/caches honor `Range` inconsistently, especially once a URL is
+  already cached. A `200` response for a "part" silently meant that part
+  file held the whole file, and concatenating it with the other three
+  produced a garbled, oversized result with no error at any point. Each
+  part now requires exactly `206`; anything else fails that part and falls
+  back to the existing reliable single-stream path instead of writing a
+  corrupted file.
+
 ## [5.4.2] - Beta label
 
 ### Changed

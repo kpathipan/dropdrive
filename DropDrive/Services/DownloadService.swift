@@ -201,15 +201,25 @@ private final class ProgressTracker: @unchecked Sendable {
 private final class DownloadTaskCoordinator: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
     private let destinationURL: URL
     private let onBytes: @Sendable (Int64) -> Void
+    private let requireStatusCode: Int?
 
     private let stateLock = NSLock()
     private var continuation: CheckedContinuation<URL, Error>?
     private var task: URLSessionDownloadTask?
     private var didResume = false
 
-    init(destinationURL: URL, onBytes: @escaping @Sendable (Int64) -> Void) {
+    /// `requireStatusCode` is set to 206 for multi-part ranged downloads: a server
+    /// that silently ignores the `Range` header (some CDNs do this inconsistently,
+    /// especially once a URL is cached) responds 200 with the *entire* file instead
+    /// of just the requested slice. Without this check that "part" file contains
+    /// the whole file, and concatenating it with the other parts produces a
+    /// corrupted, oversized result — silently, since 200 alone still looks like
+    /// success. Failing this part throws, which sends the caller back to the
+    /// single-stream fallback instead of writing a bad file.
+    init(destinationURL: URL, onBytes: @escaping @Sendable (Int64) -> Void, requireStatusCode: Int? = nil) {
         self.destinationURL = destinationURL
         self.onBytes = onBytes
+        self.requireStatusCode = requireStatusCode
     }
 
     func run(session: URLSession, request: URLRequest) async throws -> URL {
@@ -282,7 +292,8 @@ private final class DownloadTaskCoordinator: NSObject, URLSessionDownloadDelegat
             return
         }
 
-        guard (200..<300).contains(http.statusCode) else {
+        let isValidStatus = requireStatusCode.map { $0 == http.statusCode } ?? (200..<300).contains(http.statusCode)
+        guard isValidStatus else {
             let data = try? Data(contentsOf: location)
             let message = data.flatMap { String(data: $0, encoding: .utf8) } ?? "Unknown error"
             complete(.failure(DriveDownloadError.server(http.statusCode, message)))
@@ -818,7 +829,7 @@ struct GoogleDriveDownloadService: DownloadServicing {
                     partRequest.setValue("bytes=\(range.lowerBound)-\(range.upperBound)", forHTTPHeaderField: "Range")
 
                     let partURL = tempDir.appendingPathComponent("part\(index)")
-                    let coordinator = DownloadTaskCoordinator(destinationURL: partURL, onBytes: onBytes)
+                    let coordinator = DownloadTaskCoordinator(destinationURL: partURL, onBytes: onBytes, requireStatusCode: 206)
                     let session = URLSession(configuration: .ephemeral, delegate: coordinator, delegateQueue: nil)
                     defer { session.finishTasksAndInvalidate() }
                     _ = try await coordinator.run(session: session, request: partRequest)

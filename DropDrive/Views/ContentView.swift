@@ -131,9 +131,6 @@ struct ContentView: View {
         .onDisappear {
             viewModel.openMainWindowCount -= 1
         }
-        .onOpenURL { url in
-            viewModel.handleIncomingURL(url)
-        }
         .alert("Restore previous queue?", isPresented: $viewModel.showRestorePrompt) {
             Button("Discard", role: .destructive) { viewModel.discardSavedQueue() }
             Button("Restore") { viewModel.restoreSavedQueue() }

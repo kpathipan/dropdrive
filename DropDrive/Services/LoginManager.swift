@@ -80,9 +80,21 @@ final class LoginManager: LoginManaging {
 
     /// Returns a valid access token only if the user is already signed in with the
     /// required scope, refreshing silently if needed. Never prompts for interaction.
+    ///
+    /// `GIDSignIn.sharedInstance.currentUser` can still be nil immediately after
+    /// launch — populating it from a previous session happens asynchronously
+    /// (see `restoreSavedAccount`, called separately from the UI). Analysis
+    /// triggered by an incoming deep link can race ahead of that restore and
+    /// wrongly conclude "not signed in" even though a valid session exists, so
+    /// this attempts the same silent restore itself rather than assuming
+    /// something else already did it.
     func cachedAccessTokenIfAvailable() async -> String? {
-        guard let user = GIDSignIn.sharedInstance.currentUser,
-              user.grantedScopes?.contains(Self.driveReadonlyScope) == true else {
+        var user = GIDSignIn.sharedInstance.currentUser
+        if user == nil, GIDSignIn.sharedInstance.hasPreviousSignIn() {
+            user = try? await GIDSignIn.sharedInstance.restorePreviousSignIn()
+        }
+
+        guard let user, user.grantedScopes?.contains(Self.driveReadonlyScope) == true else {
             return nil
         }
 

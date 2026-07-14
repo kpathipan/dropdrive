@@ -14,6 +14,19 @@ final class DropDriveAppDelegate: NSObject, NSApplicationDelegate {
         }
         return true
     }
+
+    /// SwiftUI's `WindowGroup` + `.onOpenURL` treats each incoming `dropdrive://`
+    /// URL as a fresh scene-activation request, and on macOS this can spawn an
+    /// entirely new window per link instead of routing to the one already open
+    /// (the same class of bug `applicationShouldHandleReopen` above works around
+    /// for the menu bar's "Open Window" button). Handling it here instead, once,
+    /// directly against the shared view model, means an already-open window just
+    /// updates in place — no `.onOpenURL` handler exists anywhere else in the app.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            DropDriveViewModel.shared.handleIncomingURL(url)
+        }
+    }
 }
 
 @main

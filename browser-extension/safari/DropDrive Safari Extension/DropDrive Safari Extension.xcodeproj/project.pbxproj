@@ -20,6 +20,8 @@
 		04F5690530052E9A0031E6DF /* background.js in Resources */ = {isa = PBXBuildFile; fileRef = 04F5690230052E9A0031E6DF /* background.js */; };
 		04F5690630052E9A0031E6DF /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 04F5690330052E9A0031E6DF /* README.md */; };
 		04F5690730052E9A0031E6DF /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = 04F5690430052E9A0031E6DF /* manifest.json */; };
+		04F5690830052E9A0031E6DF /* content.js in Resources */ = {isa = PBXBuildFile; fileRef = 04F5690930052E9A0031E6DF /* content.js */; };
+		04F5690C30052E9A0031E6DF /* images in Resources */ = {isa = PBXBuildFile; fileRef = 04F5690D30052E9A0031E6DF /* images */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -63,6 +65,8 @@
 		04F5690230052E9A0031E6DF /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = background.js; path = ../../../chrome/background.js; sourceTree = "<group>"; };
 		04F5690330052E9A0031E6DF /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; name = README.md; path = ../../../chrome/README.md; sourceTree = "<group>"; };
 		04F5690430052E9A0031E6DF /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = manifest.json; path = ../../../chrome/manifest.json; sourceTree = "<group>"; };
+		04F5690930052E9A0031E6DF /* content.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = content.js; path = ../../../chrome/content.js; sourceTree = "<group>"; };
+		04F5690D30052E9A0031E6DF /* images */ = {isa = PBXFileReference; lastKnownFileType = folder; name = images; path = ../../../chrome/images; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -139,6 +143,8 @@
 			isa = PBXGroup;
 			children = (
 				04F5690230052E9A0031E6DF /* background.js */,
+				04F5690930052E9A0031E6DF /* content.js */,
+				04F5690D30052E9A0031E6DF /* images */,
 				04F5690330052E9A0031E6DF /* README.md */,
 				04F5690430052E9A0031E6DF /* manifest.json */,
 			);
@@ -248,6 +254,8 @@
 				04F5690630052E9A0031E6DF /* README.md in Resources */,
 				04F5690730052E9A0031E6DF /* manifest.json in Resources */,
 				04F5690530052E9A0031E6DF /* background.js in Resources */,
+				04F5690830052E9A0031E6DF /* content.js in Resources */,
+				04F5690C30052E9A0031E6DF /* images in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

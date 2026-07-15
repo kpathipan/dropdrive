@@ -5,6 +5,46 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [5.5.0] - New identity: icon, wordmark, and a tidier UI
+
+A visual pass. New app icon everywhere, a proper logo-plus-wordmark
+header, a main window that actually fits its content, a visible
+reveal-in-Finder button, and a simplified menu bar.
+
+### Added
+- **New app icon** across every size (16→1024). The old generic tray
+  glyph is replaced by a document-dropping-into-a-tray mark, extracted
+  pixel-exact from the source render and masked to a transparent
+  squircle.
+- **Logo + two-color wordmark header.** The main window (and the menu
+  bar) now show the app logo above "DropDrive" with `Drop` in the
+  primary label color and `Drive` in blue. `Drop` uses `.primary` so it
+  stays legible in both light and dark mode rather than a fixed dark hex.
+- **Visible reveal button in Recent Downloads.** Revealing a finished
+  download in Finder was previously buried in the right-click menu only.
+  Each row with a file on disk now shows an always-visible folder button
+  (accent on hover); the context menu still works too.
+
+### Changed
+- **Menu bar redesigned to a lighter layout.** Dropped the full queue
+  list that made it feel like a second copy of the app. It now shows a
+  paste-link field (submits and brings the window forward), a single
+  status line (live progress with pause/cancel while downloading, or a
+  short "N downloads today" / "Ready" summary when idle), and Open
+  DropDrive / Preferences buttons.
+- **Main window fits its content.** It previously opened ~900pt wide with
+  the 360pt content stranded in the middle: `.frame(maxWidth:)` only
+  bounds the view, and `.windowResizability(.automatic)` let the window
+  ignore it. Now `.contentSize` makes the window hug the content's ideal
+  frame, opening at a compact ~460×570.
+
+### Packaging
+- The ad-hoc DMG build is scripted (`scripts/build-dmg.sh`) with a
+  composed Finder window (flat background, arrow, tight size) and bundles
+  an in-DMG "If DropDrive won't open" note for the one-time
+  `xattr -d com.apple.quarantine` step. The script cleans up its own
+  build scratch so duplicate `.app` copies stop accumulating in Spotlight.
+
 ## [5.4.4] - Three real bugs found from live use, not testing
 
 Reported directly from using the app, not found by QA: a redundant login

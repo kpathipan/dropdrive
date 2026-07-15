@@ -96,7 +96,10 @@ struct DropDriveApp: App {
             ContentView()
         }
         .windowStyle(.hiddenTitleBar)
-        .windowResizability(.automatic)
+        // .contentSize makes the window hug ContentView's ideal frame and honor
+        // its min/max — with .automatic the window ignored the frame and opened
+        // ~900pt wide with the 360pt content stranded in the middle.
+        .windowResizability(.contentSize)
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("About DropDrive") {

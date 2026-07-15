@@ -88,6 +88,8 @@ private struct RecentDownloadRow: View {
     let onRevealInFinder: (DownloadHistoryItem) -> Void
     let onCopyLink: (DownloadHistoryItem) -> Void
 
+    @State private var isHovering = false
+
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: statusIcon)
@@ -102,6 +104,19 @@ private struct RecentDownloadRow: View {
 
             Spacer(minLength: 12)
 
+            if item.itemURL != nil {
+                Button {
+                    onRevealInFinder(item)
+                } label: {
+                    Image(systemName: "folder")
+                        .font(.system(size: 12))
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(isHovering ? Color.accentColor : .secondary)
+                .help("Reveal in Finder")
+                .accessibilityLabel("Reveal in Finder")
+            }
+
             Text(item.date, style: .time)
                 .font(.system(size: 11).monospacedDigit())
                 .foregroundStyle(.secondary)
@@ -109,6 +124,7 @@ private struct RecentDownloadRow: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
         .contentShape(Rectangle())
+        .onHover { isHovering = $0 }
         .contextMenu {
             if item.itemURL != nil {
                 Button("Reveal in Finder") { onRevealInFinder(item) }

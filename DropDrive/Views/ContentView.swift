@@ -96,7 +96,7 @@ struct ContentView: View {
 
             StatusBarView(statusText: statusBarText)
         }
-        .frame(minWidth: 460, idealWidth: 520, minHeight: 480, idealHeight: 600)
+        .frame(minWidth: 400, idealWidth: 440, minHeight: 380, idealHeight: 440)
         .background(WindowAccessor(autosaveName: WindowAccessor.mainWindowAutosaveName))
         .overlay {
             if isDropTargeted {

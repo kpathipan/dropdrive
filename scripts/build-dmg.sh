@@ -1,0 +1,96 @@
+#!/bin/bash
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+VERSION=$(grep -m1 'MARKETING_VERSION' DropDrive.xcodeproj/project.pbxproj | sed -E 's/.*= ([0-9.]+);/\1/')
+BUILD_DIR="build-adhoc"
+STAGING_DIR="$BUILD_DIR/staging"
+RW_DMG="$BUILD_DIR/DropDrive-rw.dmg"
+FINAL_DMG="dist/DropDrive-v${VERSION}-adhoc.dmg"
+VOLUME_NAME="DropDrive"
+WINDOW_WIDTH=560
+WINDOW_HEIGHT=460
+APP_ICON_POS="140, 180"
+APPLICATIONS_ICON_POS="420, 180"
+NOTE_ICON_POS="280, 330"
+
+echo "==> Building DropDrive v${VERSION} (ad-hoc, unsigned build product)"
+rm -rf "$BUILD_DIR"
+mkdir -p "$BUILD_DIR" "$STAGING_DIR" dist
+
+xcodebuild -scheme DropDrive -configuration Release \
+  -derivedDataPath "$BUILD_DIR/DerivedData" \
+  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+  build | tail -20
+
+APP_PATH="$BUILD_DIR/DerivedData/Build/Products/Release/DropDrive.app"
+APPEX_PATH="$APP_PATH/Contents/PlugIns/DropDriveShare.appex"
+
+if [ ! -d "$APP_PATH" ]; then
+  echo "Build failed: $APP_PATH not found" >&2
+  exit 1
+fi
+
+echo "==> Ad-hoc signing (appex first, then app)"
+if [ -d "$APPEX_PATH" ]; then
+  codesign --force --deep --sign - \
+    --entitlements DropDriveShare/DropDriveShare.entitlements \
+    "$APPEX_PATH"
+fi
+codesign --force --deep --sign - \
+  --entitlements packaging/DropDrive-adhoc.entitlements \
+  "$APP_PATH"
+
+echo "==> Verifying signature and entitlements"
+codesign -dv "$APP_PATH" 2>&1 | grep -E "Signature|Authority"
+codesign -d --entitlements - --xml "$APP_PATH"
+
+echo "==> Staging DMG contents"
+cp -R "$APP_PATH" "$STAGING_DIR/DropDrive.app"
+ln -s /Applications "$STAGING_DIR/Applications"
+cp "packaging/dmg/If DropDrive won't open.html" "$STAGING_DIR/If DropDrive won't open.html"
+
+echo "==> Creating writable DMG"
+rm -f "$RW_DMG"
+hdiutil create -volname "$VOLUME_NAME" -srcfolder "$STAGING_DIR" -ov -fs HFS+ -format UDRW "$RW_DMG"
+
+echo "==> Mounting and composing Finder window"
+MOUNT_OUTPUT=$(hdiutil attach "$RW_DMG" -readwrite -noverify -noautoopen)
+DEVICE=$(echo "$MOUNT_OUTPUT" | egrep '^/dev/' | sed 1q | awk '{print $1}')
+MOUNT_POINT="/Volumes/$VOLUME_NAME"
+
+mkdir -p "$MOUNT_POINT/.background"
+cp packaging/dmg/background.png "$MOUNT_POINT/.background/background.png"
+
+osascript <<EOF
+tell application "Finder"
+  tell disk "$VOLUME_NAME"
+    open
+    set current view of container window to icon view
+    set toolbar visible of container window to false
+    set statusbar visible of container window to false
+    set the bounds of container window to {200, 120, 200 + $WINDOW_WIDTH, 120 + $WINDOW_HEIGHT}
+    set viewOptions to icon view options of container window
+    set arrangement of viewOptions to not arranged
+    set icon size of viewOptions to 96
+    set background picture of viewOptions to file ".background:background.png"
+    set position of item "DropDrive.app" of container window to {$APP_ICON_POS}
+    set position of item "Applications" of container window to {$APPLICATIONS_ICON_POS}
+    set position of item "If DropDrive won't open.html" of container window to {$NOTE_ICON_POS}
+    close
+    open
+    update without registering applications
+    delay 2
+  end tell
+end tell
+EOF
+
+sync
+hdiutil detach "$DEVICE"
+
+echo "==> Converting to compressed read-only DMG"
+rm -f "$FINAL_DMG"
+hdiutil convert "$RW_DMG" -format UDZO -o "$FINAL_DMG"
+
+echo "==> Done: $FINAL_DMG"

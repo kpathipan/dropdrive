@@ -9,3 +9,4 @@ screenshots/
 xcuserdata/
 .swiftpm/
 *.xcworkspace/xcuserdata/
+build-adhoc/

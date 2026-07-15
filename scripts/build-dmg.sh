@@ -93,4 +93,7 @@ echo "==> Converting to compressed read-only DMG"
 rm -f "$FINAL_DMG"
 hdiutil convert "$RW_DMG" -format UDZO -o "$FINAL_DMG"
 
+echo "==> Cleaning up build scratch (DerivedData, staging, intermediate dmg)"
+rm -rf "$BUILD_DIR"
+
 echo "==> Done: $FINAL_DMG"

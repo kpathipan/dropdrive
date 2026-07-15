@@ -224,9 +224,22 @@ struct ContentView: View {
     }
 
     private var header: some View {
-        VStack(spacing: 6) {
-            Text("DropDrive")
-                .font(.system(size: 28, weight: .semibold, design: .rounded))
+        VStack(spacing: 10) {
+            Image("AppLogo")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 72, height: 72)
+                .accessibilityHidden(true)
+
+            HStack(spacing: 0) {
+                Text("Drop")
+                    .foregroundStyle(.primary)
+                Text("Drive")
+                    .foregroundStyle(Color(red: 0.145, green: 0.388, blue: 0.922))
+            }
+            .font(.system(size: 26, weight: .bold, design: .rounded))
+            .accessibilityElement()
+            .accessibilityLabel("DropDrive")
 
             Text("Download Google Drive files and folders directly to your Mac.")
                 .font(.system(size: 12.5))

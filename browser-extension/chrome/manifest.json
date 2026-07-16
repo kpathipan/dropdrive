@@ -3,7 +3,7 @@
   "name": "DropDrive",
   "short_name": "DropDrive",
   "description": "Download Google Drive files directly to your Mac with DropDrive",
-  "version": "5.6.1",
+  "version": "5.7.0",
   "permissions": [
     "contextMenus"
   ],

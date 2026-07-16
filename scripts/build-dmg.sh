@@ -19,8 +19,14 @@ echo "==> Building DropDrive v${VERSION} (ad-hoc, unsigned build product)"
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR" "$STAGING_DIR" dist
 
+# Left to itself, xcodebuild picks the first matching destination — this Mac,
+# i.e. arm64 — and ships an Apple-Silicon-only binary that simply won't launch
+# on an Intel Mac. A generic destination plus explicit ARCHS forces the
+# universal build a distributable DMG needs.
 xcodebuild -scheme DropDrive -configuration Release \
   -derivedDataPath "$BUILD_DIR/DerivedData" \
+  -destination 'generic/platform=macOS' \
+  ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
   build | tail -20
 
@@ -45,6 +51,18 @@ codesign --force --deep --sign - \
 echo "==> Verifying signature and entitlements"
 codesign -dv "$APP_PATH" 2>&1 | grep -E "Signature|Authority"
 codesign -d --entitlements - --xml "$APP_PATH"
+
+echo "==> Verifying the binary is universal (Intel + Apple Silicon)"
+ARCHS_BUILT=$(lipo -archs "$APP_PATH/Contents/MacOS/DropDrive")
+echo "    architectures: $ARCHS_BUILT"
+case "$ARCHS_BUILT" in
+  *arm64*x86_64*|*x86_64*arm64*) ;;
+  *)
+    echo "Refusing to package: expected a universal binary, got '$ARCHS_BUILT'." >&2
+    echo "An Apple-Silicon-only build cannot launch on an Intel Mac." >&2
+    exit 1
+    ;;
+esac
 
 echo "==> Staging DMG contents"
 cp -R "$APP_PATH" "$STAGING_DIR/DropDrive.app"

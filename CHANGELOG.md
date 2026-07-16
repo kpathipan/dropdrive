@@ -5,6 +5,34 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [5.7.0] - The DMG could never have run on an Intel Mac
+
+Reported from the first real attempt to hand the app to someone else:
+"can't open it, ran the Terminal command, nothing happened."
+
+### Fixed
+- **Every DMG so far was Apple-Silicon-only.** `xcodebuild` picks the first
+  matching destination when given none, which on this machine is
+  `arch:arm64` — so the shipped binary was `arm64` alone and could not
+  launch on an Intel Mac at all, no matter how many times the quarantine
+  command was run. `scripts/build-dmg.sh` now builds with
+  `-destination 'generic/platform=macOS'` and explicit
+  `ARCHS="arm64 x86_64"`, and refuses to package anything that isn't
+  universal rather than shipping the same silent failure again. Verified:
+  every Mach-O in the bundle, including the Share extension, is now
+  `x86_64 arm64`.
+- **The quarantine command didn't reach nested code.** The note said
+  `xattr -d com.apple.quarantine …`, which only clears the bundle root; the
+  app embeds a Share extension that carries its own quarantine flag. It's
+  now `xattr -cr …` — recursive, and quiet when an attribute isn't present
+  instead of printing errors at someone following instructions.
+
+### Known limitation
+The minimum is still macOS 14. `@Observable` (three files) and two-argument
+`onChange` require it; dropping to 13 means converting those, and dropping
+to 11 additionally costs `MenuBarExtra` and drag-to-reorder, which are
+13-only.
+
 ## [5.6.1] - Controls that look clickable now are
 
 ### Fixed

@@ -165,6 +165,8 @@ private struct QueueRow: View {
     let onCancelActive: () -> Void
     let onRevealInFinder: () -> Void
 
+    @State private var isHovering = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
@@ -199,6 +201,21 @@ private struct QueueRow: View {
                     .accessibilityLabel(item.analysis.isPublic ? "Public" : "Private")
 
                 statusIndicator
+
+                // Removing used to be right-click-only. A cancelled row still drew
+                // an "xmark.circle.fill" status icon, which reads exactly like a
+                // remove control and did nothing when clicked — so this is a real
+                // button, and that status icon no longer impersonates one.
+                if item.status != .downloading {
+                    Button(action: onRemove) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 9, weight: .bold))
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(isHovering ? Color.primary : Color.secondary)
+                    .help("Remove from queue")
+                    .accessibilityLabel("Remove from queue")
+                }
             }
             .accessibilityElement(children: .combine)
 
@@ -233,6 +250,7 @@ private struct QueueRow: View {
         .background(isHighlighted ? Color.accentColor.opacity(0.14) : Color.clear)
         .animation(.easeInOut(duration: 0.3), value: isHighlighted)
         .contentShape(Rectangle())
+        .onHover { isHovering = $0 }
         .contextMenu {
             if item.status == .completed {
                 Button("Reveal in Finder", action: onRevealInFinder)
@@ -330,7 +348,9 @@ private struct QueueRow: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
             case .cancelled:
-                Image(systemName: "xmark.circle.fill")
+                // Deliberately not an xmark: that's the remove button's glyph, and
+                // sharing it made this look like a control that could be clicked.
+                Image(systemName: "slash.circle")
                     .foregroundStyle(.secondary)
             case .paused:
                 Image(systemName: "pause.circle.fill")

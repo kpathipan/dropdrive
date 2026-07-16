@@ -26,6 +26,8 @@
   const MENU_ITEM_CLASS = "dropdrive-menu-item";
   const TOAST_ID = "dropdrive-toast";
   const TOOLTIP_TEXT = "Download with DropDrive";
+  const SENT_MESSAGE = "✓ Sent to DropDrive";
+  const RELOAD_MESSAGE = "DropDrive was updated — reload this page to use it";
 
   // ---- Selection tracking -------------------------------------------------
 
@@ -242,25 +244,53 @@
 
   // ---- Sending the selection -----------------------------------------------
 
+  /// Reloading or updating the extension leaves the already-injected content
+  /// script running in open Drive tabs with a dead `chrome.runtime` handle.
+  /// Every call into it then throws "Extension context invalidated", which used
+  /// to escape as an uncaught error — the button looked simply dead, with the
+  /// real reason only visible on chrome://extensions. `chrome.runtime.id` goes
+  /// undefined in exactly that state, so it's the cheapest way to detect it.
+  function isExtensionContextAlive() {
+    try {
+      return Boolean(chrome.runtime && chrome.runtime.id);
+    } catch (error) {
+      return false;
+    }
+  }
+
   function sendSelectionToDropDrive() {
     const items = getSelectedItems();
     if (items.length === 0) return;
 
     const links = items.map((item) => driveLinkForID(item.id));
-    chrome.runtime.sendMessage({ action: "openDropDrive", urls: links }, () => {
-      if (chrome.runtime.lastError) {
-        console.error("DropDrive:", chrome.runtime.lastError.message);
-        return;
-      }
-      showToast();
-    });
+
+    if (!isExtensionContextAlive()) {
+      showToast(RELOAD_MESSAGE);
+      return;
+    }
+
+    try {
+      chrome.runtime.sendMessage({ action: "openDropDrive", urls: links }, () => {
+        if (chrome.runtime.lastError) {
+          console.error("DropDrive:", chrome.runtime.lastError.message);
+          showToast(RELOAD_MESSAGE);
+          return;
+        }
+        showToast(SENT_MESSAGE);
+      });
+    } catch (error) {
+      // sendMessage throws synchronously if the context died between the check
+      // above and the call itself.
+      console.error("DropDrive:", error);
+      showToast(RELOAD_MESSAGE);
+    }
   }
 
   // ---- Toast ----------------------------------------------------------------
 
   let toastHideTimer = null;
 
-  function showToast() {
+  function showToast(message) {
     let toast = document.getElementById(TOAST_ID);
     if (!toast) {
       toast = document.createElement("div");
@@ -280,9 +310,12 @@
         transition: opacity 0.15s ease-in-out;
         pointer-events: none;
       `;
-      toast.textContent = "✓ Sent to DropDrive";
       document.body.appendChild(toast);
     }
+
+    // Set every time, not just on create — a reused toast would otherwise keep
+    // whatever text it was first given.
+    toast.textContent = message;
 
     // Re-triggering while a toast is already visible just resets its timer
     // instead of stacking a second one.

@@ -1,6 +1,9 @@
 import AppKit
 import Foundation
 import GoogleSignIn
+import os.log
+
+private let ddAuthLog = Logger(subsystem: "com.dropdrive.DropDrive", category: "auth")
 
 protocol LoginManaging {
     func restoreSavedAccount() async -> GoogleAccount?
@@ -34,10 +37,14 @@ final class LoginManager: LoginManaging {
             return account
         }
 
-        let storedAccount = loadStoredAccount()
-
+        // Only surface "connected" when a real session actually exists. Returning
+        // the UserDefaults-cached account regardless (the old behaviour) let the
+        // account chip claim signed-in while every private-file analysis still
+        // failed with "needs authentication", because the chip was reading cached
+        // display data that nothing kept in sync with the real GID session.
         guard GIDSignIn.sharedInstance.hasPreviousSignIn() else {
-            return storedAccount
+            userDefaults.removeObject(forKey: StorageKey.googleAccount)
+            return nil
         }
 
         do {
@@ -46,24 +53,34 @@ final class LoginManager: LoginManaging {
             save(account)
             return account
         } catch {
-            return storedAccount
+            return loadStoredAccount()
         }
     }
 
     func signIn() async throws -> GoogleAccount {
         guard isGoogleSignInConfigured else {
+            ddAuthLog.error("signIn: not configured (missing client id)")
             throw LoginManagerError.missingClientID
         }
 
         guard let presentingWindow = NSApplication.shared.keyWindow ?? NSApplication.shared.windows.first else {
+            ddAuthLog.error("signIn: no presenting window")
             throw LoginManagerError.missingPresentingWindow
         }
 
-        let result = try await GIDSignIn.sharedInstance.signIn(
-            withPresenting: presentingWindow,
-            hint: nil,
-            additionalScopes: [Self.driveReadonlyScope]
-        )
+        ddAuthLog.log("signIn: presenting GID sheet on window=\(presentingWindow.title, privacy: .public)")
+        let result: GIDSignInResult
+        do {
+            result = try await GIDSignIn.sharedInstance.signIn(
+                withPresenting: presentingWindow,
+                hint: nil,
+                additionalScopes: [Self.driveReadonlyScope]
+            )
+            ddAuthLog.log("signIn: GID returned user=\(result.user.profile?.email ?? "?", privacy: .public) scopes=\(result.user.grantedScopes?.joined(separator: ",") ?? "none", privacy: .public)")
+        } catch {
+            ddAuthLog.error("signIn: GID threw: \(String(describing: error), privacy: .public)")
+            throw error
+        }
         let account = GoogleAccount(user: result.user)
         save(account)
         return account
@@ -90,15 +107,35 @@ final class LoginManager: LoginManaging {
     /// something else already did it.
     func cachedAccessTokenIfAvailable() async -> String? {
         var user = GIDSignIn.sharedInstance.currentUser
+        ddAuthLog.log("cachedToken: currentUser=\(user != nil, privacy: .public) hasPrevious=\(GIDSignIn.sharedInstance.hasPreviousSignIn(), privacy: .public)")
         if user == nil, GIDSignIn.sharedInstance.hasPreviousSignIn() {
-            user = try? await GIDSignIn.sharedInstance.restorePreviousSignIn()
+            do {
+                user = try await GIDSignIn.sharedInstance.restorePreviousSignIn()
+                ddAuthLog.log("cachedToken: restorePreviousSignIn succeeded=\(user != nil, privacy: .public)")
+            } catch {
+                ddAuthLog.error("cachedToken: restorePreviousSignIn failed: \(error.localizedDescription, privacy: .public)")
+            }
         }
 
-        guard let user, user.grantedScopes?.contains(Self.driveReadonlyScope) == true else {
+        guard let user else {
+            ddAuthLog.error("cachedToken: no user -> needsAuthentication")
+            return nil
+        }
+        let scopes = user.grantedScopes ?? []
+        ddAuthLog.log("cachedToken: grantedScopes=\(scopes.joined(separator: ","), privacy: .public)")
+        guard scopes.contains(Self.driveReadonlyScope) else {
+            ddAuthLog.error("cachedToken: drive.readonly scope MISSING -> needsAuthentication")
             return nil
         }
 
-        return try? await Self.refreshedAccessToken(for: user)
+        do {
+            let token = try await Self.refreshedAccessToken(for: user)
+            ddAuthLog.log("cachedToken: token refreshed OK (len=\(token.count, privacy: .public))")
+            return token
+        } catch {
+            ddAuthLog.error("cachedToken: token refresh FAILED: \(error.localizedDescription, privacy: .public) -> needsAuthentication")
+            return nil
+        }
     }
 
     func validAccessToken() async throws -> String {

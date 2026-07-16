@@ -111,13 +111,18 @@ final class DropDriveViewModel {
                 let account = try await loginManager.signIn()
                 googleAccount = account
 
-                // If a download was pending auth, retry it automatically
+                // Re-run analysis for whatever is in the field now that there's a
+                // session. Restoring `pendingDownloadLink` can't be what triggers
+                // that: the link never left the text field, so assigning it back
+                // writes the value it already had, and `driveLink`'s didSet
+                // deliberately ignores no-op writes — which left the view stuck on
+                // "needs connection" after a successful sign-in until the app was
+                // relaunched and the link pasted again. Kick it off explicitly.
                 if let pending = pendingDownloadLink {
                     driveLink = pending
                     pendingDownloadLink = nil
-                } else {
-                    scheduleAnalysis()
                 }
+                scheduleAnalysis()
             } catch {
                 // Sign-in was cancelled or failed; the Connect button simply
                 // becomes available again for the user to retry.

@@ -5,6 +5,51 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [5.6.0] - Sign-in actually works on a free build
+
+"It asks me to connect while already connected" was two separate faults
+stacked on top of each other, and neither was in the app's logic.
+
+### Fixed
+- **Google sign-in could never complete.** GoogleSignIn stores its session
+  in the *data-protection* keychain (it sets
+  `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, which forces
+  `kSecUseDataProtectionKeychain`). On macOS that keychain requires an
+  `application-identifier` entitlement that only a real Apple Team
+  signature provides, so an ad-hoc signed build failed every write with
+  `errSecMissingEntitlement` (-34018); GID surfaced it as "keychain
+  error" (-2) the instant the OAuth redirect succeeded, leaving
+  `currentUser` nil forever. Confirmed with an ad-hoc test binary: -34018
+  from the data-protection keychain, `errSecSuccess` from the file-based
+  one. GID exposes no public way to swap its store, so `LoginManager` now
+  drives **AppAuth + GTMAppAuth directly** — both already linked — and asks
+  for `.useFileBasedKeychain`, which needs no entitlement. Verified live:
+  sign-in completes, the session survives quit/relaunch *and* a rebuild
+  with a fresh ad-hoc signature, and the Drive API authenticates.
+- **The account chip claimed a session that wasn't there.**
+  `restoreSavedAccount()` fell back to a UserDefaults-cached account even
+  when no session could be restored, so the header showed "connected"
+  while every private-file analysis still demanded sign-in. It now only
+  reports an account when one genuinely restores, and clears the stale
+  cache otherwise.
+
+### Changed
+- **The ad-hoc build is no longer sandboxed.** A sandboxed app can't reach
+  the keychain at all without `keychain-access-groups`, which macOS only
+  honours behind a real Team prefix; self-assigning one (with or without
+  `com.apple.application-identifier`) makes launchd refuse to spawn the
+  app. Re-signing with the sandbox back on reproduced the failure — the
+  chip went empty because the stored session couldn't be read. Both
+  changes are needed together. This build ships as a DMG rather than
+  through the App Store, where the sandbox is optional; the Team-signed
+  build keeps its sandbox, and the Share extension stays sandboxed.
+
+### Note
+Google Cloud's consent screen for this project was also switched from
+Internal to External/in-production — while it was Internal, any account
+outside the owning Workspace was rejected with `403 org_internal` before
+the keychain ever came into play.
+
 ## [5.5.0] - New identity: icon, wordmark, and a tidier UI
 
 A visual pass. New app icon everywhere, a proper logo-plus-wordmark

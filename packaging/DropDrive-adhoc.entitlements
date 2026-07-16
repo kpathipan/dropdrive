@@ -4,28 +4,32 @@
 <dict>
 	<!--
 	  Deliberately NOT sandboxed, unlike the Team-signed build (which keeps
-	  DropDrive.entitlements and its full sandbox intact).
+	  DropDrive.entitlements and its full sandbox).
 
-	  GoogleSignIn stores its session in the keychain, and a sandboxed app can't
-	  reach the keychain at all without a keychain-access-groups entitlement.
-	  That entitlement is only honoured when it matches a real Apple-issued Team
-	  prefix: the Team-signed build uses "$(AppIdentifierPrefix)…", which ad-hoc
-	  signing cannot resolve. Both self-assigned variants were tried and both
-	  make launchd refuse to spawn the app outright (RBSRequestError 5 /
-	  POSIX 163):
-	    - keychain-access-groups = com.dropdrive.DropDrive
-	    - the same plus com.apple.application-identifier
-	  Leaving the entitlement out instead lets the app launch, but then every
-	  sign-in dies with GID "keychain error" (code -2) the moment the OAuth
-	  redirect succeeds — the "it asks me to connect while already connected"
-	  bug.
+	  Sign-in needs the keychain, and reaching it from an ad-hoc signed build
+	  takes two things — this file is one half, LoginManager's file-based
+	  keychain store is the other. Neither alone is enough; both were verified
+	  on the real app:
 
-	  So under ad-hoc signing it's sandbox or keychain, not both. This build is
-	  distributed as a DMG rather than through the App Store, where the sandbox
-	  is optional, so it's dropped here to make sign-in work at all. The
-	  remaining sandbox permissions (network.client, files.user-selected) are
-	  meaningless outside the sandbox and are omitted. The Share extension stays
-	  sandboxed — app extensions must be, and it never touches the keychain.
+	  1. A sandboxed app can't touch the keychain at all without a
+	     keychain-access-groups entitlement, and macOS only honours that behind
+	     a real Apple Team prefix. Self-assigning one (with or without
+	     com.apple.application-identifier) makes launchd refuse to spawn the app
+	     (RBSRequestError 5 / POSIX 163). Re-signing this exact build with the
+	     sandbox back on reproduced it: the account chip went empty because the
+	     stored session could no longer be read.
+	  2. Unsandboxed but still ad-hoc, GoogleSignIn's own keychain store failed
+	     anyway — it writes to the *data-protection* keychain, which needs an
+	     application-identifier entitlement only Team signing provides. An
+	     ad-hoc test binary gets errSecMissingEntitlement (-34018) there and
+	     errSecSuccess from the file-based keychain, which is why LoginManager
+	     drives AppAuth/GTMAppAuth directly and asks for the file-based store.
+
+	  This build ships as a DMG rather than through the App Store, where the
+	  sandbox is optional, so it comes off here. The remaining sandbox
+	  permissions (network.client, files.user-selected) are meaningless outside
+	  the sandbox and are omitted. The Share extension stays sandboxed — app
+	  extensions must be, and it never touches the keychain.
 	-->
 </dict>
 </plist>

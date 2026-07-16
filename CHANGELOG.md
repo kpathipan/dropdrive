@@ -5,6 +5,37 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [5.6.1] - Controls that look clickable now are
+
+### Fixed
+- **The queue's ✕ did nothing.** A cancelled row drew an
+  `xmark.circle.fill` status icon — the standard macOS remove glyph — but
+  it was only ever an icon; Remove lived exclusively in the right-click
+  menu. Every row that isn't mid-download now has a real remove button,
+  and the cancelled status icon is `slash.circle` so it stops
+  impersonating a control. Same class of bug as reveal-in-Finder being
+  context-menu-only in 5.5.0.
+- **The Chrome button died silently after an extension reload.** Reloading
+  or updating the extension leaves the previously-injected content script
+  running in open Drive tabs with a dead `chrome.runtime`, so clicking
+  threw an uncaught "Extension context invalidated" — visible only on
+  `chrome://extensions`, which just looked like a dead button. It now
+  detects the stale context and shows "DropDrive was updated — reload this
+  page to use it".
+- **Toasts kept their first message.** `showToast()` only set its text when
+  creating the element, so a reused toast showed whatever it said first.
+
+### Changed
+- The Chrome extension's manifest version tracks the app again (it sat at
+  5.4.4 while the app moved through 5.4.5 → 5.6.0; it was simply never
+  bumped alongside it).
+
+### Not verified
+The remove button and the stale-extension toast are code-complete and
+compile, but neither has been seen running: the queue was empty at test
+time, and the extension in Chrome still needs a manual reload to pick up
+the new content script.
+
 ## [5.6.0] - Sign-in actually works on a free build
 
 "It asks me to connect while already connected" was two separate faults

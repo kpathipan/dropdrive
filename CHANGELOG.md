@@ -30,11 +30,15 @@ and this project follows [Semantic Versioning](https://semver.org/).
   5.4.4 while the app moved through 5.4.5 → 5.6.0; it was simply never
   bumped alongside it).
 
+### Verified
+The remove button was exercised on a real queue row and removes as
+expected. The reloaded extension injects its button into a Thai-locale
+Drive and hands the selection off to the app.
+
 ### Not verified
-The remove button and the stale-extension toast are code-complete and
-compile, but neither has been seen running: the queue was empty at test
-time, and the extension in Chrome still needs a manual reload to pick up
-the new content script.
+The stale-extension toast. It only fires when a content script outlives an
+extension reload, and the reload that would have triggered it was done
+alongside a page refresh — the path it guards is still unobserved.
 
 ## [5.6.0] - Sign-in actually works on a free build
 

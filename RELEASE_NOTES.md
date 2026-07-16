@@ -48,12 +48,15 @@ keychain even came into play. It's now External / in production.
 - Sign-in completes with the `drive.readonly` scope; the session survives
   quit/relaunch and an app update.
 - The account chip populates, and Drive API calls authenticate.
+- The **queue remove button** removes a real row.
+- The reloaded **Chrome extension** injects its button into a Thai-locale
+  Drive and hands the selection off to the app.
 
 ## What wasn't verified
 
-- The **queue remove button** and the **stale-extension toast** compile and
-  ship but haven't been seen running — the queue was empty at test time,
-  and the extension needs a manual reload first.
+- The **stale-extension toast**. It only fires when a content script
+  outlives an extension reload, and that reload was paired with a page
+  refresh — so the path it guards hasn't actually been walked.
 - Nothing has been tested on anyone else's Mac.
 
 ## Upgrading

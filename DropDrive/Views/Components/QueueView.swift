@@ -43,6 +43,7 @@ struct QueueView: View {
                     onOpen: { onOpen(item) }
                 )
                 .id(item.id)
+                .transition(.opacity.combined(with: .move(edge: .top)))
                 .applyingIf(item.status == .ready) { view in
                     view
                         .draggable(item.id.uuidString)

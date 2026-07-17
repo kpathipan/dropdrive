@@ -37,6 +37,24 @@ struct MenuBarView: View {
     @State private var selectedPane: Pane = .queue
     @State private var isDropTargeted = false
     @State private var historySearchText = ""
+    /// Live height of the active pane's content, reported by ContentHeightKey.
+    /// The window hugs this (capped), so it grows and shrinks with the queue.
+    @State private var measuredHeight: CGFloat = 110
+
+    private static let springMotion = Animation.spring(response: 0.38, dampingFraction: 0.86)
+    private static let paneHeaderAllowance: CGFloat = 36
+    private static let maxWindowHeight: CGFloat = 480
+
+    private var windowHeight: CGFloat {
+        switch selectedPane {
+        case .queue, .recent:
+            return min(max(measuredHeight, 96) + Self.paneHeaderAllowance, Self.maxWindowHeight)
+        case .stats:
+            return 230
+        case .prefs:
+            return 330
+        }
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -47,12 +65,17 @@ struct MenuBarView: View {
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-        .frame(width: 340, height: 300)
+        .frame(width: 340, height: windowHeight)
         .background(DDTheme.canvas)
         .tint(DDTheme.accent)
         // The popover is designed light-only (white cards on a light canvas);
         // letting it invert in system dark mode breaks every fixed color above.
         .colorScheme(.light)
+        .animation(Self.springMotion, value: windowHeight)
+        .onPreferenceChange(ContentHeightKey.self) { height in
+            guard height > 0 else { return }
+            withAnimation(Self.springMotion) { measuredHeight = height }
+        }
         .overlay {
             if isDropTargeted {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -126,7 +149,7 @@ struct MenuBarView: View {
 
     private func railButton(_ pane: Pane) -> some View {
         Button {
-            selectedPane = pane
+            withAnimation(Self.springMotion) { selectedPane = pane }
         } label: {
             Image(systemName: pane.icon)
                 .font(.system(size: 14, weight: .medium))
@@ -165,13 +188,13 @@ struct MenuBarView: View {
     private var detail: some View {
         switch selectedPane {
         case .queue:
-            queuePane
+            queuePane.transition(.opacity)
         case .recent:
-            recentPane
+            recentPane.transition(.opacity)
         case .stats:
-            statsPane
+            statsPane.transition(.opacity)
         case .prefs:
-            PreferencesView()
+            PreferencesView().transition(.opacity)
         }
     }
 
@@ -213,6 +236,7 @@ struct MenuBarView: View {
                         )
 
                         analysisArea
+                            .transition(.opacity.combined(with: .move(edge: .top)))
 
                         if !viewModel.queue.isEmpty {
                             QueueView(
@@ -244,16 +268,22 @@ struct MenuBarView: View {
                                 onResumeQueue: viewModel.resumeQueue,
                                 onReorder: viewModel.moveQueueItem
                             )
+                            .transition(.opacity.combined(with: .move(edge: .top)))
                         } else if viewModel.linkAnalysisState == .idle {
                             if recentCompleted.isEmpty {
-                                emptyQueueHint
+                                emptyQueueHint.transition(.opacity)
                             } else {
-                                recentPreview
+                                recentPreview.transition(.opacity)
                             }
                         }
                     }
                     .padding(.horizontal, 12)
                     .padding(.bottom, 12)
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear.preference(key: ContentHeightKey.self, value: proxy.size.height)
+                        }
+                    )
                 }
                 .onChange(of: viewModel.activeQueueItemID) { _, newValue in
                     guard let newValue else { return }
@@ -265,8 +295,8 @@ struct MenuBarView: View {
                 }
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: viewModel.linkAnalysisState)
-        .animation(.easeInOut(duration: 0.2), value: viewModel.queue)
+        .animation(Self.springMotion, value: viewModel.linkAnalysisState)
+        .animation(Self.springMotion, value: viewModel.queue)
     }
 
     private var headerStatus: String {
@@ -293,7 +323,9 @@ struct MenuBarView: View {
 
                 Spacer()
 
-                Button("All downloads") { selectedPane = .recent }
+                Button("All downloads") {
+                    withAnimation(Self.springMotion) { selectedPane = .recent }
+                }
                     .buttonStyle(.plain)
                     .font(.system(size: 10.5))
                     .foregroundStyle(DDTheme.accent)
@@ -416,6 +448,11 @@ struct MenuBarView: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.bottom, 12)
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(key: ContentHeightKey.self, value: proxy.size.height)
+                    }
+                )
             }
         }
     }
@@ -478,6 +515,16 @@ struct MenuBarView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Content height measurement
+
+/// Reports the active pane's natural content height so the window can hug it.
+private struct ContentHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 

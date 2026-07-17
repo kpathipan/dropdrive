@@ -10,8 +10,8 @@ struct DownloadFormView: View {
     let onEscape: () -> Void
 
     var body: some View {
-        VStack(spacing: 14) {
-            VStack(alignment: .leading, spacing: 8) {
+        VStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 6) {
                 sectionLabel("Paste Google Drive link")
 
                 HStack(spacing: 8) {
@@ -41,11 +41,11 @@ struct DownloadFormView: View {
                         .accessibilityLabel("Clear")
                     }
                 }
-                .padding(11)
+                .padding(8)
                 .inputFieldBackground()
             }
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
                 sectionLabel("Save to")
 
                 HStack(spacing: 10) {
@@ -67,7 +67,7 @@ struct DownloadFormView: View {
                         .disabled(isLocked)
                         .accessibilityLabel(destinationURL == nil ? "Choose destination folder" : "Change destination folder")
                 }
-                .padding(11)
+                .padding(8)
                 .inputFieldBackground()
             }
         }

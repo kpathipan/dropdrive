@@ -47,7 +47,7 @@ struct MenuBarView: View {
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-        .frame(width: 480, height: 540)
+        .frame(width: 380, height: 420)
         .overlay {
             if isDropTargeted {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -82,9 +82,9 @@ struct MenuBarView: View {
             Image("AppLogo")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 30, height: 30)
+                .frame(width: 24, height: 24)
                 .accessibilityHidden(true)
-                .padding(.bottom, 8)
+                .padding(.bottom, 6)
 
             ForEach(Pane.allCases) { pane in
                 railButton(pane)
@@ -96,17 +96,17 @@ struct MenuBarView: View {
                 NSApp.terminate(nil)
             } label: {
                 Image(systemName: "power")
-                    .font(.system(size: 15))
+                    .font(.system(size: 13))
                     .foregroundStyle(.secondary)
-                    .frame(width: 34, height: 34)
+                    .frame(width: 28, height: 28)
                     .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
             .buttonStyle(.plain)
             .help("Quit DropDrive")
             .accessibilityLabel("Quit DropDrive")
         }
-        .padding(.vertical, 14)
-        .frame(width: 54)
+        .padding(.vertical, 10)
+        .frame(width: 42)
         .background(.quaternary.opacity(0.35))
     }
 
@@ -115,9 +115,9 @@ struct MenuBarView: View {
             selectedPane = pane
         } label: {
             Image(systemName: pane.icon)
-                .font(.system(size: 16, weight: .medium))
+                .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(selectedPane == pane ? Color.accentColor : Color.secondary)
-                .frame(width: 34, height: 34)
+                .frame(width: 28, height: 28)
                 .background(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(selectedPane == pane ? Color.accentColor.opacity(0.14) : .clear)
@@ -167,7 +167,7 @@ struct MenuBarView: View {
                 Text("Drop").foregroundStyle(.primary)
                 Text("Drive").foregroundStyle(Color(red: 0.145, green: 0.388, blue: 0.922))
             }
-            .font(.system(size: 16, weight: .bold, design: .rounded))
+            .font(.system(size: 14, weight: .bold, design: .rounded))
             .accessibilityElement()
             .accessibilityLabel("DropDrive")
 
@@ -181,9 +181,9 @@ struct MenuBarView: View {
                 onSignOut: viewModel.signOut
             )
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 14)
-        .padding(.bottom, 10)
+        .padding(.horizontal, 12)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
     }
 
     private var queuePane: some View {
@@ -192,7 +192,7 @@ struct MenuBarView: View {
 
             ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(spacing: 16) {
+                    VStack(spacing: 12) {
                         DownloadFormView(
                             driveLink: $viewModel.driveLink,
                             destinationURL: viewModel.selectedDestinationURL,
@@ -234,8 +234,8 @@ struct MenuBarView: View {
                             emptyQueueHint
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 16)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 12)
                 }
                 .onChange(of: viewModel.activeQueueItemID) { _, newValue in
                     guard let newValue else { return }
@@ -254,14 +254,14 @@ struct MenuBarView: View {
     private var emptyQueueHint: some View {
         VStack(spacing: 8) {
             Image(systemName: "tray.and.arrow.down")
-                .font(.system(size: 28, weight: .light))
+                .font(.system(size: 22, weight: .light))
                 .foregroundStyle(.tertiary)
             Text("Paste or drop a Google Drive link to start.")
-                .font(.system(size: 12))
+                .font(.system(size: 11.5))
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 36)
+        .padding(.vertical, 22)
     }
 
     @ViewBuilder
@@ -314,8 +314,8 @@ struct MenuBarView: View {
                         )
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 16)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 12)
             }
         }
     }

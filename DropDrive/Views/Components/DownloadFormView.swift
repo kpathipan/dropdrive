@@ -17,7 +17,7 @@ struct DownloadFormView: View {
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
 
-                    TextField("Paste or drop a Drive link…", text: $driveLink)
+                    TextField(tr("Paste or drop a Drive link…", "วางหรือลากลิงก์ Drive ที่นี่…"), text: $driveLink)
                         .textFieldStyle(.plain)
                         .font(.system(size: 12.5))
                         .disabled(isLocked)
@@ -70,13 +70,13 @@ struct DownloadFormView: View {
                     .font(.system(size: 10))
                     .foregroundStyle(destinationURL == nil ? Color.secondary : DDTheme.accent)
 
-                Text(destinationURL?.path(percentEncoded: false) ?? "Choose a folder")
+                Text(destinationURL?.path(percentEncoded: false) ?? tr("Choose a folder", "เลือกโฟลเดอร์"))
                     .font(.system(size: 10.5))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
 
-                Button(destinationURL == nil ? "Choose…" : "Change…", action: onChooseDestination)
+                Button(destinationURL == nil ? tr("Choose…", "เลือก…") : tr("Change…", "เปลี่ยน…"), action: onChooseDestination)
                     .buttonStyle(.plain)
                     .font(.system(size: 10.5))
                     .foregroundStyle(DDTheme.accent)

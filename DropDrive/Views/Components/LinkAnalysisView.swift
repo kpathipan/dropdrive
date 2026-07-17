@@ -6,7 +6,7 @@ struct LinkAnalyzingView: View {
             ProgressView()
                 .controlSize(.small)
 
-            Text("Analyzing link…")
+            Text(tr("Analyzing link…", "กำลังวิเคราะห์ลิงก์…"))
                 .font(.system(size: 12.5))
                 .foregroundStyle(.secondary)
         }
@@ -24,7 +24,7 @@ struct LinkInvalidView: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
 
-            Text("That doesn't look like a Google Drive link.")
+            Text(tr("That doesn't look like a Google Drive link.", "ลิงก์นี้ดูไม่ใช่ลิงก์ Google Drive"))
                 .font(.system(size: 12.5))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -45,12 +45,12 @@ struct LinkNeedsConnectionView: View {
             Image(systemName: "lock.fill")
                 .foregroundStyle(.secondary)
 
-            Text("Sign in to Google Drive to access this item.")
+            Text(tr("Sign in to Google Drive to access this item.", "ลงชื่อเข้า Google Drive เพื่อเข้าถึงรายการนี้"))
                 .font(.system(size: 12.5))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            Button(isSigningIn ? "Connecting…" : "Connect", action: onConnect)
+            Button(isSigningIn ? tr("Connecting…", "กำลังเชื่อมต่อ…") : tr("Connect", "เชื่อมต่อ"), action: onConnect)
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
                 .disabled(isSigningIn)
@@ -68,7 +68,7 @@ struct LinkDuplicateActiveView: View {
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(.secondary)
 
-            Text("Already in queue.")
+            Text(tr("Already in queue.", "อยู่ในคิวแล้ว"))
                 .font(.system(size: 12.5))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -95,7 +95,7 @@ struct LinkAnalysisErrorView: View {
                 .lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            Button("Retry", action: onRetry)
+            Button(tr("Retry", "ลองใหม่"), action: onRetry)
                 .buttonStyle(.bordered)
                 .controlSize(.small)
         }
@@ -126,7 +126,7 @@ struct DuplicateCompletedPromptView: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
 
-                    Text("You've already downloaded this")
+                    Text(tr("You've already downloaded this", "เคยดาวน์โหลดรายการนี้แล้ว"))
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
@@ -141,30 +141,30 @@ struct DuplicateCompletedPromptView: View {
                     if let totalBytes = analysis.totalBytes {
                         detail(Formatters.byteCount(totalBytes), icon: "internaldrive")
                     } else {
-                        detail("Size unknown", icon: "internaldrive")
+                        detail(tr("Size unknown", "ไม่ทราบขนาด"), icon: "internaldrive")
                     }
 
                     if let fileCount = analysis.fileCount {
-                        detail("\(fileCount) \(fileCount == 1 ? "file" : "files")", icon: "doc.on.doc")
+                        detail(tr("\(fileCount) \(fileCount == 1 ? "file" : "files")", "\(fileCount) ไฟล์"), icon: "doc.on.doc")
                     }
                 }
 
                 if let ownerName = analysis.ownerName {
-                    detail("Owned by \(ownerName)", icon: "person.crop.circle")
+                    detail(tr("Owned by \(ownerName)", "เจ้าของ: \(ownerName)"), icon: "person.crop.circle")
                 }
             }
             .font(.system(size: 11))
             .foregroundStyle(.secondary)
 
-            Text("Download again?")
+            Text(tr("Download again?", "ดาวน์โหลดอีกครั้ง?"))
                 .font(.system(size: 12.5, weight: .medium))
 
             HStack(spacing: 10) {
-                Button("Cancel", role: .cancel, action: onCancel)
+                Button(tr("Cancel", "ยกเลิก"), role: .cancel, action: onCancel)
                     .buttonStyle(.bordered)
 
                 Button(action: onDownloadAgain) {
-                    Label("Download Again", systemImage: "arrow.down.circle.fill")
+                    Label(tr("Download Again", "ดาวน์โหลดอีกครั้ง"), systemImage: "arrow.down.circle.fill")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)

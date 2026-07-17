@@ -68,7 +68,7 @@ struct QueueView: View {
             Spacer()
 
             if queue.contains(where: { $0.status == .completed }) {
-                Button("Clear done", action: onClearCompleted)
+                Button(tr("Clear done", "ล้างที่เสร็จ"), action: onClearCompleted)
                     .buttonStyle(.plain)
                     .font(.system(size: 10.5))
                     .foregroundStyle(DDTheme.accent)
@@ -76,13 +76,13 @@ struct QueueView: View {
             }
 
             if canPauseQueue {
-                Button("Pause all", action: onPauseQueue)
+                Button(tr("Pause all", "หยุดทั้งหมด"), action: onPauseQueue)
                     .buttonStyle(.plain)
                     .font(.system(size: 10.5))
                     .foregroundStyle(DDTheme.accent)
                     .accessibilityLabel("Pause the download queue")
             } else if canResumeQueue {
-                Button("Resume all", action: onResumeQueue)
+                Button(tr("Resume all", "ทำต่อทั้งหมด"), action: onResumeQueue)
                     .buttonStyle(.plain)
                     .font(.system(size: 10.5))
                     .foregroundStyle(DDTheme.accent)
@@ -97,18 +97,18 @@ struct QueueView: View {
         let pending = queue.filter { $0.status == .ready }.count
         let done = queue.filter { $0.status == .completed }.count
         var parts: [String] = []
-        if downloading > 0 { parts.append("\(downloading) downloading") }
-        if pending > 0 { parts.append("\(pending) queued") }
-        if done > 0 { parts.append("\(done) done") }
-        return parts.isEmpty ? "Queue empty" : parts.joined(separator: " · ")
+        if downloading > 0 { parts.append(tr("\(downloading) downloading", "กำลังโหลด \(downloading)")) }
+        if pending > 0 { parts.append(tr("\(pending) queued", "รอคิว \(pending)")) }
+        if done > 0 { parts.append(tr("\(done) done", "เสร็จ \(done)")) }
+        return parts.isEmpty ? tr("Queue empty", "คิวว่าง") : parts.joined(separator: " · ")
     }
 
     private var summaryCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 16) {
-                    summaryDetail("\(summary.linkCount) \(summary.linkCount == 1 ? "link" : "links")", icon: "link")
-                    summaryDetail("\(summary.totalFiles) \(summary.totalFiles == 1 ? "file" : "files")", icon: "doc.on.doc")
+                    summaryDetail(tr("\(summary.linkCount) \(summary.linkCount == 1 ? "link" : "links")", "\(summary.linkCount) ลิงก์"), icon: "link")
+                    summaryDetail(tr("\(summary.totalFiles) \(summary.totalFiles == 1 ? "file" : "files")", "\(summary.totalFiles) ไฟล์"), icon: "doc.on.doc")
                 }
                 HStack(spacing: 16) {
                     summaryDetail(Formatters.byteCount(summary.totalBytes), icon: "internaldrive")
@@ -121,7 +121,7 @@ struct QueueView: View {
             .foregroundStyle(.secondary)
 
             Button(action: onStartQueue) {
-                Label("Download All", systemImage: "arrow.down.circle.fill")
+                Label(tr("Download All", "ดาวน์โหลดทั้งหมด"), systemImage: "arrow.down.circle.fill")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
@@ -143,9 +143,9 @@ struct QueueView: View {
                     .foregroundStyle(.orange)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Large Download")
+                    Text(tr("Large Download", "ดาวน์โหลดขนาดใหญ่"))
                         .font(.system(size: 13, weight: .semibold))
-                    Text("This will download \(Formatters.byteCount(summary.totalBytes)).")
+                    Text(tr("This will download \(Formatters.byteCount(summary.totalBytes)).", "จะดาวน์โหลดทั้งหมด \(Formatters.byteCount(summary.totalBytes))"))
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
@@ -154,10 +154,10 @@ struct QueueView: View {
             }
 
             HStack(spacing: 10) {
-                Button("Cancel", role: .cancel, action: onCancelLargeDownload)
+                Button(tr("Cancel", "ยกเลิก"), role: .cancel, action: onCancelLargeDownload)
                     .buttonStyle(.bordered)
 
-                Button("Continue", action: onConfirmLargeDownload)
+                Button(tr("Continue", "ดำเนินการต่อ"), action: onConfirmLargeDownload)
                     .buttonStyle(.borderedProminent)
                     .frame(maxWidth: .infinity)
             }
@@ -210,7 +210,7 @@ private struct QueueRow: View {
 
                 if item.status == .completed, let url = item.resultURL,
                    FileManager.default.fileExists(atPath: url.path) {
-                    Button("Open", action: onOpen)
+                    Button(tr("Open", "เปิด"), action: onOpen)
                         .buttonStyle(.plain)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(DDTheme.accent)
@@ -269,7 +269,7 @@ private struct QueueRow: View {
                         Spacer()
                     }
 
-                    Button("Retry", action: onRetry)
+                    Button(tr("Retry", "ลองใหม่"), action: onRetry)
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                 }
@@ -289,10 +289,10 @@ private struct QueueRow: View {
         .onHover { isHovering = $0 }
         .contextMenu {
             if item.status == .completed {
-                Button("Reveal in Finder", action: onRevealInFinder)
+                Button(tr("Reveal in Finder", "เปิดใน Finder"), action: onRevealInFinder)
             }
             if item.status != .downloading {
-                Button("Remove", action: onRemove)
+                Button(tr("Remove", "ลบออก"), action: onRemove)
             }
         }
     }
@@ -322,7 +322,7 @@ private struct QueueRow: View {
     private func inlineProgress(_ progress: DownloadProgress) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(progress.currentFileName.isEmpty ? "Downloading…" : progress.currentFileName)
+                Text(progress.currentFileName.isEmpty ? tr("Downloading…", "กำลังดาวน์โหลด…") : progress.currentFileName)
                     .font(.system(size: 10.5))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -343,7 +343,7 @@ private struct QueueRow: View {
 
             HStack(spacing: 4) {
                 if progress.totalBytes > 0 {
-                    Text("\(Formatters.byteCount(progress.bytesDownloaded)) of \(Formatters.byteCount(progress.totalBytes))")
+                    Text(tr("\(Formatters.byteCount(progress.bytesDownloaded)) of \(Formatters.byteCount(progress.totalBytes))", "\(Formatters.byteCount(progress.bytesDownloaded)) จาก \(Formatters.byteCount(progress.totalBytes))"))
                 }
 
                 if progress.bytesPerSecond > 0 {
@@ -358,7 +358,7 @@ private struct QueueRow: View {
 
                 Spacer()
 
-                Button("Cancel", role: .cancel, action: onCancelActive)
+                Button(tr("Cancel", "ยกเลิก"), role: .cancel, action: onCancelActive)
                     .buttonStyle(.bordered)
                     .controlSize(.mini)
             }
@@ -377,7 +377,7 @@ private struct QueueRow: View {
         Group {
             switch item.status {
             case .ready:
-                Text("queued")
+                Text(tr("queued", "รอคิว"))
                     .font(.system(size: 10.5))
                     .foregroundStyle(.tertiary)
             case .downloading:

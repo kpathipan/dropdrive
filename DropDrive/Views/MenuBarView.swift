@@ -24,10 +24,10 @@ struct MenuBarView: View {
 
         var title: String {
             switch self {
-            case .queue: "Queue"
-            case .recent: "Recent"
-            case .stats: "Statistics"
-            case .prefs: "Preferences"
+            case .queue: tr("Queue", "คิวดาวน์โหลด")
+            case .recent: tr("Recent", "ล่าสุด")
+            case .stats: tr("Statistics", "สถิติ")
+            case .prefs: tr("Preferences", "ตั้งค่า")
             }
         }
     }
@@ -97,9 +97,9 @@ struct MenuBarView: View {
         .task {
             viewModel.restoreLogin()
         }
-        .alert("Restore previous queue?", isPresented: $viewModel.showRestorePrompt) {
-            Button("Discard", role: .destructive) { viewModel.discardSavedQueue() }
-            Button("Restore") { viewModel.restoreSavedQueue() }
+        .alert(tr("Restore previous queue?", "กู้คืนคิวจากครั้งก่อน?"), isPresented: $viewModel.showRestorePrompt) {
+            Button(tr("Discard", "ทิ้งไป"), role: .destructive) { viewModel.discardSavedQueue() }
+            Button(tr("Restore", "กู้คืน")) { viewModel.restoreSavedQueue() }
         } message: {
             Text(restoreMessage)
         }
@@ -107,7 +107,7 @@ struct MenuBarView: View {
 
     private var restoreMessage: String {
         let count = viewModel.pendingRestoreQueue?.count ?? 0
-        return "You have \(count) item\(count == 1 ? "" : "s") from your last session."
+        return tr("You have \(count) item\(count == 1 ? "" : "s") from your last session.", "มี \(count) รายการค้างจากครั้งที่แล้ว")
     }
 
     // MARK: - Rail
@@ -150,14 +150,14 @@ struct MenuBarView: View {
                     .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
             .buttonStyle(.plain)
-            .help("Quit DropDrive")
+            .help(tr("Quit DropDrive", "ปิด DropDrive"))
             .accessibilityLabel("Quit DropDrive")
             .confirmationDialog(
-                "A download is in progress. Quit anyway?",
+                tr("A download is in progress. Quit anyway?", "กำลังดาวน์โหลดอยู่ ต้องการปิดแอพเลยไหม?"),
                 isPresented: $showQuitConfirm
             ) {
-                Button("Quit and stop downloading", role: .destructive) { NSApp.terminate(nil) }
-                Button("Keep downloading", role: .cancel) {}
+                Button(tr("Quit and stop downloading", "ปิดและหยุดดาวน์โหลด"), role: .destructive) { NSApp.terminate(nil) }
+                Button(tr("Keep downloading", "ดาวน์โหลดต่อ"), role: .cancel) {}
             }
         }
         .padding(.vertical, 10)
@@ -318,11 +318,11 @@ struct MenuBarView: View {
     }
 
     private var headerStatus: String {
-        if viewModel.isQueueProcessing { return "Downloading…" }
+        if viewModel.isQueueProcessing { return tr("Downloading…", "กำลังดาวน์โหลด…") }
         let cal = Calendar.current
         let today = historyStore.items.filter { $0.status == .completed && cal.isDateInToday($0.date) }.count
-        if today > 0 { return "\(today) today" }
-        return "Ready"
+        if today > 0 { return tr("\(today) today", "วันนี้ \(today) รายการ") }
+        return tr("Ready", "พร้อมใช้งาน")
     }
 
     private var recentCompleted: [DownloadHistoryItem] {
@@ -339,14 +339,14 @@ struct MenuBarView: View {
     private var recentPreview: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("Recent")
+                Text(tr("Recent", "ล่าสุด"))
                     .font(.system(size: 10.5, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .tracking(0.3)
 
                 Spacer()
 
-                Button("All downloads") {
+                Button(tr("All downloads", "ดูทั้งหมด")) {
                     withAnimation(Self.springMotion) { selectedPane = .recent }
                 }
                     .buttonStyle(.plain)
@@ -381,7 +381,7 @@ struct MenuBarView: View {
 
             Spacer(minLength: 8)
 
-            Button("Open") {
+            Button(tr("Open", "เปิด")) {
                 guard let url = item.itemURL else { return }
                 NSWorkspace.shared.open(url)
             }
@@ -399,7 +399,7 @@ struct MenuBarView: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
-            .help("Reveal in Finder")
+            .help(tr("Reveal in Finder", "เปิดใน Finder"))
             .accessibilityLabel("Reveal \(item.name) in Finder")
         }
         .padding(.horizontal, 10)
@@ -411,7 +411,7 @@ struct MenuBarView: View {
             Image(systemName: "tray.and.arrow.down")
                 .font(.system(size: 22, weight: .light))
                 .foregroundStyle(.tertiary)
-            Text("Paste or drop a Google Drive link to start.")
+            Text(tr("Paste or drop a Google Drive link to start.", "วางลิงก์ Google Drive เพื่อเริ่มดาวน์โหลด"))
                 .font(.system(size: 11.5))
                 .foregroundStyle(.secondary)
         }
@@ -572,11 +572,13 @@ private struct RailAccountButton: View {
         }
         .buttonStyle(.plain)
         .disabled(isSigningIn)
-        .help(account?.email ?? "Connect Google Drive")
+        .help(account?.email ?? tr("Connect Google Drive", "เชื่อมต่อ Google Drive"))
         .accessibilityLabel(account.map { "Account: \($0.name)" } ?? "Connect Google Drive")
         .popover(isPresented: $showPopover, arrowEdge: .trailing) {
+            // Unlike the main window, the popover chrome is drawn by AppKit in
+            // the system appearance — forcing light text here made it unreadable
+            // in dark mode, so the content follows the system instead.
             popoverContent
-                .colorScheme(.light)
         }
     }
 
@@ -632,7 +634,7 @@ private struct RailAccountButton: View {
                 Button {
                     NSWorkspace.shared.open(URL(string: "https://myaccount.google.com/permissions")!)
                 } label: {
-                    Text("Manage Connection")
+                    Text(tr("Manage Connection", "จัดการการเชื่อมต่อ"))
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(.plain)
@@ -641,7 +643,7 @@ private struct RailAccountButton: View {
                     showPopover = false
                     onSignOut()
                 } label: {
-                    Text("Disconnect")
+                    Text(tr("Disconnect", "ยกเลิกการเชื่อมต่อ"))
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(.plain)
@@ -652,12 +654,12 @@ private struct RailAccountButton: View {
             .frame(width: 230)
         } else {
             VStack(spacing: 10) {
-                Text("Connect your Google account to download private files and folders.")
+                Text(tr("Connect your Google account to download private files and folders.", "เชื่อมต่อบัญชี Google เพื่อดาวน์โหลดไฟล์และโฟลเดอร์ส่วนตัว"))
                     .font(.system(size: 11.5))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
 
-                Button("Continue with Google") {
+                Button(tr("Continue with Google", "เข้าสู่ระบบด้วย Google")) {
                     showPopover = false
                     onSignIn()
                 }

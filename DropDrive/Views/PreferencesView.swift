@@ -9,9 +9,9 @@ private enum BandwidthPreset: Hashable {
 
     var label: String {
         switch self {
-        case .unlimited: "Unlimited"
+        case .unlimited: tr("Unlimited", "ไม่จำกัด")
         case .megabytesPerSecond(let value): "\(value) MB/s"
-        case .custom: "Custom"
+        case .custom: tr("Custom", "กำหนดเอง")
         }
     }
 
@@ -30,6 +30,7 @@ private enum BandwidthPreset: Hashable {
 
 struct PreferencesView: View {
     @State private var preferences = PreferencesStore.shared
+    @State private var language = AppLanguage.shared
     @State private var customLimitMBps: Double = 1
     private let folderSelectionService: FolderSelectionServicing = FolderSelectionService()
 
@@ -37,31 +38,31 @@ struct PreferencesView: View {
         Form {
             Section {
                 HStack {
-                    Text(preferences.defaultDownloadFolderURL?.path(percentEncoded: false) ?? "None")
+                    Text(preferences.defaultDownloadFolderURL?.path(percentEncoded: false) ?? tr("None", "ยังไม่ได้ตั้ง"))
                         .foregroundStyle(preferences.defaultDownloadFolderURL == nil ? .secondary : .primary)
                         .lineLimit(1)
                         .truncationMode(.middle)
 
                     Spacer()
 
-                    Button("Choose…") { chooseDefaultFolder() }
+                    Button(tr("Choose…", "เลือก…")) { chooseDefaultFolder() }
 
                     if preferences.defaultDownloadFolderURL != nil {
-                        Button("Reset") { preferences.setDefaultDownloadFolder(nil) }
+                        Button(tr("Reset", "รีเซ็ต")) { preferences.setDefaultDownloadFolder(nil) }
                     }
                 }
             } header: {
-                Text("Default Download Folder")
+                Text(tr("Default Download Folder", "โฟลเดอร์ดาวน์โหลดเริ่มต้น"))
             }
 
             Section {
-                Toggle("Open Finder when a download completes", isOn: $preferences.openFinderWhenComplete)
-                Toggle("Play a sound when a download completes", isOn: $preferences.playNotificationSound)
-                Toggle("Launch DropDrive at login", isOn: $preferences.launchAtLogin)
+                Toggle(tr("Open Finder when a download completes", "เปิด Finder เมื่อดาวน์โหลดเสร็จ"), isOn: $preferences.openFinderWhenComplete)
+                Toggle(tr("Play a sound when a download completes", "เล่นเสียงเมื่อดาวน์โหลดเสร็จ"), isOn: $preferences.playNotificationSound)
+                Toggle(tr("Launch DropDrive at login", "เปิด DropDrive อัตโนมัติตอนเข้าเครื่อง"), isOn: $preferences.launchAtLogin)
             }
 
             Section {
-                Picker("Limit download speed", selection: bandwidthPresetBinding) {
+                Picker(tr("Limit download speed", "จำกัดความเร็วดาวน์โหลด"), selection: bandwidthPresetBinding) {
                     ForEach(BandwidthPreset.presets, id: \.self) { preset in
                         Text(preset.label).tag(preset)
                     }
@@ -69,7 +70,7 @@ struct PreferencesView: View {
 
                 if bandwidthPresetBinding.wrappedValue == .custom {
                     HStack {
-                        TextField("Speed limit", value: $customLimitMBps, format: .number)
+                        TextField(tr("Speed limit", "ความเร็วสูงสุด"), value: $customLimitMBps, format: .number)
                             .labelsHidden()
                             .onChange(of: customLimitMBps) { _, newValue in
                                 preferences.bandwidthLimitBytesPerSecond = max(0.1, newValue) * 1_048_576
@@ -79,15 +80,25 @@ struct PreferencesView: View {
                     }
                 }
             } header: {
-                Text("Bandwidth")
+                Text(tr("Bandwidth", "แบนด์วิดท์"))
             }
 
             Section {
-                LabeledContent("Version", value: appVersion)
+                Picker(tr("Language", "ภาษา"), selection: $language.code) {
+                    Text("English").tag(AppLanguage.english)
+                    Text("ไทย").tag(AppLanguage.thai)
+                }
+                .pickerStyle(.segmented)
             } header: {
-                Text("About")
+                Text(tr("Language", "ภาษา"))
+            }
+
+            Section {
+                LabeledContent(tr("Version", "เวอร์ชัน"), value: appVersion)
+            } header: {
+                Text(tr("About", "เกี่ยวกับ"))
             } footer: {
-                Text("Download Google Drive files and folders directly to your Mac.")
+                Text(tr("Download Google Drive files and folders directly to your Mac.", "ดาวน์โหลดไฟล์และโฟลเดอร์จาก Google Drive ลงเครื่อง Mac ของคุณโดยตรง"))
                     .foregroundStyle(.secondary)
             }
         }

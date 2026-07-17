@@ -19,11 +19,11 @@ struct StatisticsSection: View {
 
     var body: some View {
         Section {
-            statRow("Total Downloads", value: "\(completedItems.count)")
-            statRow("Total Files", value: "\(totalFiles)")
-            statRow("Total Downloaded", value: Formatters.byteCount(totalBytes))
+            statRow(tr("Total Downloads", "ดาวน์โหลดทั้งหมด"), value: "\(completedItems.count)")
+            statRow(tr("Total Files", "ไฟล์ทั้งหมด"), value: "\(totalFiles)")
+            statRow(tr("Total Downloaded", "ปริมาณที่ดาวน์โหลด"), value: Formatters.byteCount(totalBytes))
         } header: {
-            Text("Statistics")
+            Text(tr("Statistics", "สถิติ"))
         }
     }
 

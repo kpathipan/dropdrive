@@ -15,14 +15,14 @@ struct RecentDownloadsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Recent Downloads")
+                Text(tr("Recent Downloads", "ดาวน์โหลดล่าสุด"))
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .tracking(0.4)
 
                 Spacer()
 
-                Button("Clear History", action: onClearHistory)
+                Button(tr("Clear History", "ล้างประวัติ"), action: onClearHistory)
                     .buttonStyle(.plain)
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
@@ -34,7 +34,7 @@ struct RecentDownloadsView: View {
             }
 
             if filteredItems.isEmpty {
-                Text("No matching downloads")
+                Text(tr("No matching downloads", "ไม่พบรายการที่ค้นหา"))
                     .font(.system(size: 11.5))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -61,7 +61,7 @@ struct RecentDownloadsView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
 
-            TextField("Search downloads", text: $searchText)
+            TextField(tr("Search downloads", "ค้นหาดาวน์โหลด"), text: $searchText)
                 .textFieldStyle(.plain)
                 .font(.system(size: 12))
 
@@ -127,9 +127,9 @@ private struct RecentDownloadRow: View {
         .onHover { isHovering = $0 }
         .contextMenu {
             if item.itemURL != nil {
-                Button("Reveal in Finder") { onRevealInFinder(item) }
+                Button(tr("Reveal in Finder", "เปิดใน Finder")) { onRevealInFinder(item) }
             }
-            Button("Copy Google Drive Link") { onCopyLink(item) }
+            Button(tr("Copy Google Drive Link", "คัดลอกลิงก์ Google Drive")) { onCopyLink(item) }
         }
         .accessibilityElement(children: .combine)
     }
@@ -166,7 +166,7 @@ struct EmptyStateView: View {
                 .font(.system(size: 26))
                 .foregroundStyle(.tertiary)
 
-            Text("Download Google Drive files and folders effortlessly.")
+            Text(tr("Download Google Drive files and folders effortlessly.", "ดาวน์โหลดไฟล์และโฟลเดอร์จาก Google Drive ได้ง่ายๆ"))
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

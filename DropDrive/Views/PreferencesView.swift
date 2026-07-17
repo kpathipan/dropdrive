@@ -9,9 +9,9 @@ private enum BandwidthPreset: Hashable {
 
     var label: String {
         switch self {
-        case .unlimited: tr("Unlimited", "ไม่จำกัด")
+        case .unlimited: "Unlimited"
         case .megabytesPerSecond(let value): "\(value) MB/s"
-        case .custom: tr("Custom", "กำหนดเอง")
+        case .custom: "Custom"
         }
     }
 
@@ -45,10 +45,10 @@ struct PreferencesView: View {
 
                     Spacer()
 
-                    Button(tr("Choose…", "เลือก…")) { chooseDefaultFolder() }
+                    Button("Choose…") { chooseDefaultFolder() }
 
                     if preferences.defaultDownloadFolderURL != nil {
-                        Button(tr("Reset", "รีเซ็ต")) { preferences.setDefaultDownloadFolder(nil) }
+                        Button("Reset") { preferences.setDefaultDownloadFolder(nil) }
                     }
                 }
             } header: {

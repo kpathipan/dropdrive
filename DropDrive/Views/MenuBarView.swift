@@ -47,7 +47,7 @@ struct MenuBarView: View {
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-        .frame(width: 380, height: 420)
+        .frame(width: 340, height: 300)
         .background(DDTheme.canvas)
         .tint(DDTheme.accent)
         // The popover is designed light-only (white cards on a light canvas);
@@ -271,7 +271,7 @@ struct MenuBarView: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 22)
+        .padding(.vertical, 14)
     }
 
     @ViewBuilder

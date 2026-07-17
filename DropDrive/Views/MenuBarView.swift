@@ -45,16 +45,22 @@ struct MenuBarView: View {
     private static let springMotion = Animation.spring(response: 0.38, dampingFraction: 0.86)
     private static let paneHeaderAllowance: CGFloat = 36
     private static let maxWindowHeight: CGFloat = 480
+    /// The rail's natural height (logo + four tabs + avatar + power, plus
+    /// spacing and padding). Any shorter and the HStack centers the rail,
+    /// clipping the logo off the top and the power button off the bottom.
+    private static let minWindowHeight: CGFloat = 258
 
     private var windowHeight: CGFloat {
+        let raw: CGFloat
         switch selectedPane {
         case .queue, .recent:
-            return min(max(measuredHeight, 96) + Self.paneHeaderAllowance, Self.maxWindowHeight)
+            raw = measuredHeight + Self.paneHeaderAllowance
         case .stats:
-            return 230
+            raw = 230
         case .prefs:
-            return 330
+            raw = 330
         }
+        return min(max(raw, Self.minWindowHeight), Self.maxWindowHeight)
     }
 
     var body: some View {

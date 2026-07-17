@@ -14,12 +14,12 @@ struct DownloadFormView: View {
             HStack(spacing: 7) {
                 HStack(spacing: 7) {
                     Image(systemName: "link")
-                        .font(.system(size: 12))
+                        .font(.dd(12))
                         .foregroundStyle(.secondary)
 
                     TextField(tr("Paste or drop a Drive link…", "วางหรือลากลิงก์ Drive ที่นี่…"), text: $driveLink)
                         .textFieldStyle(.plain)
-                        .font(.system(size: 12.5))
+                        .font(.dd(12.5))
                         .disabled(isLocked)
                         .onSubmit(onSubmit)
                         .onExitCommand(perform: onEscape)
@@ -28,7 +28,7 @@ struct DownloadFormView: View {
                     if driveLink.isEmpty {
                         Button(action: pasteFromClipboard) {
                             Image(systemName: "doc.on.clipboard")
-                                .font(.system(size: 11))
+                                .font(.dd(11))
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(.secondary)
@@ -37,7 +37,7 @@ struct DownloadFormView: View {
                     } else {
                         Button(action: { driveLink = "" }) {
                             Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 11))
+                                .font(.dd(11))
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(.secondary)
@@ -51,7 +51,7 @@ struct DownloadFormView: View {
 
                 Button(action: onSubmit) {
                     Image(systemName: "arrow.down")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.dd(14, .semibold))
                         .foregroundStyle(.white)
                         .frame(width: 34, height: 34)
                         .background(
@@ -67,18 +67,18 @@ struct DownloadFormView: View {
 
             HStack(spacing: 5) {
                 Image(systemName: destinationURL == nil ? "folder" : "folder.fill")
-                    .font(.system(size: 10))
+                    .font(.dd(10))
                     .foregroundStyle(destinationURL == nil ? Color.secondary : DDTheme.accent)
 
                 Text(destinationURL?.path(percentEncoded: false) ?? tr("Choose a folder", "เลือกโฟลเดอร์"))
-                    .font(.system(size: 10.5))
+                    .font(.dd(10.5))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
 
                 Button(destinationURL == nil ? tr("Choose…", "เลือก…") : tr("Change…", "เปลี่ยน…"), action: onChooseDestination)
                     .buttonStyle(.plain)
-                    .font(.system(size: 10.5))
+                    .font(.dd(10.5))
                     .foregroundStyle(DDTheme.accent)
                     .disabled(isLocked)
                     .accessibilityLabel(destinationURL == nil ? "Choose destination folder" : "Change destination folder")

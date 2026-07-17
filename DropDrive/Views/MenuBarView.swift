@@ -73,6 +73,7 @@ struct MenuBarView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .frame(width: 340, height: windowHeight)
+        .font(.dd(13))
         .background(DDTheme.canvas)
         .tint(DDTheme.accent)
         // The popover is designed light-only (white cards on a light canvas);
@@ -144,7 +145,7 @@ struct MenuBarView: View {
                 }
             } label: {
                 Image(systemName: "power")
-                    .font(.system(size: 12))
+                    .font(.dd(12))
                     .foregroundStyle(.secondary)
                     .frame(width: 26, height: 26)
                     .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -170,7 +171,7 @@ struct MenuBarView: View {
             withAnimation(Self.springMotion) { selectedPane = pane }
         } label: {
             Image(systemName: pane.icon)
-                .font(.system(size: 14, weight: .medium))
+                .font(.dd(14, .medium))
                 .foregroundStyle(selectedPane == pane ? DDTheme.accent : Color.secondary)
                 .frame(width: 28, height: 28)
                 .background(
@@ -180,7 +181,7 @@ struct MenuBarView: View {
                 .overlay(alignment: .topTrailing) {
                     if pane == .queue, activeCount > 0 {
                         Text("\(activeCount)")
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.dd(9, .semibold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 4)
                             .padding(.vertical, 1)
@@ -222,14 +223,14 @@ struct MenuBarView: View {
                 Text("Drop").foregroundStyle(.primary)
                 Text("Drive").foregroundStyle(DDTheme.accent)
             }
-            .font(.system(size: 15, weight: .bold, design: .rounded))
+            .font(.dd(15, .bold))
             .accessibilityElement()
             .accessibilityLabel("DropDrive")
 
             Spacer()
 
             Text(headerStatus)
-                .font(.system(size: 10.5))
+                .font(.dd(10.5))
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 12)
@@ -340,7 +341,7 @@ struct MenuBarView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(tr("Recent", "ล่าสุด"))
-                    .font(.system(size: 10.5, weight: .semibold))
+                    .font(.dd(10.5, .semibold))
                     .foregroundStyle(.secondary)
                     .tracking(0.3)
 
@@ -350,7 +351,7 @@ struct MenuBarView: View {
                     withAnimation(Self.springMotion) { selectedPane = .recent }
                 }
                     .buttonStyle(.plain)
-                    .font(.system(size: 10.5))
+                    .font(.dd(10.5))
                     .foregroundStyle(DDTheme.accent)
                     .accessibilityLabel("Show all downloads")
             }
@@ -371,11 +372,11 @@ struct MenuBarView: View {
     private func recentPreviewRow(_ item: DownloadHistoryItem) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 12))
+                .font(.dd(12))
                 .foregroundStyle(.green)
 
             Text(item.name)
-                .font(.system(size: 11.5))
+                .font(.dd(11.5))
                 .lineLimit(1)
                 .truncationMode(.middle)
 
@@ -386,7 +387,7 @@ struct MenuBarView: View {
                 NSWorkspace.shared.open(url)
             }
             .buttonStyle(.plain)
-            .font(.system(size: 10.5, weight: .medium))
+            .font(.dd(10.5, .medium))
             .foregroundStyle(DDTheme.accent)
             .accessibilityLabel("Open \(item.name)")
 
@@ -395,7 +396,7 @@ struct MenuBarView: View {
                 NSWorkspace.shared.activateFileViewerSelecting([url])
             } label: {
                 Image(systemName: "folder")
-                    .font(.system(size: 10))
+                    .font(.dd(10))
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
@@ -409,10 +410,10 @@ struct MenuBarView: View {
     private var emptyQueueHint: some View {
         VStack(spacing: 8) {
             Image(systemName: "tray.and.arrow.down")
-                .font(.system(size: 22, weight: .light))
+                .font(.dd(22, .light))
                 .foregroundStyle(.tertiary)
             Text(tr("Paste or drop a Google Drive link to start.", "วางลิงก์ Google Drive เพื่อเริ่มดาวน์โหลด"))
-                .font(.system(size: 11.5))
+                .font(.dd(11.5))
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
@@ -597,7 +598,7 @@ private struct RailAccountButton: View {
             .clipShape(Circle())
         } else {
             Image(systemName: "person.crop.circle")
-                .font(.system(size: 17))
+                .font(.dd(17))
                 .foregroundStyle(.secondary)
                 .frame(width: 24, height: 24)
         }
@@ -608,7 +609,7 @@ private struct RailAccountButton: View {
             .fill(DDTheme.accent)
             .overlay {
                 Text(text)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.dd(11, .semibold))
                     .foregroundStyle(.white)
             }
     }
@@ -621,9 +622,9 @@ private struct RailAccountButton: View {
                     avatar
                     VStack(alignment: .leading, spacing: 1) {
                         Text(account.name)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.dd(12, .semibold))
                         Text(account.email)
-                            .font(.system(size: 11))
+                            .font(.dd(11))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
@@ -655,7 +656,7 @@ private struct RailAccountButton: View {
         } else {
             VStack(spacing: 10) {
                 Text(tr("Connect your Google account to download private files and folders.", "เชื่อมต่อบัญชี Google เพื่อดาวน์โหลดไฟล์และโฟลเดอร์ส่วนตัว"))
-                    .font(.system(size: 11.5))
+                    .font(.dd(11.5))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
 

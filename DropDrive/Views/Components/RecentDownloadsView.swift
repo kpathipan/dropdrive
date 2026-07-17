@@ -16,7 +16,7 @@ struct RecentDownloadsView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(tr("Recent Downloads", "ดาวน์โหลดล่าสุด"))
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.dd(11, .semibold))
                     .foregroundStyle(.secondary)
                     .tracking(0.4)
 
@@ -24,7 +24,7 @@ struct RecentDownloadsView: View {
 
                 Button(tr("Clear History", "ล้างประวัติ"), action: onClearHistory)
                     .buttonStyle(.plain)
-                    .font(.system(size: 11))
+                    .font(.dd(11))
                     .foregroundStyle(.secondary)
                     .accessibilityLabel("Clear download history")
             }
@@ -35,7 +35,7 @@ struct RecentDownloadsView: View {
 
             if filteredItems.isEmpty {
                 Text(tr("No matching downloads", "ไม่พบรายการที่ค้นหา"))
-                    .font(.system(size: 11.5))
+                    .font(.dd(11.5))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 14)
@@ -58,19 +58,19 @@ struct RecentDownloadsView: View {
     private var searchField: some View {
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 11))
+                .font(.dd(11))
                 .foregroundStyle(.secondary)
 
             TextField(tr("Search downloads", "ค้นหาดาวน์โหลด"), text: $searchText)
                 .textFieldStyle(.plain)
-                .font(.system(size: 12))
+                .font(.dd(12))
 
             if !searchText.isEmpty {
                 Button {
                     searchText = ""
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 11))
+                        .font(.dd(11))
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
@@ -98,7 +98,7 @@ private struct RecentDownloadRow: View {
                 .accessibilityLabel(statusLabel)
 
             Text(item.name)
-                .font(.system(size: 12.5))
+                .font(.dd(12.5))
                 .lineLimit(1)
                 .truncationMode(.middle)
 
@@ -109,7 +109,7 @@ private struct RecentDownloadRow: View {
                     onRevealInFinder(item)
                 } label: {
                     Image(systemName: "folder")
-                        .font(.system(size: 12))
+                        .font(.dd(12))
                 }
                 .buttonStyle(.borderless)
                 .foregroundStyle(isHovering ? Color.accentColor : .secondary)
@@ -118,7 +118,7 @@ private struct RecentDownloadRow: View {
             }
 
             Text(item.date, style: .time)
-                .font(.system(size: 11).monospacedDigit())
+                .font(.dd(11).monospacedDigit())
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 12)
@@ -163,11 +163,11 @@ struct EmptyStateView: View {
     var body: some View {
         VStack(spacing: 10) {
             Image(systemName: "tray.and.arrow.down")
-                .font(.system(size: 26))
+                .font(.dd(26))
                 .foregroundStyle(.tertiary)
 
             Text(tr("Download Google Drive files and folders effortlessly.", "ดาวน์โหลดไฟล์และโฟลเดอร์จาก Google Drive ได้ง่ายๆ"))
-                .font(.system(size: 12))
+                .font(.dd(12))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 260)

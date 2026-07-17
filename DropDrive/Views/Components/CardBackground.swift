@@ -12,6 +12,27 @@ enum DDTheme {
     static let accentSoft = Color(red: 0.918, green: 0.941, blue: 0.996) // #EAF0FE
 }
 
+extension Font {
+    /// App-wide typeface: Sukhumvit Set, the loopless Thai family bundled with
+    /// macOS (its Latin glyphs read cleanly too). Sizes are passed at the old
+    /// system-font values and rendered one point smaller across the board.
+    static func dd(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
+        let name: String
+        if weight == .bold || weight == .heavy || weight == .black {
+            name = "SukhumvitSet-Bold"
+        } else if weight == .semibold {
+            name = "SukhumvitSet-SemiBold"
+        } else if weight == .medium {
+            name = "SukhumvitSet-Medium"
+        } else if weight == .light || weight == .thin || weight == .ultraLight {
+            name = "SukhumvitSet-Light"
+        } else {
+            name = "SukhumvitSet-Text"
+        }
+        return .custom(name, size: size - 1)
+    }
+}
+
 struct CardBackground: ViewModifier {
     var cornerRadius: CGFloat = 10
 

@@ -7,7 +7,7 @@ struct LinkAnalyzingView: View {
                 .controlSize(.small)
 
             Text(tr("Analyzing link…", "กำลังวิเคราะห์ลิงก์…"))
-                .font(.system(size: 12.5))
+                .font(.dd(12.5))
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -25,7 +25,7 @@ struct LinkInvalidView: View {
                 .foregroundStyle(.orange)
 
             Text(tr("That doesn't look like a Google Drive link.", "ลิงก์นี้ดูไม่ใช่ลิงก์ Google Drive"))
-                .font(.system(size: 12.5))
+                .font(.dd(12.5))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -46,7 +46,7 @@ struct LinkNeedsConnectionView: View {
                 .foregroundStyle(.secondary)
 
             Text(tr("Sign in to Google Drive to access this item.", "ลงชื่อเข้า Google Drive เพื่อเข้าถึงรายการนี้"))
-                .font(.system(size: 12.5))
+                .font(.dd(12.5))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -69,7 +69,7 @@ struct LinkDuplicateActiveView: View {
                 .foregroundStyle(.secondary)
 
             Text(tr("Already in queue.", "อยู่ในคิวแล้ว"))
-                .font(.system(size: 12.5))
+                .font(.dd(12.5))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -90,7 +90,7 @@ struct LinkAnalysisErrorView: View {
                 .foregroundStyle(.orange)
 
             Text(message)
-                .font(.system(size: 12.5))
+                .font(.dd(12.5))
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -116,18 +116,18 @@ struct DuplicateCompletedPromptView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 Image(systemName: analysis.type == .folder ? "folder.fill" : "doc.fill")
-                    .font(.system(size: 22))
+                    .font(.dd(22))
                     .foregroundStyle(Color.accentColor)
                     .frame(width: 28)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(analysis.name)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.dd(13, .semibold))
                         .lineLimit(1)
                         .truncationMode(.middle)
 
                     Text(tr("You've already downloaded this", "เคยดาวน์โหลดรายการนี้แล้ว"))
-                        .font(.system(size: 11))
+                        .font(.dd(11))
                         .foregroundStyle(.secondary)
                 }
 
@@ -153,11 +153,11 @@ struct DuplicateCompletedPromptView: View {
                     detail(tr("Owned by \(ownerName)", "เจ้าของ: \(ownerName)"), icon: "person.crop.circle")
                 }
             }
-            .font(.system(size: 11))
+            .font(.dd(11))
             .foregroundStyle(.secondary)
 
             Text(tr("Download again?", "ดาวน์โหลดอีกครั้ง?"))
-                .font(.system(size: 12.5, weight: .medium))
+                .font(.dd(12.5, .medium))
 
             HStack(spacing: 10) {
                 Button(tr("Cancel", "ยกเลิก"), role: .cancel, action: onCancel)

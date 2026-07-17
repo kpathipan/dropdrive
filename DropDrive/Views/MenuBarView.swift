@@ -186,6 +186,10 @@ struct MenuBarView: View {
             .accessibilityLabel("DropDrive")
 
             Spacer()
+
+            Text(headerStatus)
+                .font(.system(size: 10.5))
+                .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 12)
         .padding(.top, 10)
@@ -241,7 +245,11 @@ struct MenuBarView: View {
                                 onReorder: viewModel.moveQueueItem
                             )
                         } else if viewModel.linkAnalysisState == .idle {
-                            emptyQueueHint
+                            if recentCompleted.isEmpty {
+                                emptyQueueHint
+                            } else {
+                                recentPreview
+                            }
                         }
                     }
                     .padding(.horizontal, 12)
@@ -259,6 +267,88 @@ struct MenuBarView: View {
         }
         .animation(.easeInOut(duration: 0.2), value: viewModel.linkAnalysisState)
         .animation(.easeInOut(duration: 0.2), value: viewModel.queue)
+    }
+
+    private var headerStatus: String {
+        if viewModel.isQueueProcessing { return "Downloading…" }
+        let cal = Calendar.current
+        let today = historyStore.items.filter { $0.status == .completed && cal.isDateInToday($0.date) }.count
+        if today > 0 { return "\(today) today" }
+        return "Ready"
+    }
+
+    private var recentCompleted: [DownloadHistoryItem] {
+        historyStore.items.filter { $0.status == .completed && $0.itemURL != nil }
+    }
+
+    /// Fills the empty-queue space with something useful: the last few finished
+    /// downloads, openable in place, with a jump to the full Recent pane.
+    private var recentPreview: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Recent")
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .tracking(0.3)
+
+                Spacer()
+
+                Button("All downloads") { selectedPane = .recent }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(DDTheme.accent)
+                    .accessibilityLabel("Show all downloads")
+            }
+            .padding(.horizontal, 2)
+
+            VStack(spacing: 0) {
+                ForEach(Array(recentCompleted.prefix(3).enumerated()), id: \.element.id) { index, item in
+                    if index > 0 {
+                        Divider().padding(.leading, 32)
+                    }
+                    recentPreviewRow(item)
+                }
+            }
+            .cardBackground()
+        }
+    }
+
+    private func recentPreviewRow(_ item: DownloadHistoryItem) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 12))
+                .foregroundStyle(.green)
+
+            Text(item.name)
+                .font(.system(size: 11.5))
+                .lineLimit(1)
+                .truncationMode(.middle)
+
+            Spacer(minLength: 8)
+
+            Button("Open") {
+                guard let url = item.itemURL else { return }
+                NSWorkspace.shared.open(url)
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 10.5, weight: .medium))
+            .foregroundStyle(DDTheme.accent)
+            .accessibilityLabel("Open \(item.name)")
+
+            Button {
+                guard let url = item.itemURL else { return }
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            } label: {
+                Image(systemName: "folder")
+                    .font(.system(size: 10))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("Reveal in Finder")
+            .accessibilityLabel("Reveal \(item.name) in Finder")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
     }
 
     private var emptyQueueHint: some View {

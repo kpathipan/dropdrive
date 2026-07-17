@@ -1,89 +1,37 @@
-# DropDrive v5.6.1 Release Notes
+# DropDrive v5.8.0 Release Notes
 
-Sign-in works again on a freely-distributed build, and two controls that
-looked clickable but weren't now are.
+DropDrive moved into the menu bar. There is no Dock icon and no main
+window any more — the whole app now lives in a single popover under its
+menu bar icon.
 
-## The headline: sign-in could never complete
+## The new shape
 
-"It asks me to connect while already connected" turned out to be two
-separate faults stacked, neither of them in the app's own logic.
+Click the tray icon in the menu bar and the full app opens right there. A
+narrow icon rail on the left switches between four panes:
 
-**GoogleSignIn couldn't write to the keychain.** It stores its session in
-the *data-protection* keychain, which on macOS requires an
-`application-identifier` entitlement that only a real Apple Team signature
-provides. An ad-hoc signed build has no team, so every write failed with
-`errSecMissingEntitlement` (-34018), and GID reported it as "keychain
-error" (-2) the instant the OAuth redirect succeeded — leaving the app
-permanently signed out. An ad-hoc test binary confirmed it: -34018 from
-the data-protection keychain, `errSecSuccess` from the file-based one.
+- **Queue** — the paste field, link analysis, and the live download queue
+  with per-item progress, pause/resume, and reveal-in-Finder. The rail
+  icon shows a badge with the number of active and pending downloads.
+- **Recent** — the searchable download history, with Reveal in Finder and
+  Copy Google Drive Link on every entry.
+- **Statistics** — the local-only download counters.
+- **Preferences** — everything the old Settings window had, plus an About
+  section with the version number. Quit is the power button at the bottom
+  of the rail.
 
-`LoginManager` now drives **AppAuth + GTMAppAuth directly** — both already
-linked — and asks for their file-based keychain store, which needs no
-entitlement. No fork, no private API, no new dependency.
+Dragging a Drive link from a browser onto the popover still works, as do
+the Share menu, deep links, sign-in, notifications, and everything else
+under the hood — the download engine is untouched from 5.7.1.
 
-**The account chip lied.** It fell back to a cached account even when no
-session could be restored, so the header claimed "connected" while every
-private-file analysis demanded sign-in. It now only shows an account that
-genuinely restores.
+## Why
 
-**Google Cloud consent screen** was also set to Internal, which rejected
-any account outside the owning Workspace with `403 org_internal` before the
-keychain even came into play. It's now External / in production.
-
-## Also fixed in 5.6.1
-
-- **The queue's ✕ did nothing.** Cancelled rows drew an `xmark.circle.fill`
-  status icon — the standard remove glyph — while Remove was right-click
-  only. Every row that isn't mid-download now has a real remove button, and
-  the cancelled icon is `slash.circle` so it stops posing as one.
-- **The Chrome button died silently after an extension reload.** A stale
-  content script threw an uncaught "Extension context invalidated"; it now
-  says "reload this page" instead.
-- Extension manifest version tracks the app again (it had sat at 5.4.4).
-
-## What was verified
-
-- A real **73 GB / 320-file** download across two private Drive folders,
-  end to end.
-- Sign-in completes with the `drive.readonly` scope; the session survives
-  quit/relaunch and an app update.
-- The account chip populates, and Drive API calls authenticate.
-- The **queue remove button** removes a real row.
-- The reloaded **Chrome extension** injects its button into a Thai-locale
-  Drive and hands the selection off to the app.
-
-## What wasn't verified
-
-- The **stale-extension toast**. It only fires when a content script
-  outlives an extension reload, and that reload was paired with a page
-  refresh — so the path it guards hasn't actually been walked.
-- Nothing has been tested on anyone else's Mac.
+DropDrive is a "paste a link, wait, done" utility — it never needed a
+persistent window or a Dock presence. As a menu bar app it stays out of
+the way, and with Launch at Login enabled it's always one click away.
 
 ## Upgrading
 
-Download `DropDrive-v5.6.1-adhoc.dmg`, open it, drag DropDrive.app to
-Applications, replacing the previous version.
-
-- The app isn't notarized, so the first launch is blocked — the DMG
-  includes an "If DropDrive won't open" note with the one-time Terminal
-  command (`xattr -d com.apple.quarantine /Applications/DropDrive.app`).
-- **After updating, macOS asks once for keychain access** ("DropDrive wants
-  to use your keychain"). Choose Always Allow — each ad-hoc rebuild changes
-  the app's signature, so the stored session's ACL no longer matches until
-  you re-approve it. The session itself survives.
-- For the Chrome extension: reload it from `chrome://extensions`, then
-  refresh any open drive.google.com tabs.
-
-## Known limitations
-
-- Everything above in "What wasn't verified."
-- **The ad-hoc build is not sandboxed.** A sandboxed app can't reach the
-  keychain without `keychain-access-groups`, which macOS only honours behind
-  a real Team prefix; self-assigning one makes launchd refuse to spawn the
-  app. Re-signing with the sandbox restored reproduced the failure. The
-  Team-signed build keeps its sandbox; the Share extension stays sandboxed.
-- Not notarized, so the quarantine step above is required on every Mac.
-- Google hasn't verified the OAuth app, so sign-in shows an "unverified
-  app" screen (Advanced → Go to DropDrive) and is capped at 100 users.
-- Chrome extension is loaded unpacked, not from the Web Store.
-- Update checker inactive pending a public repository.
+Open the DMG and drag DropDrive.app to Applications as usual. After
+launching, look for the tray icon in the top-right of the menu bar —
+there is deliberately no Dock icon and no window on launch now, so the
+menu bar icon *is* the app.

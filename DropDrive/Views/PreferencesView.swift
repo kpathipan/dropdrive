@@ -82,11 +82,17 @@ struct PreferencesView: View {
                 Text("Bandwidth")
             }
 
-            StatisticsSection()
+            Section {
+                LabeledContent("Version", value: appVersion)
+            } header: {
+                Text("About")
+            } footer: {
+                Text("Download Google Drive files and folders directly to your Mac.")
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
-        .frame(width: 420)
-        .fixedSize(horizontal: false, vertical: true)
+        .scrollContentBackground(.hidden)
         .task {
             preferences.syncLaunchAtLoginWithSystemState()
             if BandwidthPreset.matching(preferences.bandwidthLimitBytesPerSecond) == .custom,
@@ -94,6 +100,10 @@ struct PreferencesView: View {
                 customLimitMBps = stored / 1_048_576
             }
         }
+    }
+
+    private var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
     }
 
     private var bandwidthPresetBinding: Binding<BandwidthPreset> {

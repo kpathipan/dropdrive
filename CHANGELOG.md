@@ -5,6 +5,31 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [5.8.0] - DropDrive now lives in the menu bar
+
+### Changed
+- **DropDrive is now a menu-bar-only app.** There is no Dock icon and no
+  separate main window — clicking the tray icon in the menu bar opens the
+  whole app in a single popover window. `LSUIElement` is set, the old
+  `WindowGroup`/`Settings` scenes are gone, and with them the entire
+  family of duplicate-main-window workarounds in the app delegate.
+- **New icon-rail layout.** A narrow rail on the left of the popover
+  switches between four panes: Queue (paste field, link analysis, and the
+  live download queue), Recent (searchable history), Statistics, and
+  Preferences. The rail shows a badge with the number of active/pending
+  downloads, and Quit moved to a power button at the bottom of the rail.
+- **Preferences moved in-window.** The standalone Settings window is gone;
+  Preferences is a rail pane now, with an About section (version + blurb)
+  replacing the old About panel. Statistics got its own pane instead of
+  living inside Preferences.
+- **Notifications' "Open DropDrive" action** now just activates the app —
+  there is no window to order front any more; the menu bar icon is always
+  available.
+
+### Removed
+- `ContentView`, `StatusBarView`, and `WindowAccessor` — all only existed
+  to serve the old main window.
+
 ## [5.7.1] - Every queued file was sharing one destination
 
 ### Fixed

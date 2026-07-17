@@ -67,12 +67,11 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
                     }
                 }
             } else if actionID == NotificationService.openDropDriveActionID {
-                // Open DropDrive app
+                // Menu-bar-only app: there is no window to order front, and the
+                // menu bar extra can't be popped open programmatically — just
+                // activate so the menu bar icon is where the user left it.
                 await MainActor.run {
                     NSApp.activate(ignoringOtherApps: true)
-                    if let window = NSApplication.shared.windows.first {
-                        window.makeKeyAndOrderFront(nil)
-                    }
                 }
             }
             return

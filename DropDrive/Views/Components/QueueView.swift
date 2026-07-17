@@ -208,7 +208,8 @@ private struct QueueRow: View {
 
                 Spacer(minLength: 8)
 
-                if item.status == .completed {
+                if item.status == .completed, let url = item.resultURL,
+                   FileManager.default.fileExists(atPath: url.path) {
                     Button("Open", action: onOpen)
                         .buttonStyle(.plain)
                         .font(.system(size: 11, weight: .medium))

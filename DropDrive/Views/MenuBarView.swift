@@ -37,6 +37,7 @@ struct MenuBarView: View {
     @State private var selectedPane: Pane = .queue
     @State private var isDropTargeted = false
     @State private var historySearchText = ""
+    @State private var showQuitConfirm = false
     /// Live height of the active pane's content, reported by ContentHeightKey.
     /// The window hugs this (capped), so it grows and shrinks with the queue.
     @State private var measuredHeight: CGFloat = 110
@@ -130,7 +131,11 @@ struct MenuBarView: View {
             )
 
             Button {
-                NSApp.terminate(nil)
+                if viewModel.isQueueProcessing {
+                    showQuitConfirm = true
+                } else {
+                    NSApp.terminate(nil)
+                }
             } label: {
                 Image(systemName: "power")
                     .font(.system(size: 12))
@@ -141,6 +146,13 @@ struct MenuBarView: View {
             .buttonStyle(.plain)
             .help("Quit DropDrive")
             .accessibilityLabel("Quit DropDrive")
+            .confirmationDialog(
+                "A download is in progress. Quit anyway?",
+                isPresented: $showQuitConfirm
+            ) {
+                Button("Quit and stop downloading", role: .destructive) { NSApp.terminate(nil) }
+                Button("Keep downloading", role: .cancel) {}
+            }
         }
         .padding(.vertical, 10)
         .frame(width: 42)
@@ -308,7 +320,12 @@ struct MenuBarView: View {
     }
 
     private var recentCompleted: [DownloadHistoryItem] {
-        historyStore.items.filter { $0.status == .completed && $0.itemURL != nil }
+        historyStore.items.filter { item in
+            guard item.status == .completed, let url = item.itemURL else { return false }
+            // A row whose file was deleted or moved would have a dead Open
+            // button — leave it to the full Recent pane instead.
+            return FileManager.default.fileExists(atPath: url.path)
+        }
     }
 
     /// Fills the empty-queue space with something useful: the last few finished

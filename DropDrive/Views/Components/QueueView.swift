@@ -17,78 +17,89 @@ struct QueueView: View {
     let onRetry: (UUID) -> Void
     let onCancelActive: () -> Void
     let onRevealInFinder: (QueueItem) -> Void
+    let onOpen: (QueueItem) -> Void
     let onClearCompleted: () -> Void
     let onPauseQueue: () -> Void
     let onResumeQueue: () -> Void
     let onReorder: (UUID, UUID) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Queue")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .tracking(0.4)
-
-                Spacer()
-
-                if canPauseQueue {
-                    Button("Pause", action: onPauseQueue)
-                        .buttonStyle(.plain)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel("Pause the download queue")
-                } else if canResumeQueue {
-                    Button("Resume", action: onResumeQueue)
-                        .buttonStyle(.plain)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel("Resume the download queue")
-                }
-
-                if queue.contains(where: { $0.status == .completed }) {
-                    Button("Clear Completed", action: onClearCompleted)
-                        .buttonStyle(.plain)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel("Clear completed downloads from queue")
-                }
-            }
-
+        VStack(alignment: .leading, spacing: 7) {
             if showLargeDownloadWarning {
                 largeDownloadWarningCard
-            } else {
+            } else if canStartQueue {
                 summaryCard
             }
 
-            VStack(spacing: 0) {
-                ForEach(Array(queue.enumerated()), id: \.element.id) { index, item in
-                    if index > 0 {
-                        Divider().padding(.leading, 38)
-                    }
-                    QueueRow(
-                        item: item,
-                        isHighlighted: item.id == highlightedItemID,
-                        progress: item.status == .downloading ? activeProgress : nil,
-                        onRemove: { onRemove(item.id) },
-                        onRetry: { onRetry(item.id) },
-                        onCancelActive: onCancelActive,
-                        onRevealInFinder: { onRevealInFinder(item) }
-                    )
-                    .id(item.id)
-                    .applyingIf(item.status == .ready) { view in
-                        view
-                            .draggable(item.id.uuidString)
-                            .dropDestination(for: String.self) { draggedIDs, _ in
-                                guard let draggedIDString = draggedIDs.first, let draggedID = UUID(uuidString: draggedIDString) else { return false }
-                                onReorder(draggedID, item.id)
-                                return true
-                            }
-                    }
+            ForEach(queue) { item in
+                QueueRow(
+                    item: item,
+                    isHighlighted: item.id == highlightedItemID,
+                    progress: item.status == .downloading ? activeProgress : nil,
+                    onRemove: { onRemove(item.id) },
+                    onRetry: { onRetry(item.id) },
+                    onCancelActive: onCancelActive,
+                    onRevealInFinder: { onRevealInFinder(item) },
+                    onOpen: { onOpen(item) }
+                )
+                .id(item.id)
+                .applyingIf(item.status == .ready) { view in
+                    view
+                        .draggable(item.id.uuidString)
+                        .dropDestination(for: String.self) { draggedIDs, _ in
+                            guard let draggedIDString = draggedIDs.first, let draggedID = UUID(uuidString: draggedIDString) else { return false }
+                            onReorder(draggedID, item.id)
+                            return true
+                        }
                 }
             }
-            .cardBackground()
+
+            footer
         }
+    }
+
+    private var footer: some View {
+        HStack(spacing: 8) {
+            Text(footerSummary)
+                .font(.system(size: 10.5))
+                .foregroundStyle(.secondary)
+
+            Spacer()
+
+            if queue.contains(where: { $0.status == .completed }) {
+                Button("Clear done", action: onClearCompleted)
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(DDTheme.accent)
+                    .accessibilityLabel("Clear completed downloads from queue")
+            }
+
+            if canPauseQueue {
+                Button("Pause all", action: onPauseQueue)
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(DDTheme.accent)
+                    .accessibilityLabel("Pause the download queue")
+            } else if canResumeQueue {
+                Button("Resume all", action: onResumeQueue)
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(DDTheme.accent)
+                    .accessibilityLabel("Resume the download queue")
+            }
+        }
+        .padding(.horizontal, 2)
+    }
+
+    private var footerSummary: String {
+        let downloading = queue.filter { $0.status == .downloading || $0.status == .paused }.count
+        let pending = queue.filter { $0.status == .ready }.count
+        let done = queue.filter { $0.status == .completed }.count
+        var parts: [String] = []
+        if downloading > 0 { parts.append("\(downloading) downloading") }
+        if pending > 0 { parts.append("\(pending) queued") }
+        if done > 0 { parts.append("\(done) done") }
+        return parts.isEmpty ? "Queue empty" : parts.joined(separator: " · ")
     }
 
     private var summaryCard: some View {
@@ -164,15 +175,16 @@ private struct QueueRow: View {
     let onRetry: () -> Void
     let onCancelActive: () -> Void
     let onRevealInFinder: () -> Void
+    let onOpen: () -> Void
 
     @State private var isHovering = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
-                Image(systemName: item.analysis.type == .folder ? "folder.fill" : "doc.fill")
+                Image(systemName: leadingIconName)
                     .font(.system(size: 15))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(item.status == .completed ? Color.green : DDTheme.accent)
                     .frame(width: 20)
 
                 VStack(alignment: .leading, spacing: 1) {
@@ -194,6 +206,27 @@ private struct QueueRow: View {
                 }
 
                 Spacer(minLength: 8)
+
+                if item.status == .completed {
+                    Button("Open", action: onOpen)
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(DDTheme.accent)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(DDTheme.accentSoft))
+                        .help("Open the downloaded item")
+                        .accessibilityLabel("Open \(item.analysis.name)")
+
+                    Button(action: onRevealInFinder) {
+                        Image(systemName: "folder")
+                            .font(.system(size: 11))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("Reveal in Finder")
+                    .accessibilityLabel("Reveal in Finder")
+                }
 
                 statusIndicator
 
@@ -240,9 +273,15 @@ private struct QueueRow: View {
                 }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(isHighlighted ? Color.accentColor.opacity(0.14) : Color.clear)
+        .padding(.horizontal, 11)
+        .padding(.vertical, 9)
+        .cardBackground()
+        .overlay {
+            if isHighlighted {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(DDTheme.accent.opacity(0.5), lineWidth: 1)
+            }
+        }
         .animation(.easeInOut(duration: 0.3), value: isHighlighted)
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
@@ -327,18 +366,23 @@ private struct QueueRow: View {
         .padding(.leading, 30)
     }
 
+    private var leadingIconName: String {
+        if item.status == .completed { return "checkmark.circle.fill" }
+        return item.analysis.type == .folder ? "folder.fill" : "doc.fill"
+    }
+
     private var statusIndicator: some View {
         Group {
             switch item.status {
             case .ready:
-                Image(systemName: "circle")
+                Text("queued")
+                    .font(.system(size: 10.5))
                     .foregroundStyle(.tertiary)
             case .downloading:
                 ProgressView()
                     .controlSize(.small)
             case .completed:
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                EmptyView()
             case .failed:
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)

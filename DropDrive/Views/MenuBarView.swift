@@ -48,6 +48,11 @@ struct MenuBarView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .frame(width: 380, height: 420)
+        .background(DDTheme.canvas)
+        .tint(DDTheme.accent)
+        // The popover is designed light-only (white cards on a light canvas);
+        // letting it invert in system dark mode breaks every fixed color above.
+        .colorScheme(.light)
         .overlay {
             if isDropTargeted {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -82,7 +87,8 @@ struct MenuBarView: View {
             Image("AppLogo")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 24, height: 24)
+                .frame(width: 26, height: 26)
+                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
                 .accessibilityHidden(true)
                 .padding(.bottom, 6)
 
@@ -92,13 +98,21 @@ struct MenuBarView: View {
 
             Spacer()
 
+            RailAccountButton(
+                account: viewModel.googleAccount,
+                isSigningIn: viewModel.isSigningIn,
+                isLocked: viewModel.isQueueProcessing,
+                onSignIn: viewModel.signInWithGoogle,
+                onSignOut: viewModel.signOut
+            )
+
             Button {
                 NSApp.terminate(nil)
             } label: {
                 Image(systemName: "power")
-                    .font(.system(size: 13))
+                    .font(.system(size: 12))
                     .foregroundStyle(.secondary)
-                    .frame(width: 28, height: 28)
+                    .frame(width: 26, height: 26)
                     .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
             .buttonStyle(.plain)
@@ -107,7 +121,7 @@ struct MenuBarView: View {
         }
         .padding(.vertical, 10)
         .frame(width: 42)
-        .background(.quaternary.opacity(0.35))
+        .background(DDTheme.rail)
     }
 
     private func railButton(_ pane: Pane) -> some View {
@@ -116,11 +130,11 @@ struct MenuBarView: View {
         } label: {
             Image(systemName: pane.icon)
                 .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(selectedPane == pane ? Color.accentColor : Color.secondary)
+                .foregroundStyle(selectedPane == pane ? DDTheme.accent : Color.secondary)
                 .frame(width: 28, height: 28)
                 .background(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(selectedPane == pane ? Color.accentColor.opacity(0.14) : .clear)
+                        .fill(selectedPane == pane ? DDTheme.accentSoft : .clear)
                 )
                 .overlay(alignment: .topTrailing) {
                     if pane == .queue, activeCount > 0 {
@@ -129,7 +143,7 @@ struct MenuBarView: View {
                             .foregroundStyle(.white)
                             .padding(.horizontal, 4)
                             .padding(.vertical, 1)
-                            .background(Capsule().fill(Color.accentColor))
+                            .background(Capsule().fill(DDTheme.accent))
                             .offset(x: 4, y: -2)
                     }
                 }
@@ -165,21 +179,13 @@ struct MenuBarView: View {
         HStack(spacing: 8) {
             HStack(spacing: 0) {
                 Text("Drop").foregroundStyle(.primary)
-                Text("Drive").foregroundStyle(Color(red: 0.145, green: 0.388, blue: 0.922))
+                Text("Drive").foregroundStyle(DDTheme.accent)
             }
-            .font(.system(size: 14, weight: .bold, design: .rounded))
+            .font(.system(size: 15, weight: .bold, design: .rounded))
             .accessibilityElement()
             .accessibilityLabel("DropDrive")
 
             Spacer()
-
-            ConnectionToolbarControl(
-                account: viewModel.googleAccount,
-                isSigningIn: viewModel.isSigningIn,
-                isLocked: viewModel.isQueueProcessing,
-                onSignIn: viewModel.signInWithGoogle,
-                onSignOut: viewModel.signOut
-            )
         }
         .padding(.horizontal, 12)
         .padding(.top, 10)
@@ -224,6 +230,10 @@ struct MenuBarView: View {
                                 onRevealInFinder: { item in
                                     guard let url = item.resultURL else { return }
                                     NSWorkspace.shared.activateFileViewerSelecting([url])
+                                },
+                                onOpen: { item in
+                                    guard let url = item.resultURL else { return }
+                                    NSWorkspace.shared.open(url)
                                 },
                                 onClearCompleted: viewModel.clearCompletedQueueItems,
                                 onPauseQueue: viewModel.pauseQueue,
@@ -377,6 +387,124 @@ struct MenuBarView: View {
                     continuation.resume(returning: nil)
                 }
             }
+        }
+    }
+}
+
+// MARK: - Rail account button
+
+/// The "P" avatar at the bottom of the rail — tap for account details and
+/// disconnect when signed in, or a connect prompt when not.
+private struct RailAccountButton: View {
+    let account: GoogleAccount?
+    let isSigningIn: Bool
+    let isLocked: Bool
+    let onSignIn: () -> Void
+    let onSignOut: () -> Void
+
+    @State private var showPopover = false
+
+    var body: some View {
+        Button {
+            showPopover = true
+        } label: {
+            avatar
+        }
+        .buttonStyle(.plain)
+        .disabled(isSigningIn)
+        .help(account?.email ?? "Connect Google Drive")
+        .accessibilityLabel(account.map { "Account: \($0.name)" } ?? "Connect Google Drive")
+        .popover(isPresented: $showPopover, arrowEdge: .trailing) {
+            popoverContent
+                .colorScheme(.light)
+        }
+    }
+
+    @ViewBuilder
+    private var avatar: some View {
+        if let account {
+            AsyncImage(url: account.profileImageURL) { phase in
+                switch phase {
+                case .success(let image):
+                    image.resizable().aspectRatio(contentMode: .fill)
+                default:
+                    initialCircle(String(account.name.prefix(1)).uppercased())
+                }
+            }
+            .frame(width: 24, height: 24)
+            .clipShape(Circle())
+        } else {
+            Image(systemName: "person.crop.circle")
+                .font(.system(size: 17))
+                .foregroundStyle(.secondary)
+                .frame(width: 24, height: 24)
+        }
+    }
+
+    private func initialCircle(_ text: String) -> some View {
+        Circle()
+            .fill(DDTheme.accent)
+            .overlay {
+                Text(text)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+    }
+
+    @ViewBuilder
+    private var popoverContent: some View {
+        if let account {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 10) {
+                    avatar
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(account.name)
+                            .font(.system(size: 12, weight: .semibold))
+                        Text(account.email)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+
+                Divider()
+
+                Button {
+                    NSWorkspace.shared.open(URL(string: "https://myaccount.google.com/permissions")!)
+                } label: {
+                    Text("Manage Connection")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    showPopover = false
+                    onSignOut()
+                } label: {
+                    Text("Disconnect")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.red)
+                .disabled(isLocked)
+            }
+            .padding(14)
+            .frame(width: 230)
+        } else {
+            VStack(spacing: 10) {
+                Text("Connect your Google account to download private files and folders.")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+
+                Button("Continue with Google") {
+                    showPopover = false
+                    onSignIn()
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .padding(14)
+            .frame(width: 230)
         }
     }
 }

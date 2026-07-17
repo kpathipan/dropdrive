@@ -10,14 +10,16 @@ struct DownloadFormView: View {
     let onEscape: () -> Void
 
     var body: some View {
-        VStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 6) {
-                sectionLabel("Paste Google Drive link")
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 7) {
+                HStack(spacing: 7) {
+                    Image(systemName: "link")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
 
-                HStack(spacing: 8) {
-                    TextField("https://drive.google.com/...", text: $driveLink)
+                    TextField("Paste or drop a Drive link…", text: $driveLink)
                         .textFieldStyle(.plain)
-                        .font(.system(size: 13))
+                        .font(.system(size: 12.5))
                         .disabled(isLocked)
                         .onSubmit(onSubmit)
                         .onExitCommand(perform: onEscape)
@@ -26,6 +28,7 @@ struct DownloadFormView: View {
                     if driveLink.isEmpty {
                         Button(action: pasteFromClipboard) {
                             Image(systemName: "doc.on.clipboard")
+                                .font(.system(size: 11))
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(.secondary)
@@ -34,6 +37,7 @@ struct DownloadFormView: View {
                     } else {
                         Button(action: { driveLink = "" }) {
                             Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 11))
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(.secondary)
@@ -41,35 +45,47 @@ struct DownloadFormView: View {
                         .accessibilityLabel("Clear")
                     }
                 }
-                .padding(8)
+                .padding(.horizontal, 10)
+                .frame(height: 34)
                 .inputFieldBackground()
-            }
 
-            VStack(alignment: .leading, spacing: 6) {
-                sectionLabel("Save to")
-
-                HStack(spacing: 10) {
-                    Image(systemName: destinationURL == nil ? "folder" : "folder.fill")
-                        .foregroundStyle(destinationURL == nil ? .secondary : Color.accentColor)
-                        .frame(width: 16)
-
-                    Text(destinationURL?.path(percentEncoded: false) ?? "Choose a folder")
-                        .font(.system(size: 13))
-                        .foregroundStyle(destinationURL == nil ? .secondary : .primary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-
-                    Spacer(minLength: 12)
-
-                    Button(destinationURL == nil ? "Choose…" : "Change…", action: onChooseDestination)
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .disabled(isLocked)
-                        .accessibilityLabel(destinationURL == nil ? "Choose destination folder" : "Change destination folder")
+                Button(action: onSubmit) {
+                    Image(systemName: "arrow.down")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 34, height: 34)
+                        .background(
+                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                .fill(driveLink.isEmpty || isLocked ? DDTheme.accent.opacity(0.4) : DDTheme.accent)
+                        )
                 }
-                .padding(8)
-                .inputFieldBackground()
+                .buttonStyle(.plain)
+                .disabled(driveLink.isEmpty || isLocked)
+                .help("Download")
+                .accessibilityLabel("Download")
             }
+
+            HStack(spacing: 5) {
+                Image(systemName: destinationURL == nil ? "folder" : "folder.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(destinationURL == nil ? Color.secondary : DDTheme.accent)
+
+                Text(destinationURL?.path(percentEncoded: false) ?? "Choose a folder")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                Button(destinationURL == nil ? "Choose…" : "Change…", action: onChooseDestination)
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(DDTheme.accent)
+                    .disabled(isLocked)
+                    .accessibilityLabel(destinationURL == nil ? "Choose destination folder" : "Change destination folder")
+
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, 2)
         }
     }
 
@@ -77,12 +93,5 @@ struct DownloadFormView: View {
         if let text = NSPasteboard.general.string(forType: .string) {
             driveLink = text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
-    }
-
-    private func sectionLabel(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(.secondary)
-            .tracking(0.4)
     }
 }

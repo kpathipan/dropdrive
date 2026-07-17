@@ -17,13 +17,23 @@ struct QueueItem: Identifiable, Equatable, Codable {
     var resultURL: URL?
     var errorMessage: String?
 
+    /// Captured from the "Save to" folder at the moment this item was queued, not
+    /// read fresh when the download actually starts — the queue used to share one
+    /// global destination that was read at start time, so changing "Save to" while
+    /// something was still queued silently moved every pending item's destination,
+    /// including files queued before the change. `Optional` only so a `QueueItem`
+    /// persisted before this field existed still decodes; `processQueueIfNeeded`
+    /// falls back to the current global destination for those.
+    var destinationURL: URL?
+
     init(
         id: UUID = UUID(),
         driveLink: String,
         analysis: DriveLinkAnalysis,
         status: Status = .ready,
         resultURL: URL? = nil,
-        errorMessage: String? = nil
+        errorMessage: String? = nil,
+        destinationURL: URL? = nil
     ) {
         self.id = id
         self.driveLink = driveLink
@@ -31,6 +41,7 @@ struct QueueItem: Identifiable, Equatable, Codable {
         self.status = status
         self.resultURL = resultURL
         self.errorMessage = errorMessage
+        self.destinationURL = destinationURL
     }
 
     var itemID: String { analysis.itemID }

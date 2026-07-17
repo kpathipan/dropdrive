@@ -5,6 +5,45 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [5.7.1] - Every queued file was sharing one destination
+
+### Fixed
+- **Pasting a second link while one was downloading sent it to the same
+  folder as the first, no matter what "Save to" showed.** `QueueItem` had
+  no destination of its own — `processQueueIfNeeded` read the view model's
+  single `selectedDestinationURL` at the moment a download *started*, not
+  when it was queued. Changing "Save to" while anything was still pending
+  silently moved every queued item's destination, including files queued
+  before the change. `QueueItem` now captures `destinationURL` at enqueue
+  time; each item downloads to the folder that was selected when it was
+  added, and changing "Save to" only affects links pasted after that.
+- **"Connect" stayed up after a successful sign-in on a private file.**
+  `signInWithGoogle()` retried the pending link by assigning it back to
+  `driveLink`, relying on that property's `didSet` to re-trigger analysis.
+  But the link never left the text field, so the assignment was a no-op,
+  and `didSet` deliberately ignores no-op writes. Analysis never re-ran;
+  only quitting and re-pasting worked, because that's a real change.
+  `scheduleAnalysis()` is now called explicitly after sign-in.
+
+### Changed
+- **Folder downloads run several files at once instead of one at a time.**
+  A folder of many small files spent most of its wall-clock time on
+  per-file round-trip latency rather than transfer — paid once per file,
+  serially. Up to 5 files now download concurrently (each still eligible
+  for its own multi-part split past 20 MB), which should meaningfully
+  speed up folders with many files. Progress now reflects whichever file
+  most recently reported bytes rather than one strictly-ordered name, since
+  several are in flight at once.
+- **Removed the public/private lock-or-globe badge** from the queue rows
+  and the duplicate-download prompt — every file the reporting user
+  downloads is private, so it added nothing per-row. The "sign in to access
+  this item" lock icon is unrelated and stays; it's the only thing telling
+  the user *why* a Connect button appeared.
+- **Removed the Chrome extension** (`browser-extension/`). Pasting a link
+  directly, or using the macOS Share menu (`DropDriveShare.appex`, which
+  hands off through the same `dropdrive://` URL scheme independently of
+  the extension), remain.
+
 ## [5.7.0] - The DMG could never have run on an Intel Mac
 
 Reported from the first real attempt to hand the app to someone else:

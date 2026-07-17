@@ -132,8 +132,6 @@ struct DuplicateCompletedPromptView: View {
                 }
 
                 Spacer(minLength: 8)
-
-                visibilityBadge
             }
 
             Divider()
@@ -179,19 +177,5 @@ struct DuplicateCompletedPromptView: View {
 
     private func detail(_ text: String, icon: String) -> some View {
         Label(text, systemImage: icon)
-    }
-
-    private var visibilityBadge: some View {
-        HStack(spacing: 4) {
-            Image(systemName: analysis.isPublic ? "globe" : "lock.fill")
-            Text(analysis.isPublic ? "Public" : "Private")
-        }
-        .font(.system(size: 10, weight: .medium))
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(.quaternary.opacity(0.6), in: Capsule())
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(analysis.isPublic ? "Public" : "Private")
     }
 }

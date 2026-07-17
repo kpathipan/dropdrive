@@ -325,7 +325,7 @@ final class DropDriveViewModel {
     // MARK: - Queue
 
     private func enqueue(analysis: DriveLinkAnalysis, driveLink: String) {
-        queue.append(QueueItem(driveLink: driveLink, analysis: analysis))
+        queue.append(QueueItem(driveLink: driveLink, analysis: analysis, destinationURL: selectedDestinationURL))
         QueueStore.save(queue)
     }
 
@@ -349,10 +349,12 @@ final class DropDriveViewModel {
 
     private func processQueueIfNeeded() {
         guard activeQueueItemID == nil, !isQueuePaused else { return }
-        guard let destinationURL = selectedDestinationURL else { return }
         // A paused item was already in flight; give it priority over freshly-queued ones.
         let index = queue.firstIndex(where: { $0.status == .paused }) ?? queue.firstIndex(where: { $0.status == .ready })
         guard let index else { return }
+        // Each item carries the destination chosen when it was queued; only items
+        // persisted before that field existed fall back to the current selection.
+        guard let destinationURL = queue[index].destinationURL ?? selectedDestinationURL else { return }
         startDownloading(queue[index], destinationURL: destinationURL)
     }
 

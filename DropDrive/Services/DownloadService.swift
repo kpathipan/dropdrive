@@ -127,7 +127,16 @@ private actor AnalysisCache {
 /// sequential access. Protected by a lock rather than an actor: its methods are
 /// small, synchronous, and called from a non-async delegate callback, so making
 /// them `async` would force a Task-per-callback right back into the hot path.
-private final class ProgressTracker: @unchecked Sendable {
+// `nonisolated` on the type, not just its methods: it opted into `@unchecked
+// Sendable` and does its own NSLock-based synchronization specifically so it can
+// be called from any thread/task — concurrent folder-download workers included,
+// none of them MainActor. This project defaults every declaration to MainActor
+// isolation (`SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`), which applies
+// per-property as well as per-method — marking only the methods `nonisolated`
+// left their own stored-property accesses isolated to the main actor and just
+// moved the warning inside the lock. Opting the whole type out is what the
+// class's own locking already assumed.
+private nonisolated final class ProgressTracker: @unchecked Sendable {
     private let lock = NSLock()
     private var completedFiles: Int
     private let totalFiles: Int
@@ -335,6 +344,13 @@ struct GoogleDriveDownloadService: DownloadServicing {
     /// round trips (probe + N connection setups) aren't worth it.
     private static let multiPartThresholdBytes: Int64 = 20 * 1024 * 1024
     private static let multiPartCount = 4
+
+    /// A folder full of small files used to download one at a time, so most of the
+    /// wall-clock time was per-file round-trip latency rather than actual transfer —
+    /// a 266-file folder paid that latency 266 times over. Downloading several files
+    /// at once amortizes it; kept modest since each concurrent file can itself still
+    /// split into `multiPartCount` ranged connections once it's large enough.
+    private static let maxConcurrentFileDownloads = 5
 
     private static let exportMimeTypes: [String: (mimeType: String, fileExtension: String)] = [
         "application/vnd.google-apps.document": ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", "docx"),
@@ -554,26 +570,43 @@ struct GoogleDriveDownloadService: DownloadServicing {
         let completedBytes = alreadyDone.reduce(Int64(0)) { $0 + ($1.file.size ?? 0) }
         let tracker = ProgressTracker(totalFiles: plan.count, totalBytes: totalBytes, completedFiles: alreadyDone.count, bytesDownloaded: completedBytes)
 
-        for item in plan {
-            try Task.checkCancellation()
-            let expectedPath = item.destinationFolderURL.appendingPathComponent(Self.fileName(for: item.file)).path
-            guard !FileManager.default.fileExists(atPath: expectedPath) else {
-                continue // already downloaded in a prior attempt at this same item — resume, don't redo it
-            }
+        // already downloaded in a prior attempt at this same item — resume, don't redo it
+        var remaining = plan.filter {
+            !FileManager.default.fileExists(atPath: $0.destinationFolderURL.appendingPathComponent(Self.fileName(for: $0.file)).path)
+        }[...]
 
-            progress(tracker.startingFile(item.file.name))
-            try await downloadFile(
-                item.file,
-                into: item.destinationFolderURL,
-                credential: credential,
-                resourceKeys: resourceKeys,
-                resumeID: request.resumeID
-            ) { chunkSize in
-                if let update = tracker.addingBytes(chunkSize) {
-                    progress(update)
+        // Bounded-concurrency worker pool: `maxConcurrentFileDownloads` files in
+        // flight at once, refilling as each finishes, rather than the unbounded
+        // fan-out multiPartDownload uses for a single file's byte ranges. If any
+        // file throws, leaving this scope cancels every other in-flight download —
+        // same "one failure aborts the folder" behavior the sequential loop had.
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            func startNext() {
+                guard let item = remaining.popFirst() else { return }
+                group.addTask {
+                    try Task.checkCancellation()
+                    progress(tracker.startingFile(item.file.name))
+                    try await downloadFile(
+                        item.file,
+                        into: item.destinationFolderURL,
+                        credential: credential,
+                        resourceKeys: resourceKeys,
+                        resumeID: request.resumeID
+                    ) { chunkSize in
+                        if let update = tracker.addingBytes(chunkSize) {
+                            progress(update)
+                        }
+                    }
+                    progress(tracker.completingFile())
                 }
             }
-            progress(tracker.completingFile())
+
+            for _ in 0..<Self.maxConcurrentFileDownloads {
+                startNext()
+            }
+            while try await group.next() != nil {
+                startNext()
+            }
         }
 
         Self.clearResumeMarker(itemID: request.itemID, in: rootFolderURL)

@@ -195,11 +195,6 @@ private struct QueueRow: View {
 
                 Spacer(minLength: 8)
 
-                Image(systemName: item.analysis.isPublic ? "globe" : "lock.fill")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel(item.analysis.isPublic ? "Public" : "Private")
-
                 statusIndicator
 
                 // Removing used to be right-click-only. A cancelled row still drew

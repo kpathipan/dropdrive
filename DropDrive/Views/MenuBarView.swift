@@ -506,6 +506,12 @@ struct MenuBarView: View {
             LinkAnalyzingView()
         case .needsConnection:
             LinkNeedsConnectionView(isSigningIn: viewModel.isSigningIn, onConnect: viewModel.signInWithGoogle)
+        case .analyzed(let analysis):
+            AnalyzedPromptView(
+                analysis: analysis,
+                onDownload: viewModel.confirmAnalyzedDownload,
+                onCancel: viewModel.cancelAnalysis
+            )
         case .failed(let message):
             LinkAnalysisErrorView(message: message, onRetry: viewModel.retryAnalysis)
         case .duplicateActive:

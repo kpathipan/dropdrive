@@ -105,6 +105,63 @@ struct LinkAnalysisErrorView: View {
     }
 }
 
+/// Shown when analysis succeeds: the item's details plus an explicit Download
+/// confirm, so the destination can still be changed before anything is queued.
+struct AnalyzedPromptView: View {
+    let analysis: DriveLinkAnalysis
+    let onDownload: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Image(systemName: analysis.type == .folder ? "folder.fill" : "doc.fill")
+                    .font(.dd(22))
+                    .foregroundStyle(DDTheme.accent)
+                    .frame(width: 28)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(analysis.name)
+                        .font(.dd(13, .semibold))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    HStack(spacing: 4) {
+                        if let totalBytes = analysis.totalBytes {
+                            Text(Formatters.byteCount(totalBytes))
+                        }
+                        if let fileCount = analysis.fileCount {
+                            Text(tr("· \(fileCount) \(fileCount == 1 ? "file" : "files")", "· \(fileCount) ไฟล์"))
+                        }
+                        if let ownerName = analysis.ownerName {
+                            Text(tr("· by \(ownerName)", "· โดย \(ownerName)"))
+                        }
+                    }
+                    .font(.dd(11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+            }
+
+            HStack(spacing: 10) {
+                Button(tr("Cancel", "ยกเลิก"), role: .cancel, action: onCancel)
+                    .buttonStyle(.bordered)
+
+                Button(action: onDownload) {
+                    Label(tr("Download", "ดาวน์โหลด"), systemImage: "arrow.down.circle.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(14)
+        .cardBackground()
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+}
+
 /// Shown when a pasted link matches an item that already completed this session,
 /// asking whether to queue a fresh copy of it.
 struct DuplicateCompletedPromptView: View {

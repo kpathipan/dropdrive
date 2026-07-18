@@ -42,6 +42,12 @@ enum LinkAnalysisState: Equatable {
     case analyzing
     case needsConnection
     case failed(String)
+    /// Analysis succeeded; showing the result card and waiting for the user to
+    /// confirm (and to pick a destination first if they want) before anything is
+    /// queued. Auto-queueing here used to clear the link field the moment
+    /// analysis finished, which read as "the download button doesn't work" and
+    /// froze the destination before the user could change it.
+    case analyzed(DriveLinkAnalysis)
     /// The link's item ID matches a non-completed item already in the queue.
     case duplicateActive
     /// The link's item ID matches an item that already completed this session;

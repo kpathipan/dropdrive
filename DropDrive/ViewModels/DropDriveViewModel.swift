@@ -271,8 +271,27 @@ final class DropDriveViewModel {
             return
         }
 
+        if reportInline {
+            // Show the result and wait for an explicit confirm — the user may
+            // still want to change the destination folder for this item.
+            linkAnalysisState = .analyzed(analysis)
+        } else {
+            enqueue(analysis: analysis, driveLink: trimmedLink)
+        }
+    }
+
+    /// The user confirmed the analyzed link: queue it with whatever destination
+    /// is selected right now, and start immediately unless something is already
+    /// downloading (in which case it just lines up behind it).
+    func confirmAnalyzedDownload() {
+        guard case .analyzed(let analysis) = linkAnalysisState else { return }
+        let trimmedLink = driveLink.trimmingCharacters(in: .whitespacesAndNewlines)
         enqueue(analysis: analysis, driveLink: trimmedLink)
-        if reportInline { driveLink = "" }
+        driveLink = ""
+        linkAnalysisState = .idle
+        if !isQueueProcessing {
+            startQueueDownloads()
+        }
     }
 
     /// Checks Recent Downloads (which spans past app sessions), not just this
@@ -315,8 +334,14 @@ final class DropDriveViewModel {
         driveLink = ""
     }
 
-    /// Bypasses the debounce for an immediate confirm action (Return key).
+    /// The download button / Return key: confirms an already-analyzed link, or
+    /// bypasses the debounce and analyzes immediately otherwise.
     func handleSubmit() {
+        if case .analyzed = linkAnalysisState {
+            confirmAnalyzedDownload()
+            return
+        }
+
         let trimmed = driveLink.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 

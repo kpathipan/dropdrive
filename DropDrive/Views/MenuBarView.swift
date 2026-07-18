@@ -576,11 +576,19 @@ private struct RailAccountButton: View {
         .help(account?.email ?? tr("Connect Google Drive", "เชื่อมต่อ Google Drive"))
         .accessibilityLabel(account.map { "Account: \($0.name)" } ?? "Connect Google Drive")
         .popover(isPresented: $showPopover, arrowEdge: .trailing) {
-            // Unlike the main window, the popover chrome is drawn by AppKit in
-            // the system appearance — forcing light text here made it unreadable
-            // in dark mode, so the content follows the system instead.
+            // The popover chrome is drawn by AppKit in the SYSTEM appearance,
+            // but its SwiftUI content inherits the main window's forced-light
+            // environment — black text on a dark popover. Resolve the actual
+            // system appearance and pin the content to it explicitly.
             popoverContent
+                .colorScheme(systemColorScheme)
         }
+    }
+
+    /// The real system appearance, not the light scheme the presenting window
+    /// forces on its environment. Evaluated when the popover opens.
+    private var systemColorScheme: ColorScheme {
+        NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? .dark : .light
     }
 
     @ViewBuilder

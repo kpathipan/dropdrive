@@ -44,6 +44,7 @@ struct MenuBarView: View {
     /// First-run walkthrough: shown once in place of the whole window, mostly to
     /// tell friends the app lives in the menu bar and has no Dock icon.
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
+    @State private var theme = AppTheme.shared
 
     private static let springMotion = Animation.spring(response: 0.38, dampingFraction: 0.86)
     private static let paneHeaderAllowance: CGFloat = 36
@@ -61,7 +62,7 @@ struct MenuBarView: View {
         case .stats:
             raw = 230
         case .prefs:
-            raw = 330
+            raw = 400
         }
         return min(max(raw, Self.minWindowHeight), Self.maxWindowHeight)
     }
@@ -85,9 +86,10 @@ struct MenuBarView: View {
         .font(.dd(13))
         .background(DDTheme.canvas)
         .tint(DDTheme.accent)
-        // The popover is designed light-only (white cards on a light canvas);
-        // letting it invert in system dark mode breaks every fixed color above.
-        .colorScheme(.light)
+        // Pin the scheme to the in-app theme (system/light/dark) rather than the
+        // window's inherited appearance, so `.primary`/`.secondary` text always
+        // matches the DDTheme surfaces being drawn.
+        .colorScheme(theme.isDark ? .dark : .light)
         .animation(Self.springMotion, value: windowHeight)
         .onPreferenceChange(ContentHeightKey.self) { height in
             guard height > 0 else { return }
@@ -106,6 +108,12 @@ struct MenuBarView: View {
         }
         .task {
             viewModel.restoreLogin()
+        }
+        .alert(tr("Not enough disk space", "พื้นที่ดิสก์ไม่พอ"), isPresented: $viewModel.showDiskSpaceWarning) {
+            Button(tr("Cancel", "ยกเลิก"), role: .cancel) { viewModel.cancelDiskSpaceWarning() }
+            Button(tr("Download anyway", "ดาวน์โหลดต่อ"), role: .destructive) { viewModel.confirmDiskSpaceAndStart() }
+        } message: {
+            Text(viewModel.diskSpaceWarningMessage)
         }
         .alert(tr("Restore previous queue?", "กู้คืนคิวจากครั้งก่อน?"), isPresented: $viewModel.showRestorePrompt) {
             Button(tr("Discard", "ทิ้งไป"), role: .destructive) { viewModel.discardSavedQueue() }

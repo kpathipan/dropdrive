@@ -5,6 +5,20 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [5.10.0] - Theme choice and a disk space check
+
+### Added
+- **Theme picker in Preferences: System / Light / Dark.** The whole
+  popover palette (canvas, cards, rail, borders, accent) now resolves
+  through `AppTheme`, with a warm-dark counterpart to the light design
+  and a brighter accent blue for dark. System mode follows macOS
+  appearance changes live.
+- **Free-space check before starting a download.** If the queue's known
+  size (plus 200 MB headroom) won't fit on the destination volume, a
+  warning shows the needed vs. available sizes, with an explicit
+  "Download anyway" escape hatch. Sizes Drive didn't report count as
+  zero — a missed warning is preferred over a false one.
+
 ## [5.9.0] - Smarter downloads: auto-retry, live menu bar progress, clean cancels
 
 ### Added

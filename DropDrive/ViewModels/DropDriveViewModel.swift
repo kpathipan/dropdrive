@@ -333,13 +333,59 @@ final class DropDriveViewModel {
         QueueStore.save(queue)
     }
 
+    var showDiskSpaceWarning = false
+    var diskSpaceWarningMessage = ""
+
+    /// Headroom on top of the download size itself, so a download can't fill the
+    /// disk to the last byte even when the estimate is exact.
+    private static let diskSpaceHeadroomBytes: Int64 = 200 * 1024 * 1024
+
     func startQueueDownloads() {
         guard canStartQueue else { return }
+        if let message = diskSpaceShortfall() {
+            diskSpaceWarningMessage = message
+            showDiskSpaceWarning = true
+            return
+        }
         if isLargeDownload {
             showLargeDownloadWarning = true
         } else {
             processQueueIfNeeded()
         }
+    }
+
+    /// The user saw the free-space warning and chose to download anyway.
+    func confirmDiskSpaceAndStart() {
+        showDiskSpaceWarning = false
+        if isLargeDownload {
+            showLargeDownloadWarning = true
+        } else {
+            processQueueIfNeeded()
+        }
+    }
+
+    func cancelDiskSpaceWarning() {
+        showDiskSpaceWarning = false
+    }
+
+    /// Non-nil when the pending queue's known size won't fit in the destination
+    /// volume's free space (plus headroom). Sizes Drive didn't report count as
+    /// zero — better an occasional missed warning than a false one.
+    private func diskSpaceShortfall() -> String? {
+        let needed = queueSummary.totalBytes
+        guard needed > 0,
+              let destination = readyItems.first?.destinationURL ?? selectedDestinationURL,
+              let values = try? destination.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
+              let free = values.volumeAvailableCapacityForImportantUsage,
+              free > 0,
+              free < needed + Self.diskSpaceHeadroomBytes else { return nil }
+
+        let neededText = Formatters.byteCount(needed)
+        let freeText = Formatters.byteCount(free)
+        return tr(
+            "This download needs \(neededText), but the destination disk only has \(freeText) free.",
+            "ดาวน์โหลดนี้ต้องใช้พื้นที่ \(neededText) แต่ดิสก์ปลายทางเหลือ \(freeText)"
+        )
     }
 
     func confirmLargeDownloadAndStart() {

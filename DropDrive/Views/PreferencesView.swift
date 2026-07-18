@@ -31,6 +31,7 @@ private enum BandwidthPreset: Hashable {
 struct PreferencesView: View {
     @State private var preferences = PreferencesStore.shared
     @State private var language = AppLanguage.shared
+    @State private var theme = AppTheme.shared
     @State private var customLimitMBps: Double = 1
     private let folderSelectionService: FolderSelectionServicing = FolderSelectionService()
 
@@ -91,6 +92,17 @@ struct PreferencesView: View {
                 .pickerStyle(.segmented)
             } header: {
                 Text(tr("Language", "ภาษา"))
+            }
+
+            Section {
+                Picker(tr("Theme", "ธีม"), selection: $theme.mode) {
+                    Text(tr("System", "ตามอุปกรณ์")).tag(AppTheme.system)
+                    Text(tr("Light", "สว่าง")).tag(AppTheme.light)
+                    Text(tr("Dark", "มืด")).tag(AppTheme.dark)
+                }
+                .pickerStyle(.segmented)
+            } header: {
+                Text(tr("Theme", "ธีม"))
             }
 
             Section {

@@ -5,6 +5,17 @@ import UserNotifications
 /// from the Share extension) to the shared view model, and opens the fallback
 /// window when the app is launched again while already running.
 final class DropDriveAppDelegate: NSObject, NSApplicationDelegate {
+    private let servicesProvider = ServicesProvider()
+
+    func applicationDidFinishLaunching(_ notification: Foundation.Notification) {
+        // Right-click "Download with DropDrive" on selected text anywhere —
+        // a plain NSServices entry + provider, no app extension involved.
+        NSApp.servicesProvider = servicesProvider
+        NSUpdateDynamicServices()
+        // Start watching the iCloud Drive phone inbox.
+        _ = PhoneInboxService.shared
+    }
+
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
             DropDriveViewModel.shared.handleIncomingURL(url)
@@ -18,6 +29,38 @@ final class DropDriveAppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         FallbackWindow.show()
         return false
+    }
+}
+
+/// Receives the "Download with DropDrive" macOS Service: selected text from any
+/// app arrives on the pasteboard, every link in it goes to the shared queue.
+final class ServicesProvider: NSObject {
+    @objc func downloadWithDropDrive(
+        _ pasteboard: NSPasteboard,
+        userData: String?,
+        error: AutoreleasingUnsafeMutablePointer<NSString>
+    ) {
+        var text = pasteboard.string(forType: .string) ?? ""
+        if text.isEmpty, let url = pasteboard.string(forType: .URL) {
+            text = url
+        }
+        guard !text.isEmpty else { return }
+
+        var links: [String] = []
+        let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+        detector?.enumerateMatches(in: text, range: NSRange(text.startIndex..., in: text)) { match, _, _ in
+            if let url = match?.url, url.scheme == "https" || url.scheme == "http" {
+                links.append(url.absoluteString)
+            }
+        }
+        guard !links.isEmpty else { return }
+
+        Task { @MainActor in
+            DropDriveViewModel.shared.receiveExternalLinks(
+                links,
+                sourceLabel: tr("from the Services menu", "จากเมนูคลิกขวา")
+            )
+        }
     }
 }
 

@@ -178,6 +178,42 @@ final class DropDriveViewModel {
         }
     }
 
+    /// Links handed in from outside the paste box — the phone inbox or the
+    /// right-click Service. Analyzed and queued silently (video links included,
+    /// full-video mode), a notification confirms what arrived, and the queue
+    /// starts on its own if idle — the sender isn't looking at the window.
+    func receiveExternalLinks(_ links: [String], sourceLabel: String) {
+        Task {
+            var queuedNames: [String] = []
+            for link in links {
+                if VideoDownloadService.isSupportedLink(link) {
+                    guard let analysis = try? await videoDownloadService.analyze(link),
+                          !queue.contains(where: { $0.itemID == analysis.itemID }) else { continue }
+                    enqueue(analysis: analysis, driveLink: link)
+                    queuedNames.append(analysis.name)
+                } else if let itemID = GoogleDriveLinkParser.itemID(from: link) {
+                    let resourceKey = GoogleDriveLinkParser.resourceKey(from: link)
+                    guard let result = try? await downloadService.analyzeLink(itemID: itemID, resourceKey: resourceKey),
+                          case .success(let analysis) = result,
+                          !queue.contains(where: { $0.itemID == analysis.itemID }) else { continue }
+                    enqueue(analysis: analysis, driveLink: link)
+                    queuedNames.append(analysis.name)
+                }
+            }
+
+            guard !queuedNames.isEmpty else { return }
+            NotificationService.notify(
+                title: tr("Link received \(sourceLabel)", "รับลิงก์\(sourceLabel)แล้ว"),
+                body: queuedNames.count == 1
+                    ? queuedNames[0]
+                    : tr("\(queuedNames.count) items queued", "เข้าคิว \(queuedNames.count) รายการ")
+            )
+            if !isQueueProcessing {
+                startQueueDownloads()
+            }
+        }
+    }
+
     /// Analyzes and enqueues several links in order, silently (no inline analysis
     /// UI, no duplicate-redownload prompt) — used for a multi-file/folder selection
     /// handed off in one deep link. Items that fail to analyze (invalid, needs

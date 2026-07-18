@@ -10,6 +10,25 @@
 	<string>YOUR_GOOGLE_API_KEY</string>
 	<key>REVERSED_CLIENT_ID</key>
 	<string>com.googleusercontent.apps.657178095066-1uhb851427dlcc7komllr8sm4cjukl6h</string>
+	<key>NSServices</key>
+	<array>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Download with DropDrive</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>downloadWithDropDrive</string>
+			<key>NSPortName</key>
+			<string>DropDrive</string>
+			<key>NSSendTypes</key>
+			<array>
+				<string>public.utf8-plain-text</string>
+				<string>public.url</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

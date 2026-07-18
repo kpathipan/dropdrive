@@ -32,6 +32,7 @@ struct PreferencesView: View {
     @State private var preferences = PreferencesStore.shared
     @State private var language = AppLanguage.shared
     @State private var theme = AppTheme.shared
+    @State private var phoneInbox = PhoneInboxService.shared
     @State private var customLimitMBps: Double = 1
     private let folderSelectionService: FolderSelectionServicing = FolderSelectionService()
 
@@ -54,6 +55,16 @@ struct PreferencesView: View {
                 }
             } header: {
                 Text(tr("Default Download Folder", "โฟลเดอร์ดาวน์โหลดเริ่มต้น"))
+            }
+
+            Section {
+                Toggle(tr("Receive links from your phone (iCloud)", "รับลิงก์จากมือถือ (iCloud)"), isOn: $phoneInbox.isEnabled)
+            } footer: {
+                Text(tr(
+                    "An iOS Shortcut saves shared links into the DropDrive folder in iCloud Drive; the Mac queues them automatically.",
+                    "คำสั่งลัดบนไอโฟนจะเซฟลิงก์ลงโฟลเดอร์ DropDrive ใน iCloud Drive แล้ว Mac ดึงเข้าคิวให้เอง"
+                ))
+                .foregroundStyle(.secondary)
             }
 
             Section {

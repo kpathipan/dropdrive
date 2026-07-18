@@ -5,6 +5,17 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.4.0] - Send links from your phone, and a right-click Service
+
+### Added
+- **Send from phone.** An iOS Shortcut (share sheet) saves links into
+  the DropDrive folder in iCloud Drive; the Mac watches it, queues every
+  link automatically (videos included), notifies, and starts downloading
+  if idle. Toggle in Preferences.
+- **"Download with DropDrive" in the right-click menu.** Select any link
+  text in any app → Services → done. Plain NSServices registration — no
+  app extension.
+
 ## [6.3.0] - Thumbnails and clip trimming on the video card
 
 ### Added

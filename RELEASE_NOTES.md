@@ -1,4 +1,22 @@
-# DropDrive v6.3.0 Release Notes
+# DropDrive v6.4.0 Release Notes
+
+Two hands-free ways to feed the queue: from your iPhone, and from any
+right-click.
+
+## Send from phone (new in 6.4.0)
+
+Share a link on your iPhone → a small Shortcut saves it into the
+DropDrive folder in iCloud Drive → the Mac picks it up within seconds,
+queues it (TikTok/YouTube/IG/Drive alike), notifies you, and starts
+downloading. Setup instructions ship with this release; the toggle
+lives in Preferences.
+
+## Right-click → Download with DropDrive (new in 6.4.0)
+
+Select link text anywhere on the Mac — LINE, Notes, a web page — and
+right-click → Services → Download with DropDrive. No copying, no window.
+
+## From 6.3.0
 
 The video card got eyes and scissors: real thumbnails, and trim-before-
 download.

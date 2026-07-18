@@ -953,6 +953,28 @@ struct GoogleDriveDownloadService: DownloadServicing {
         return UniqueDestinationNaming.uniqueURL(for: candidate)
     }
 
+    /// Deletes the partially-downloaded folder a cancelled/removed queue item left
+    /// behind. The folder may have been uniquified to "Name (1)" on creation, so
+    /// every immediate subfolder of the destination is checked for this item's
+    /// in-progress marker rather than reconstructing the name. Only a folder still
+    /// carrying the marker is touched — a finished download had its marker cleared,
+    /// and a folder the user made themselves never had one, so neither can ever be
+    /// deleted here.
+    static func removePartialFolderArtifact(itemID: String, in destinationURL: URL) {
+        let contents = (try? FileManager.default.contentsOfDirectory(
+            at: destinationURL,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsSubdirectoryDescendants]
+        )) ?? []
+
+        for candidate in contents {
+            guard (try? candidate.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else { continue }
+            let marker = candidate.appendingPathComponent(resumeMarkerName)
+            guard let ownerID = try? String(contentsOf: marker, encoding: .utf8), ownerID == itemID else { continue }
+            try? FileManager.default.removeItem(at: candidate)
+        }
+    }
+
     private static func writeResumeMarker(itemID: String, in folderURL: URL) {
         let marker = folderURL.appendingPathComponent(resumeMarkerName)
         try? itemID.write(to: marker, atomically: true, encoding: .utf8)

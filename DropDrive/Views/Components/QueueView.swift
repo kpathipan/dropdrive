@@ -16,6 +16,8 @@ struct QueueView: View {
     let onRemove: (UUID) -> Void
     let onRetry: (UUID) -> Void
     let onCancelActive: () -> Void
+    let onPauseActive: () -> Void
+    let onResumePaused: () -> Void
     let onRevealInFinder: (QueueItem) -> Void
     let onOpen: (QueueItem) -> Void
     let onClearCompleted: () -> Void
@@ -39,6 +41,8 @@ struct QueueView: View {
                     onRemove: { onRemove(item.id) },
                     onRetry: { onRetry(item.id) },
                     onCancelActive: onCancelActive,
+                    onPauseActive: onPauseActive,
+                    onResumePaused: onResumePaused,
                     onRevealInFinder: { onRevealInFinder(item) },
                     onOpen: { onOpen(item) }
                 )
@@ -175,6 +179,8 @@ private struct QueueRow: View {
     let onRemove: () -> Void
     let onRetry: () -> Void
     let onCancelActive: () -> Void
+    let onPauseActive: () -> Void
+    let onResumePaused: () -> Void
     let onRevealInFinder: () -> Void
     let onOpen: () -> Void
 
@@ -358,6 +364,10 @@ private struct QueueRow: View {
 
                 Spacer()
 
+                Button(tr("Pause", "หยุดพัก"), action: onPauseActive)
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+
                 Button(tr("Cancel", "ยกเลิก"), role: .cancel, action: onCancelActive)
                     .buttonStyle(.bordered)
                     .controlSize(.mini)
@@ -394,8 +404,13 @@ private struct QueueRow: View {
                 Image(systemName: "slash.circle")
                     .foregroundStyle(.secondary)
             case .paused:
-                Image(systemName: "pause.circle.fill")
-                    .foregroundStyle(.secondary)
+                Button(tr("Resume", "โหลดต่อ"), action: onResumePaused)
+                    .buttonStyle(.plain)
+                    .font(.dd(11, .medium))
+                    .foregroundStyle(DDTheme.accent)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(DDTheme.accentSoft))
             }
         }
         .font(.dd(13))

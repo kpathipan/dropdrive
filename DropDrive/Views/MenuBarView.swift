@@ -41,6 +41,9 @@ struct MenuBarView: View {
     /// Live height of the active pane's content, reported by ContentHeightKey.
     /// The window hugs this (capped), so it grows and shrinks with the queue.
     @State private var measuredHeight: CGFloat = 110
+    /// First-run walkthrough: shown once in place of the whole window, mostly to
+    /// tell friends the app lives in the menu bar and has no Dock icon.
+    @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
 
     private static let springMotion = Animation.spring(response: 0.38, dampingFraction: 0.86)
     private static let paneHeaderAllowance: CGFloat = 36
@@ -64,15 +67,21 @@ struct MenuBarView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            rail
+        Group {
+            if hasSeenWelcome {
+                HStack(spacing: 0) {
+                    rail
 
-            Divider()
+                    Divider()
 
-            detail
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    detail
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                }
+            } else {
+                welcomeView
+            }
         }
-        .frame(width: 340, height: windowHeight)
+        .frame(width: 340, height: hasSeenWelcome ? windowHeight : 320)
         .font(.dd(13))
         .background(DDTheme.canvas)
         .tint(DDTheme.accent)
@@ -109,6 +118,62 @@ struct MenuBarView: View {
     private var restoreMessage: String {
         let count = viewModel.pendingRestoreQueue?.count ?? 0
         return tr("You have \(count) item\(count == 1 ? "" : "s") from your last session.", "มี \(count) รายการค้างจากครั้งที่แล้ว")
+    }
+
+    // MARK: - Welcome
+
+    private var welcomeView: some View {
+        VStack(spacing: 14) {
+            Image("AppLogo")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 48, height: 48)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .accessibilityHidden(true)
+
+            HStack(spacing: 0) {
+                Text(tr("Welcome to ", "ยินดีต้อนรับสู่ "))
+                Text("Drop").foregroundStyle(.primary)
+                Text("Drive").foregroundStyle(DDTheme.accent)
+            }
+            .font(.dd(16, .bold))
+
+            VStack(alignment: .leading, spacing: 12) {
+                welcomeStep(1, tr("The app lives up here in the menu bar — there's no Dock icon.", "แอพอยู่บนเมนูบาร์ตรงนี้ ↑ ไม่มีไอคอนใน Dock"))
+                welcomeStep(2, tr("Copy a Google Drive link and paste it in the box.", "ก๊อปลิงก์ Google Drive มาวางในช่อง"))
+                welcomeStep(3, tr("Pick a download folder once — it's remembered.", "ตั้งโฟลเดอร์ปลายทางครั้งเดียว จำให้ตลอด"))
+            }
+            .padding(.horizontal, 8)
+
+            Button {
+                hasSeenWelcome = true
+            } label: {
+                Text(tr("Get started", "เริ่มใช้เลย"))
+                    .font(.dd(13, .medium))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 9)
+                    .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(DDTheme.accent))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 8)
+        }
+        .padding(20)
+    }
+
+    private func welcomeStep(_ number: Int, _ text: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text("\(number)")
+                .font(.dd(11, .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 20, height: 20)
+                .background(Circle().fill(DDTheme.accent))
+
+            Text(text)
+                .font(.dd(12))
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     // MARK: - Rail
@@ -274,6 +339,8 @@ struct MenuBarView: View {
                                 onRemove: viewModel.removeQueueItem,
                                 onRetry: viewModel.retryQueueItem,
                                 onCancelActive: viewModel.cancelActiveDownload,
+                                onPauseActive: viewModel.pauseQueue,
+                                onResumePaused: viewModel.resumeQueue,
                                 onRevealInFinder: { item in
                                     guard let url = item.resultURL else { return }
                                     NSWorkspace.shared.activateFileViewerSelecting([url])

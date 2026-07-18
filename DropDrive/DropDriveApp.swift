@@ -24,8 +24,10 @@ struct DropDriveApp: App {
     }
 
     var body: some Scene {
-        MenuBarExtra("DropDrive", systemImage: "tray.and.arrow.down.fill") {
+        MenuBarExtra {
             MenuBarView()
+        } label: {
+            MenuBarIconLabel()
         }
         .menuBarExtraStyle(.window)
     }

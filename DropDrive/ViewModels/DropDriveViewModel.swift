@@ -51,6 +51,16 @@ final class DropDriveViewModel {
     private var highlightTask: Task<Void, Never>?
     private var isPausingActiveItem = false
 
+    /// Auto-retry on network drops: attempts already made per queue item, and the
+    /// backoff before each retry. Cleared on success, pause, cancel, or removal.
+    private var autoRetryAttempts: [UUID: Int] = [:]
+    private static let autoRetryDelays: [Double] = [5, 15, 45]
+
+    /// Set for 2 seconds after the queue finishes its last item, so the menu bar
+    /// icon can flash a checkmark.
+    var showCompletionFlash = false
+    private var completionFlashTask: Task<Void, Never>?
+
     init() {
         let loginManager = LoginManager.shared
         self.loginManager = loginManager
@@ -375,13 +385,50 @@ final class DropDriveViewModel {
                     }
                 }
                 try Task.checkCancellation()
+                autoRetryAttempts[item.id] = nil
                 finishActiveItem(item.id, status: .completed, resultURL: resultURL, errorMessage: nil)
             } catch is CancellationError {
                 let status: QueueItem.Status = isPausingActiveItem ? .paused : .cancelled
                 isPausingActiveItem = false
+                autoRetryAttempts[item.id] = nil
                 finishActiveItem(item.id, status: status, resultURL: nil, errorMessage: nil)
             } catch {
-                finishActiveItem(item.id, status: .failed, resultURL: nil, errorMessage: Self.friendlyMessage(for: error))
+                // A network drop retries itself a few times with backoff before
+                // giving up — resume data is kept, so each retry continues from
+                // where the connection died rather than starting over.
+                let attempts = autoRetryAttempts[item.id, default: 0]
+                if error is URLError, attempts < Self.autoRetryDelays.count {
+                    scheduleAutoRetry(item, destinationURL: destinationURL, attempt: attempts + 1)
+                } else {
+                    autoRetryAttempts[item.id] = nil
+                    finishActiveItem(item.id, status: .failed, resultURL: nil, errorMessage: Self.friendlyMessage(for: error))
+                }
+            }
+        }
+    }
+
+    /// Waits out the backoff with the item still active (so the queue doesn't
+    /// advance past it), then restarts the same download. Cancel and pause during
+    /// the wait behave exactly as they do mid-download.
+    private func scheduleAutoRetry(_ item: QueueItem, destinationURL: URL, attempt: Int) {
+        autoRetryAttempts[item.id] = attempt
+        let delay = Self.autoRetryDelays[attempt - 1]
+        activeProgress = DownloadProgress(
+            currentFileName: tr(
+                "Connection lost — retrying in \(Int(delay))s (attempt \(attempt)/\(Self.autoRetryDelays.count))",
+                "เน็ตหลุด — ลองใหม่ใน \(Int(delay)) วิ (ครั้งที่ \(attempt)/\(Self.autoRetryDelays.count))"
+            )
+        )
+
+        downloadTask = Task {
+            try? await Task.sleep(for: .seconds(delay))
+            if Task.isCancelled {
+                let status: QueueItem.Status = isPausingActiveItem ? .paused : .cancelled
+                isPausingActiveItem = false
+                autoRetryAttempts[item.id] = nil
+                finishActiveItem(item.id, status: status, resultURL: nil, errorMessage: nil)
+            } else {
+                startDownloading(item, destinationURL: destinationURL)
             }
         }
     }
@@ -424,6 +471,7 @@ final class DropDriveViewModel {
             ))
         case .cancelled:
             ResumeEnvelopeStore.clear(for: item.id)
+            removePartialArtifacts(of: item)
             DownloadHistoryStore.shared.record(DownloadHistoryItem(
                 name: item.analysis.name, date: .now, status: .cancelled, driveLink: item.driveLink
             ))
@@ -431,7 +479,31 @@ final class DropDriveViewModel {
             break
         }
 
+        if status == .completed, !queue.contains(where: { $0.status == .ready || $0.status == .paused }) {
+            flashCompletion()
+        }
+
         processQueueIfNeeded()
+    }
+
+    /// A cancelled folder download leaves a partly-filled folder on disk; the user
+    /// asked for cancel to mean "nothing left behind", so it's deleted (matched by
+    /// the in-progress marker, never by name alone). Single files never leave
+    /// partial data at the destination — their in-flight bytes live in system temp.
+    private func removePartialArtifacts(of item: QueueItem) {
+        guard item.analysis.type == .folder,
+              let destinationURL = item.destinationURL ?? selectedDestinationURL else { return }
+        GoogleDriveDownloadService.removePartialFolderArtifact(itemID: item.itemID, in: destinationURL)
+    }
+
+    private func flashCompletion() {
+        showCompletionFlash = true
+        completionFlashTask?.cancel()
+        completionFlashTask = Task {
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            showCompletionFlash = false
+        }
     }
 
     /// Cancels the active download outright; any resume data it produced is discarded.
@@ -471,9 +543,15 @@ final class DropDriveViewModel {
 
     func removeQueueItem(_ id: UUID) {
         guard id != activeQueueItemID else { return }
+        // Removing an unfinished item is a cancellation from the user's point of
+        // view: whatever it already wrote to disk goes with it.
+        if let item = queue.first(where: { $0.id == id }), item.status != .completed {
+            removePartialArtifacts(of: item)
+        }
         queue.removeAll { $0.id == id }
         QueueStore.save(queue)
         ResumeEnvelopeStore.clear(for: id)
+        autoRetryAttempts[id] = nil
     }
 
     func clearCompletedQueueItems() {

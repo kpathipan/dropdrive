@@ -5,6 +5,30 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [5.9.0] - Smarter downloads: auto-retry, live menu bar progress, clean cancels
+
+### Added
+- **Network drops retry themselves.** A download that fails with a network
+  error now retries automatically up to three times (5s → 15s → 45s
+  backoff), continuing from resume data instead of starting over. The
+  active card shows the countdown; cancel and pause work during the wait.
+- **The menu bar icon shows live progress.** While downloading, the tray
+  icon becomes a progress ring (template-drawn, so it matches light and
+  dark menu bars); the queue finishing flashes a checkmark for two
+  seconds, and a failed item waiting for retry shows a warning triangle.
+- **Pause/Resume per item.** The active download card gained a Pause
+  button next to Cancel, and a paused row shows a Resume pill.
+- **First-run welcome.** A one-time three-step walkthrough (menu bar
+  location, paste a link, pick a folder) shown in place of the popover —
+  mostly so friends don't think the app "didn't open".
+
+### Changed
+- **Cancelling now leaves nothing behind.** Cancelling an active folder
+  download — or removing an unfinished item with ✕ — deletes the
+  partially-downloaded folder from disk. Matching is by the
+  `.dropdrive-inprogress` marker (never by name), so only folders the
+  app itself created mid-download can ever be removed.
+
 ## [5.8.0] - DropDrive now lives in the menu bar
 
 ### Changed

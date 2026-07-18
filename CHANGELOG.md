@@ -5,6 +5,13 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.2.0] - Instagram links
+
+### Added
+- **Instagram support** — public posts and reels download through the
+  same video pipeline (video or MP3). Login-walled or private content
+  shows yt-dlp's error on the failed card rather than pretending to work.
+
 ## [6.1.0] - MP3 extraction for video links
 
 ### Added

@@ -17,7 +17,7 @@ struct DownloadFormView: View {
                         .font(.dd(12))
                         .foregroundStyle(.secondary)
 
-                    TextField(tr("Drive / TikTok / YouTube link…", "วางลิงก์ Drive / TikTok / YouTube…"), text: $driveLink)
+                    TextField(tr("Drive / TikTok / YouTube / IG link…", "วางลิงก์ Drive / TikTok / YouTube / IG…"), text: $driveLink)
                         .textFieldStyle(.plain)
                         .font(.dd(12.5))
                         .disabled(isLocked)

@@ -10,9 +10,12 @@ struct VideoDownloadService {
         var errorDescription: String? { message }
     }
 
-    /// Hosts routed to yt-dlp instead of the Google Drive pipeline.
+    /// Hosts routed to yt-dlp instead of the Google Drive pipeline. Instagram
+    /// works for public posts/reels; login-walled content surfaces yt-dlp's
+    /// error on the failed card.
     private static let videoHosts = [
-        "tiktok.com", "youtube.com", "youtu.be", "facebook.com", "fb.watch"
+        "tiktok.com", "youtube.com", "youtu.be", "facebook.com", "fb.watch",
+        "instagram.com", "instagr.am"
     ]
 
     static func isSupportedLink(_ raw: String) -> Bool {

@@ -5,7 +5,7 @@ DropDrive is a native macOS app that downloads Google Drive files and folders di
 ## Features
 
 - **Smart Link Analysis** — paste a Drive link and see what it is (file or folder, size, file count, owner, public/private) before downloading anything, including items behind a Drive "shortcut" or a `resourcekey`-protected link
-- **Video downloads** — paste a TikTok / YouTube / Facebook link instead and DropDrive downloads the video through bundled yt-dlp + ffmpeg (TikTok without the watermark, YouTube at full quality), with the same queue, progress, and history
+- **Video downloads** — paste a TikTok / YouTube / Facebook / Instagram link instead and DropDrive downloads the video through bundled yt-dlp + ffmpeg (TikTok without the watermark, YouTube at full quality), with the same queue, progress, and history
 - Public links download without signing in; private links prompt for Google sign-in only when actually needed
 - Real progress reporting (bytes, speed, ETA) with cancel support; downloads **resume** after an interruption whenever the server allows it, and large files can download over **multiple concurrent connections**
 - Optional **bandwidth limit**, and a queue that can be **paused/resumed** and **reordered** by drag-and-drop

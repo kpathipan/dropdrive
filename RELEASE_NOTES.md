@@ -1,7 +1,12 @@
-# DropDrive v6.1.0 Release Notes
+# DropDrive v6.2.0 Release Notes
 
-Video links can now come down as MP3, on top of v6.0.0's video
-downloads.
+Instagram joins the video sources, on top of 6.1.0's MP3 extraction.
+
+## Instagram (new in 6.2.0)
+
+Public Instagram posts and reels download like any other video link —
+paste, confirm, video or MP3. Private or login-walled content fails
+with the site's actual error instead of pretending to work.
 
 ## Download as MP3 (new in 6.1.0)
 

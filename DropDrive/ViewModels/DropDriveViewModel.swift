@@ -306,10 +306,10 @@ final class DropDriveViewModel {
     /// is selected right now, and start immediately unless something is already
     /// downloading (in which case it just lines up behind it). `asAudio` is the
     /// MP3 choice on video cards.
-    func confirmAnalyzedDownload(asAudio: Bool = false) {
+    func confirmAnalyzedDownload(asAudio: Bool = false, clipSection: String? = nil) {
         guard case .analyzed(let analysis) = linkAnalysisState else { return }
         let trimmedLink = driveLink.trimmingCharacters(in: .whitespacesAndNewlines)
-        enqueue(analysis: analysis, driveLink: trimmedLink, asAudio: asAudio)
+        enqueue(analysis: analysis, driveLink: trimmedLink, asAudio: asAudio, clipSection: clipSection)
         driveLink = ""
         linkAnalysisState = .idle
         if !isQueueProcessing {
@@ -376,12 +376,13 @@ final class DropDriveViewModel {
 
     // MARK: - Queue
 
-    private func enqueue(analysis: DriveLinkAnalysis, driveLink: String, asAudio: Bool = false) {
+    private func enqueue(analysis: DriveLinkAnalysis, driveLink: String, asAudio: Bool = false, clipSection: String? = nil) {
         queue.append(QueueItem(
             driveLink: driveLink,
             analysis: analysis,
             destinationURL: selectedDestinationURL,
-            asAudio: asAudio ? true : nil
+            asAudio: asAudio ? true : nil,
+            clipSection: clipSection
         ))
         QueueStore.save(queue)
     }
@@ -521,7 +522,8 @@ final class DropDriveViewModel {
                     link: item.driveLink,
                     title: item.analysis.name,
                     destination: destinationURL,
-                    asAudio: item.asAudio == true
+                    asAudio: item.asAudio == true,
+                    clipSection: item.clipSection
                 ) { progress in
                     Task { @MainActor [self] in
                         self.activeProgress = progress

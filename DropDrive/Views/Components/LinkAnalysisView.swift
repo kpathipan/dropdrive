@@ -109,14 +109,43 @@ struct LinkAnalysisErrorView: View {
 /// confirm, so the destination can still be changed before anything is queued.
 struct AnalyzedPromptView: View {
     let analysis: DriveLinkAnalysis
-    let onDownload: (_ asAudio: Bool) -> Void
+    let onDownload: (_ asAudio: Bool, _ clipSection: String?) -> Void
     let onCancel: () -> Void
 
     /// Video links can come down as the video itself or extracted MP3.
     @State private var asAudio = false
+    /// Optional trim: only the "start–end" section is downloaded.
+    @State private var trimEnabled = false
+    @State private var trimStart = ""
+    @State private var trimEnd = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if analysis.isVideo == true, let thumbnail = analysis.thumbnailURL, let url = URL(string: thumbnail) {
+                AsyncImage(url: url) { phase in
+                    if case .success(let image) = phase {
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    } else {
+                        Rectangle().fill(.quaternary)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 110)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(alignment: .bottomTrailing) {
+                    if let duration = analysis.durationSeconds {
+                        Text(Self.timestamp(from: duration))
+                            .font(.dd(10, .medium).monospacedDigit())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(.black.opacity(0.65)))
+                            .padding(6)
+                    }
+                }
+                .accessibilityHidden(true)
+            }
+
             HStack(spacing: 12) {
                 Image(systemName: analysis.isVideo == true
                         ? "play.rectangle.fill"
@@ -157,6 +186,42 @@ struct AnalyzedPromptView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
+
+                Toggle(isOn: $trimEnabled.animation(.easeInOut(duration: 0.15))) {
+                    Text(tr("Trim to a section", "ตัดเฉพาะช่วง"))
+                        .font(.dd(11.5))
+                }
+                .toggleStyle(.checkbox)
+
+                if trimEnabled {
+                    HStack(spacing: 8) {
+                        TextField("0:00", text: $trimStart)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.dd(11.5).monospacedDigit())
+                            .frame(width: 64)
+                            .accessibilityLabel("Trim start time")
+
+                        Text("–").foregroundStyle(.secondary)
+
+                        TextField(analysis.durationSeconds.map(Self.timestamp(from:)) ?? "0:30", text: $trimEnd)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.dd(11.5).monospacedDigit())
+                            .frame(width: 64)
+                            .accessibilityLabel("Trim end time")
+
+                        Text(tr("min:sec", "นาที:วิ"))
+                            .font(.dd(10.5))
+                            .foregroundStyle(.secondary)
+
+                        Spacer(minLength: 0)
+                    }
+
+                    if trimInvalid {
+                        Text(tr("End must be after start (e.g. 0:10 – 1:30).", "เวลาจบต้องมากกว่าเวลาเริ่ม (เช่น 0:10 – 1:30)"))
+                            .font(.dd(10.5))
+                            .foregroundStyle(.orange)
+                    }
+                }
             }
 
             HStack(spacing: 10) {
@@ -164,7 +229,7 @@ struct AnalyzedPromptView: View {
                     .buttonStyle(.bordered)
 
                 Button {
-                    onDownload(asAudio)
+                    onDownload(asAudio, clipSection)
                 } label: {
                     Label(
                         asAudio ? tr("Download MP3", "ดาวน์โหลด MP3") : tr("Download", "ดาวน์โหลด"),
@@ -173,11 +238,50 @@ struct AnalyzedPromptView: View {
                     .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(trimEnabled && trimInvalid)
             }
         }
         .padding(14)
         .cardBackground()
         .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
+    // MARK: - Trim parsing
+
+    /// "start-end" in whole seconds for yt-dlp's --download-sections, or nil
+    /// when trimming is off / fields are empty.
+    private var clipSection: String? {
+        guard trimEnabled else { return nil }
+        let start = Self.seconds(from: trimStart) ?? 0
+        guard let end = Self.seconds(from: trimEnd), end > start else { return nil }
+        return "\(Int(start))-\(Int(end))"
+    }
+
+    private var trimInvalid: Bool {
+        guard trimEnabled else { return false }
+        // Empty end = nothing to cut yet; only flag a real, wrong input.
+        guard Self.seconds(from: trimEnd) != nil || !trimEnd.isEmpty else { return false }
+        return clipSection == nil
+    }
+
+    /// Accepts "90", "1:30", or "1:02:30".
+    private static func seconds(from text: String) -> Double? {
+        let parts = text.trimmingCharacters(in: .whitespaces).split(separator: ":")
+        guard !parts.isEmpty, parts.count <= 3 else { return nil }
+        var total: Double = 0
+        for part in parts {
+            guard let value = Double(part), value >= 0 else { return nil }
+            total = total * 60 + value
+        }
+        return total
+    }
+
+    private static func timestamp(from seconds: Double) -> String {
+        let total = Int(seconds.rounded())
+        if total >= 3600 {
+            return String(format: "%d:%02d:%02d", total / 3600, (total % 3600) / 60, total % 60)
+        }
+        return String(format: "%d:%02d", total / 60, total % 60)
     }
 }
 

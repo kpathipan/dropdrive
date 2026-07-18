@@ -32,6 +32,10 @@ struct DriveLinkAnalysis: Equatable, Sendable, Codable {
     /// True for a TikTok/YouTube/Facebook link handled by the yt-dlp engine.
     /// Optional so queue items persisted by older versions still decode.
     var isVideo: Bool?
+    /// Video links only: poster image and duration from the extractor, for the
+    /// confirm card's preview and the trim field hints.
+    var thumbnailURL: String?
+    var durationSeconds: Double?
 
     init(
         itemID: String,
@@ -43,7 +47,9 @@ struct DriveLinkAnalysis: Equatable, Sendable, Codable {
         fileCount: Int?,
         ownerName: String?,
         categoryBreakdown: CategoryBreakdown?,
-        isVideo: Bool? = nil
+        isVideo: Bool? = nil,
+        thumbnailURL: String? = nil,
+        durationSeconds: Double? = nil
     ) {
         self.itemID = itemID
         self.name = name
@@ -55,6 +61,8 @@ struct DriveLinkAnalysis: Equatable, Sendable, Codable {
         self.ownerName = ownerName
         self.categoryBreakdown = categoryBreakdown
         self.isVideo = isVideo
+        self.thumbnailURL = thumbnailURL
+        self.durationSeconds = durationSeconds
     }
 }
 

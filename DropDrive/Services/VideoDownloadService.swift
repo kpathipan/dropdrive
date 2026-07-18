@@ -56,6 +56,7 @@ struct VideoDownloadService {
 
         let size = (json["filesize_approx"] as? Int64) ?? (json["filesize"] as? Int64)
         let uploader = (json["uploader"] as? String) ?? (json["channel"] as? String)
+        let duration = (json["duration"] as? Double) ?? (json["duration"] as? Int).map(Double.init)
 
         return DriveLinkAnalysis(
             itemID: "video:\(link)",
@@ -67,7 +68,9 @@ struct VideoDownloadService {
             fileCount: nil,
             ownerName: uploader,
             categoryBreakdown: nil,
-            isVideo: true
+            isVideo: true,
+            thumbnailURL: json["thumbnail"] as? String,
+            durationSeconds: duration
         )
     }
 
@@ -82,15 +85,26 @@ struct VideoDownloadService {
         title: String,
         destination: URL,
         asAudio: Bool = false,
+        clipSection: String? = nil,
         onProgress: @escaping @Sendable (DownloadProgress) -> Void
     ) async throws -> URL {
+        // A trimmed clip gets its own suffix so it never collides with (or gets
+        // skipped as "already downloaded" because of) the full video.
+        let outputTemplate = clipSection == nil
+            ? "%(title).200B.%(ext)s"
+            : "%(title).200B (clip).%(ext)s"
+
         var arguments = [
             "--no-warnings", "--no-playlist", "--newline",
             "-P", destination.path,
-            "-o", "%(title).200B.%(ext)s",
+            "-o", outputTemplate,
             "--no-simulate", "--print", "after_move:filepath",
             "--progress"
         ]
+        if let clipSection {
+            // "start-end" in seconds; keyframe cuts keep the trim accurate.
+            arguments += ["--download-sections", "*\(clipSection)", "--force-keyframes-at-cuts"]
+        }
         if asAudio {
             // Extract audio and convert to MP3 via the bundled ffmpeg; -q 0 is
             // the best VBR quality.

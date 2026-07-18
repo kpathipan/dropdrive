@@ -5,6 +5,17 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.3.0] - Thumbnails and clip trimming on the video card
+
+### Added
+- **The video confirm card shows the real thumbnail** with a duration
+  badge, so you know it's the right clip before downloading.
+- **Trim to a section.** Tick "ตัดเฉพาะช่วง", type start–end times
+  (0:10 – 1:30 style, hours supported), and only that section downloads
+  — cut at keyframes for accuracy, saved with a "(clip)" suffix so it
+  never collides with (or skips because of) the full video. Works for
+  MP3 extraction too.
+
 ## [6.2.0] - Instagram links
 
 ### Added

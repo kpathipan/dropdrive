@@ -1,6 +1,19 @@
-# DropDrive v6.2.0 Release Notes
+# DropDrive v6.3.0 Release Notes
 
-Instagram joins the video sources, on top of 6.1.0's MP3 extraction.
+The video card got eyes and scissors: real thumbnails, and trim-before-
+download.
+
+## Thumbnail preview (new in 6.3.0)
+
+The confirm card for a video link now shows the actual thumbnail with a
+duration badge — confirm the right clip before a single byte downloads.
+
+## Trim to a section (new in 6.3.0)
+
+Tick "ตัดเฉพาะช่วง" on the card, enter start and end times (0:10 –
+1:30; hours work too), and DropDrive downloads only that section, cut
+at keyframes, saved with a "(clip)" suffix. Combine it with MP3 to pull
+just the chorus out of a long video.
 
 ## Instagram (new in 6.2.0)
 

@@ -31,6 +31,10 @@ struct QueueItem: Identifiable, Equatable, Codable {
     /// compatibility with queues persisted before this existed.
     var asAudio: Bool?
 
+    /// Video links only: a "start-end" section (both in seconds) when the user
+    /// trimmed the clip on the confirm card. Nil downloads the whole video.
+    var clipSection: String?
+
     init(
         id: UUID = UUID(),
         driveLink: String,
@@ -39,7 +43,8 @@ struct QueueItem: Identifiable, Equatable, Codable {
         resultURL: URL? = nil,
         errorMessage: String? = nil,
         destinationURL: URL? = nil,
-        asAudio: Bool? = nil
+        asAudio: Bool? = nil,
+        clipSection: String? = nil
     ) {
         self.id = id
         self.driveLink = driveLink
@@ -49,6 +54,7 @@ struct QueueItem: Identifiable, Equatable, Codable {
         self.errorMessage = errorMessage
         self.destinationURL = destinationURL
         self.asAudio = asAudio
+        self.clipSection = clipSection
     }
 
     var itemID: String { analysis.itemID }

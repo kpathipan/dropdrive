@@ -78,16 +78,23 @@ struct VideoDownloadService {
         link: String,
         title: String,
         destination: URL,
+        asAudio: Bool = false,
         onProgress: @escaping @Sendable (DownloadProgress) -> Void
     ) async throws -> URL {
         var arguments = [
             "--no-warnings", "--no-playlist", "--newline",
-            "-f", "bv*+ba/b",
             "-P", destination.path,
             "-o", "%(title).200B.%(ext)s",
             "--no-simulate", "--print", "after_move:filepath",
             "--progress"
         ]
+        if asAudio {
+            // Extract audio and convert to MP3 via the bundled ffmpeg; -q 0 is
+            // the best VBR quality.
+            arguments += ["-f", "ba/b", "-x", "--audio-format", "mp3", "--audio-quality", "0"]
+        } else {
+            arguments += ["-f", "bv*+ba/b"]
+        }
         if let ffmpegDirectory = Self.ffmpegDirectory {
             arguments += ["--ffmpeg-location", ffmpegDirectory]
         }
@@ -101,6 +108,8 @@ struct VideoDownloadService {
                 onProgress(progress)
             } else if line.hasPrefix("[Merger]") || line.hasPrefix("[VideoRemuxer]") {
                 onProgress(DownloadProgress(currentFileName: tr("Merging tracks…", "กำลังรวมไฟล์วิดีโอ…")))
+            } else if line.hasPrefix("[ExtractAudio]") {
+                onProgress(DownloadProgress(currentFileName: tr("Converting to MP3…", "กำลังแปลงเป็น MP3…")))
             }
         }
 

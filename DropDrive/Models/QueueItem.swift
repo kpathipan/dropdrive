@@ -26,6 +26,11 @@ struct QueueItem: Identifiable, Equatable, Codable {
     /// falls back to the current global destination for those.
     var destinationURL: URL?
 
+    /// Video links only: true when the user chose MP3 (audio extraction) on the
+    /// confirm card instead of the video itself. Optional for decode
+    /// compatibility with queues persisted before this existed.
+    var asAudio: Bool?
+
     init(
         id: UUID = UUID(),
         driveLink: String,
@@ -33,7 +38,8 @@ struct QueueItem: Identifiable, Equatable, Codable {
         status: Status = .ready,
         resultURL: URL? = nil,
         errorMessage: String? = nil,
-        destinationURL: URL? = nil
+        destinationURL: URL? = nil,
+        asAudio: Bool? = nil
     ) {
         self.id = id
         self.driveLink = driveLink
@@ -42,6 +48,7 @@ struct QueueItem: Identifiable, Equatable, Codable {
         self.resultURL = resultURL
         self.errorMessage = errorMessage
         self.destinationURL = destinationURL
+        self.asAudio = asAudio
     }
 
     var itemID: String { analysis.itemID }

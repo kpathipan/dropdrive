@@ -109,8 +109,11 @@ struct LinkAnalysisErrorView: View {
 /// confirm, so the destination can still be changed before anything is queued.
 struct AnalyzedPromptView: View {
     let analysis: DriveLinkAnalysis
-    let onDownload: () -> Void
+    let onDownload: (_ asAudio: Bool) -> Void
     let onCancel: () -> Void
+
+    /// Video links can come down as the video itself or extracted MP3.
+    @State private var asAudio = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -147,13 +150,27 @@ struct AnalyzedPromptView: View {
                 Spacer(minLength: 8)
             }
 
+            if analysis.isVideo == true {
+                Picker(tr("Format", "รูปแบบ"), selection: $asAudio) {
+                    Label(tr("Video", "วิดีโอ"), systemImage: "play.rectangle").tag(false)
+                    Label("MP3", systemImage: "music.note").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
+
             HStack(spacing: 10) {
                 Button(tr("Cancel", "ยกเลิก"), role: .cancel, action: onCancel)
                     .buttonStyle(.bordered)
 
-                Button(action: onDownload) {
-                    Label(tr("Download", "ดาวน์โหลด"), systemImage: "arrow.down.circle.fill")
-                        .frame(maxWidth: .infinity)
+                Button {
+                    onDownload(asAudio)
+                } label: {
+                    Label(
+                        asAudio ? tr("Download MP3", "ดาวน์โหลด MP3") : tr("Download", "ดาวน์โหลด"),
+                        systemImage: asAudio ? "music.note" : "arrow.down.circle.fill"
+                    )
+                    .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
             }

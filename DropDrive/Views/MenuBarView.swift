@@ -509,7 +509,7 @@ struct MenuBarView: View {
         case .analyzed(let analysis):
             AnalyzedPromptView(
                 analysis: analysis,
-                onDownload: viewModel.confirmAnalyzedDownload,
+                onDownload: { asAudio in viewModel.confirmAnalyzedDownload(asAudio: asAudio) },
                 onCancel: viewModel.cancelAnalysis
             )
         case .failed(let message):

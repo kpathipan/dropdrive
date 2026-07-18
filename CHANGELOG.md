@@ -5,6 +5,15 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.1.0] - MP3 extraction for video links
+
+### Added
+- **Download as MP3.** The confirm card for a TikTok/YouTube/Facebook
+  link gained a Video / MP3 segmented switch — MP3 extracts the audio
+  through the bundled ffmpeg at best VBR quality, shows a "Converting to
+  MP3…" stage, and lands the .mp3 in the chosen folder. MP3 queue rows
+  carry a music-note icon; the choice persists with the queue item.
+
 ## [6.0.0] - Video downloads: TikTok, YouTube, Facebook
 
 ### Added

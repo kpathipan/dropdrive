@@ -380,6 +380,7 @@ private struct QueueRow: View {
 
     private var leadingIconName: String {
         if item.status == .completed { return "checkmark.circle.fill" }
+        if item.asAudio == true { return "music.note" }
         if item.analysis.isVideo == true { return "play.rectangle.fill" }
         return item.analysis.type == .folder ? "folder.fill" : "doc.fill"
     }

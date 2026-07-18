@@ -5,6 +5,26 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.0.0] - Video downloads: TikTok, YouTube, Facebook
+
+### Added
+- **Paste a TikTok / YouTube / Facebook link and download the video** —
+  TikTok comes out watermark-free (the same source the "no watermark"
+  sites serve), YouTube merges best video+audio up to full quality, and
+  it all flows through the existing queue: analysis card with
+  title/uploader/size, confirm to download, live progress with speed,
+  pause/resume (yt-dlp continues its own .part files), cancel cleans up
+  partials, history and notifications included.
+- Powered by bundled universal (Intel + Apple Silicon) builds of
+  **yt-dlp** and **ffmpeg**, fetched by `scripts/fetch-video-tools.sh`
+  (binaries are gitignored; run the script once per checkout). This
+  grows the app by ~190 MB uncompressed — the price of full-quality
+  YouTube merges.
+
+### Notes
+- Downloading from these platforms is against their terms of service in
+  most cases; DropDrive is a personal tool — use it for your own stuff.
+
 ## [5.10.0] - Theme choice and a disk space check
 
 ### Added

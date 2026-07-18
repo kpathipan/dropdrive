@@ -115,7 +115,9 @@ struct AnalyzedPromptView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
-                Image(systemName: analysis.type == .folder ? "folder.fill" : "doc.fill")
+                Image(systemName: analysis.isVideo == true
+                        ? "play.rectangle.fill"
+                        : analysis.type == .folder ? "folder.fill" : "doc.fill")
                     .font(.dd(22))
                     .foregroundStyle(DDTheme.accent)
                     .frame(width: 28)

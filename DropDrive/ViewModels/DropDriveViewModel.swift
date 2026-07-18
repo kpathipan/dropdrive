@@ -45,6 +45,7 @@ final class DropDriveViewModel {
 
     private let loginManager: LoginManaging
     private let downloadService: DownloadServicing
+    private let videoDownloadService = VideoDownloadService()
     private let folderSelectionService: FolderSelectionServicing
     private var downloadTask: Task<Void, Never>?
     private var analysisTask: Task<Void, Never>?
@@ -220,6 +221,11 @@ final class DropDriveViewModel {
     }
 
     private func runAnalysis(for trimmedLink: String) async {
+        if VideoDownloadService.isSupportedLink(trimmedLink) {
+            await runVideoAnalysis(for: trimmedLink)
+            return
+        }
+
         guard let itemID = GoogleDriveLinkParser.itemID(from: trimmedLink) else {
             linkAnalysisState = .invalidLink
             return
@@ -243,6 +249,22 @@ final class DropDriveViewModel {
         } catch {
             guard !Task.isCancelled else { return }
             linkAnalysisState = .failed(Self.friendlyMessage(for: error))
+        }
+    }
+
+    /// TikTok/YouTube/Facebook links go through yt-dlp for their metadata; the
+    /// result feeds the same analyzed-card confirm flow as a Drive link.
+    private func runVideoAnalysis(for trimmedLink: String) async {
+        linkAnalysisState = .analyzing
+        do {
+            let analysis = try await videoDownloadService.analyze(trimmedLink)
+            guard !Task.isCancelled else { return }
+            handleSuccessfulAnalysis(analysis, trimmedLink: trimmedLink)
+        } catch {
+            guard !Task.isCancelled else { return }
+            let message = (error as? VideoDownloadService.VideoError)?.message
+                ?? tr("Couldn't read this video link.", "อ่านลิงก์วิดีโอนี้ไม่ได้")
+            linkAnalysisState = .failed(message)
         }
     }
 
@@ -440,6 +462,11 @@ final class DropDriveViewModel {
         activeProgress = DownloadProgress(currentFileName: "Preparing…")
         QueueStore.save(queue)
 
+        if item.analysis.isVideo == true {
+            startVideoDownload(item, destinationURL: destinationURL)
+            return
+        }
+
         let request = DownloadRequest(
             driveLink: item.driveLink,
             itemID: item.itemID,
@@ -474,6 +501,35 @@ final class DropDriveViewModel {
                     autoRetryAttempts[item.id] = nil
                     finishActiveItem(item.id, status: .failed, resultURL: nil, errorMessage: Self.friendlyMessage(for: error))
                 }
+            }
+        }
+    }
+
+    /// Video links download through yt-dlp instead of the Drive engine; the
+    /// queue mechanics (cancel/pause statuses, completion handling, retry UI)
+    /// are shared. yt-dlp resumes its own .part files, so pause/resume works.
+    private func startVideoDownload(_ item: QueueItem, destinationURL: URL) {
+        downloadTask = Task {
+            do {
+                let resultURL = try await videoDownloadService.download(
+                    link: item.driveLink,
+                    title: item.analysis.name,
+                    destination: destinationURL
+                ) { progress in
+                    Task { @MainActor [self] in
+                        self.activeProgress = progress
+                    }
+                }
+                try Task.checkCancellation()
+                finishActiveItem(item.id, status: .completed, resultURL: resultURL, errorMessage: nil)
+            } catch is CancellationError {
+                let status: QueueItem.Status = isPausingActiveItem ? .paused : .cancelled
+                isPausingActiveItem = false
+                finishActiveItem(item.id, status: status, resultURL: nil, errorMessage: nil)
+            } catch {
+                let message = (error as? VideoDownloadService.VideoError)?.message
+                    ?? tr("The video download failed.", "ดาวน์โหลดวิดีโอไม่สำเร็จ")
+                finishActiveItem(item.id, status: .failed, resultURL: nil, errorMessage: message)
             }
         }
     }
@@ -562,9 +618,12 @@ final class DropDriveViewModel {
     /// the in-progress marker, never by name alone). Single files never leave
     /// partial data at the destination — their in-flight bytes live in system temp.
     private func removePartialArtifacts(of item: QueueItem) {
-        guard item.analysis.type == .folder,
-              let destinationURL = item.destinationURL ?? selectedDestinationURL else { return }
-        GoogleDriveDownloadService.removePartialFolderArtifact(itemID: item.itemID, in: destinationURL)
+        guard let destinationURL = item.destinationURL ?? selectedDestinationURL else { return }
+        if item.analysis.isVideo == true {
+            VideoDownloadService.cleanupPartials(title: item.analysis.name, in: destinationURL)
+        } else if item.analysis.type == .folder {
+            GoogleDriveDownloadService.removePartialFolderArtifact(itemID: item.itemID, in: destinationURL)
+        }
     }
 
     private func flashCompletion() {

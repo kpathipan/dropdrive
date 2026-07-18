@@ -29,6 +29,33 @@ struct DriveLinkAnalysis: Equatable, Sendable, Codable {
     let fileCount: Int?
     let ownerName: String?
     let categoryBreakdown: CategoryBreakdown?
+    /// True for a TikTok/YouTube/Facebook link handled by the yt-dlp engine.
+    /// Optional so queue items persisted by older versions still decode.
+    var isVideo: Bool?
+
+    init(
+        itemID: String,
+        name: String,
+        type: ItemType,
+        isPublic: Bool,
+        requiresAuthentication: Bool,
+        totalBytes: Int64?,
+        fileCount: Int?,
+        ownerName: String?,
+        categoryBreakdown: CategoryBreakdown?,
+        isVideo: Bool? = nil
+    ) {
+        self.itemID = itemID
+        self.name = name
+        self.type = type
+        self.isPublic = isPublic
+        self.requiresAuthentication = requiresAuthentication
+        self.totalBytes = totalBytes
+        self.fileCount = fileCount
+        self.ownerName = ownerName
+        self.categoryBreakdown = categoryBreakdown
+        self.isVideo = isVideo
+    }
 }
 
 enum LinkAnalysisResult: Equatable, Sendable {

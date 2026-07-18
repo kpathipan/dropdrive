@@ -1,22 +1,22 @@
-# DropDrive v5.10.0 Release Notes
+# DropDrive v6.0.0 Release Notes
 
-Two additions: pick your theme, and never start a download the disk
-can't hold.
+DropDrive learned a second trick: paste a TikTok, YouTube, or Facebook
+link and it downloads the video — no "no watermark" websites, no ads.
 
-## Theme: System / Light / Dark
+## Video downloads
 
-Preferences gained a Theme picker. Light is the design you know; Dark is
-its warm-dark counterpart (near-black canvas, dark cards, a brighter
-accent blue that reads properly on black); System follows the Mac's
-appearance and switches live when macOS does.
+The same paste box now recognizes video links. Paste one and the
+analysis card shows the title, uploader, and approximate size; confirm
+and it downloads into your chosen folder with live progress, exactly
+like a Drive download. TikTok videos come out watermark-free (the same
+source those converter sites serve). YouTube downloads best video +
+audio merged at full quality. Queue, pause/resume, cancel-with-cleanup,
+auto-retry UI, history, and notifications all apply.
 
-## Disk space check
-
-Starting a queue now checks the destination volume first. If the known
-download size plus a 200 MB headroom doesn't fit, DropDrive tells you
-how much it needs versus how much is free — you can still choose
-"Download anyway". Files whose size Drive doesn't report are counted as
-zero, so the warning errs on the quiet side rather than crying wolf.
+Under the hood this bundles universal builds of yt-dlp and ffmpeg, which
+is why the app got noticeably bigger this release. Fair warning: bulk
+downloading from these platforms is against their terms of service —
+this is a personal tool, use it for your own stuff.
 
 ## Upgrading
 

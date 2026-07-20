@@ -5,6 +5,20 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.5.0] - Recent is now a thumbnail gallery
+
+### Added
+- **The Recent pane is a gallery.** Real Quick Look thumbnails for files
+  (video frames, image contents, PDF pages), a 2×2 "album cover" collage
+  of the actual files inside each downloaded folder with a count badge,
+  and type/status placeholders (MP3 note, dimmed tile for moved files).
+- **Drill into a folder** — click a folder tile to browse the files it
+  contains as their own gallery, with a back button.
+- **Quick Look and open** — hover a tile for eye/open/reveal buttons,
+  double-click to open (or drill into a folder), right-click for the
+  full menu. A list/gallery toggle keeps the old text rows one click
+  away.
+
 ## [6.4.0] - Send links from your phone, and a right-click Service
 
 ### Added

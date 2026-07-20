@@ -133,9 +133,7 @@ final class StatusItemController: NSObject {
     private static func image(for state: IconState) -> NSImage {
         switch state {
         case .idle:
-            // A monochrome template (tray + down arrow, echoing the app icon) so
-            // it recolors with the menu bar like every other status icon.
-            return symbol("tray.and.arrow.down.fill")
+            return appIcon()
         case .done:
             return symbol("checkmark.circle")
         case .failed:
@@ -143,6 +141,21 @@ final class StatusItemController: NSObject {
         case .progress(let fraction):
             return ringImage(fraction: fraction)
         }
+    }
+
+    /// The actual app icon, in its original colors, scaled to menu bar size — so
+    /// the resting icon reads as DropDrive. Not a template (kept colored).
+    private static func appIcon() -> NSImage {
+        let side: CGFloat = 18
+        guard let logo = NSImage(named: "AppLogo") else {
+            return symbol("tray.and.arrow.down.fill")
+        }
+        let scaled = NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
+            logo.draw(in: rect)
+            return true
+        }
+        scaled.isTemplate = false
+        return scaled
     }
 
     private static func symbol(_ name: String) -> NSImage {

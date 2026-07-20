@@ -2,10 +2,12 @@ import SwiftUI
 import UserNotifications
 
 /// Routes incoming URLs (Google sign-in callbacks and `dropdrive://` deep links
-/// from the Share extension) to the shared view model, and opens the fallback
-/// window when the app is launched again while already running.
+/// from the Share extension) to the shared view model, owns the menu bar status
+/// item, and opens the fallback window when the app is launched again while
+/// already running.
 final class DropDriveAppDelegate: NSObject, NSApplicationDelegate {
     private let servicesProvider = ServicesProvider()
+    private var statusController: StatusItemController?
 
     func applicationDidFinishLaunching(_ notification: Foundation.Notification) {
         // Right-click "Download with DropDrive" on selected text anywhere —
@@ -14,6 +16,10 @@ final class DropDriveAppDelegate: NSObject, NSApplicationDelegate {
         NSUpdateDynamicServices()
         // Start watching the iCloud Drive phone inbox.
         _ = PhoneInboxService.shared
+        // The menu bar presence (left-click opens the popover, right-click a
+        // Quit menu). Driven manually via NSStatusItem rather than SwiftUI's
+        // MenuBarExtra so right-click can show its own menu.
+        statusController = StatusItemController()
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -64,8 +70,8 @@ final class ServicesProvider: NSObject {
     }
 }
 
-/// A plain window hosting the same view the menu bar popover shows. Only exists
-/// on demand; closing it leaves the app running in the menu bar as usual.
+/// A plain window hosting the same view the popover shows. Only exists on
+/// demand; closing it leaves the app running in the menu bar as usual.
 @MainActor
 enum FallbackWindow {
     private static var window: NSWindow?
@@ -96,11 +102,9 @@ struct DropDriveApp: App {
     }
 
     var body: some Scene {
-        MenuBarExtra {
-            MenuBarView()
-        } label: {
-            MenuBarIconLabel()
-        }
-        .menuBarExtraStyle(.window)
+        // The UI is an NSStatusItem + NSPopover driven from the app delegate;
+        // SwiftUI still needs one scene, so this empty Settings scene is the
+        // no-op placeholder (never shown — the app is an LSUIElement agent).
+        Settings { EmptyView() }
     }
 }

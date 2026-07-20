@@ -5,6 +5,29 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.6.0] - Bottom tabs, shorter window
+
+### Changed
+- **Layout overhaul.** The left icon rail is gone. Menu tabs (Queue,
+  Recent, Statistics, Preferences) moved to a horizontal bar along the
+  bottom — icon-only except the selected tab, which shows its label in a
+  pill. A slim top bar keeps the logo, wordmark, status, and account.
+  With the tall rail gone, and the idle-queue placeholder text removed,
+  the window hugs its content far more closely.
+- **Account moved to the top-right corner** as a small avatar (out of
+  the old rail).
+- **Quit moved to the menu bar icon** — right-click (or control-click)
+  the icon for a Quit menu; the in-app power button is gone.
+- **Menu bar icon stays a monochrome template** (tray + down arrow) so
+  it blends with the other status icons, turning into a progress ring
+  while downloading, a checkmark on finish, and a warning triangle on
+  failure.
+
+### Under the hood
+- Migrated from SwiftUI `MenuBarExtra` to a manual `NSStatusItem` +
+  `NSPopover` (`StatusItemController`) so the icon can handle left-click
+  (popover) and right-click (menu) separately.
+
 ## [6.5.0] - Recent is now a thumbnail gallery
 
 ### Added

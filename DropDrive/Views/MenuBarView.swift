@@ -37,7 +37,6 @@ struct MenuBarView: View {
     @State private var selectedPane: Pane = .queue
     @State private var isDropTargeted = false
     @State private var historySearchText = ""
-    @State private var showQuitConfirm = false
     /// Live height of the active pane's content, reported by ContentHeightKey.
     /// The window hugs this (capped), so it grows and shrinks with the queue.
     @State private var measuredHeight: CGFloat = 110
@@ -47,22 +46,21 @@ struct MenuBarView: View {
     @State private var theme = AppTheme.shared
 
     private static let springMotion = Animation.spring(response: 0.38, dampingFraction: 0.86)
-    private static let paneHeaderAllowance: CGFloat = 36
+    /// Fixed chrome above and below the scrolling content: the top logo bar plus
+    /// its divider, and the bottom tab bar plus its divider.
+    private static let chromeAllowance: CGFloat = 29 + 33
     private static let maxWindowHeight: CGFloat = 480
-    /// The rail's natural height (logo + four tabs + avatar + power, plus
-    /// spacing and padding). Any shorter and the HStack centers the rail,
-    /// clipping the logo off the top and the power button off the bottom.
-    private static let minWindowHeight: CGFloat = 258
+    private static let minWindowHeight: CGFloat = 130
 
     private var windowHeight: CGFloat {
         let raw: CGFloat
         switch selectedPane {
         case .queue, .recent:
-            raw = measuredHeight + Self.paneHeaderAllowance
+            raw = measuredHeight + Self.chromeAllowance
         case .stats:
-            raw = 230
+            raw = 250
         case .prefs:
-            raw = 400
+            raw = 420
         }
         return min(max(raw, Self.minWindowHeight), Self.maxWindowHeight)
     }
@@ -70,13 +68,17 @@ struct MenuBarView: View {
     var body: some View {
         Group {
             if hasSeenWelcome {
-                HStack(spacing: 0) {
-                    rail
+                VStack(spacing: 0) {
+                    topBar
 
                     Divider()
 
                     detail
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+
+                    Divider()
+
+                    bottomTabBar
                 }
             } else {
                 welcomeView
@@ -184,85 +186,87 @@ struct MenuBarView: View {
         }
     }
 
-    // MARK: - Rail
+    // MARK: - Top bar
 
-    private var rail: some View {
-        VStack(spacing: 6) {
+    /// Slim header: the app logo and wordmark on the left, live status, and the
+    /// account control on the right. Shown above every pane.
+    private var topBar: some View {
+        HStack(spacing: 7) {
             Image("AppLogo")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 26, height: 26)
-                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .frame(width: 17, height: 17)
+                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                 .accessibilityHidden(true)
-                .padding(.bottom, 6)
 
-            ForEach(Pane.allCases) { pane in
-                railButton(pane)
+            HStack(spacing: 0) {
+                Text("Drop").foregroundStyle(.primary)
+                Text("Drive").foregroundStyle(DDTheme.accent)
             }
+            .font(.dd(13, .bold))
+            .accessibilityElement()
+            .accessibilityLabel("DropDrive")
+
+            Text(headerStatus)
+                .font(.dd(10))
+                .foregroundStyle(.secondary)
 
             Spacer()
 
-            RailAccountButton(
+            HeaderAccountButton(
                 account: viewModel.googleAccount,
                 isSigningIn: viewModel.isSigningIn,
                 isLocked: viewModel.isQueueProcessing,
                 onSignIn: viewModel.signInWithGoogle,
                 onSignOut: viewModel.signOut
             )
+        }
+        .padding(.horizontal, 11)
+        .padding(.vertical, 5)
+    }
 
-            Button {
-                if viewModel.isQueueProcessing {
-                    showQuitConfirm = true
-                } else {
-                    NSApp.terminate(nil)
-                }
-            } label: {
-                Image(systemName: "power")
-                    .font(.dd(12))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 26, height: 26)
-                    .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .help(tr("Quit DropDrive", "ปิด DropDrive"))
-            .accessibilityLabel("Quit DropDrive")
-            .confirmationDialog(
-                tr("A download is in progress. Quit anyway?", "กำลังดาวน์โหลดอยู่ ต้องการปิดแอพเลยไหม?"),
-                isPresented: $showQuitConfirm
-            ) {
-                Button(tr("Quit and stop downloading", "ปิดและหยุดดาวน์โหลด"), role: .destructive) { NSApp.terminate(nil) }
-                Button(tr("Keep downloading", "ดาวน์โหลดต่อ"), role: .cancel) {}
+    // MARK: - Bottom tab bar
+
+    private var bottomTabBar: some View {
+        HStack(spacing: 0) {
+            ForEach(Pane.allCases) { pane in
+                tabButton(pane)
             }
         }
-        .padding(.vertical, 10)
-        .frame(width: 42)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
         .background(DDTheme.rail)
     }
 
-    private func railButton(_ pane: Pane) -> some View {
+    private func tabButton(_ pane: Pane) -> some View {
         Button {
             withAnimation(Self.springMotion) { selectedPane = pane }
         } label: {
-            Image(systemName: pane.icon)
-                .font(.dd(14, .medium))
-                .foregroundStyle(selectedPane == pane ? DDTheme.accent : Color.secondary)
-                .frame(width: 28, height: 28)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(selectedPane == pane ? DDTheme.accentSoft : .clear)
-                )
-                .overlay(alignment: .topTrailing) {
-                    if pane == .queue, activeCount > 0 {
-                        Text("\(activeCount)")
-                            .font(.dd(9, .semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1)
-                            .background(Capsule().fill(DDTheme.accent))
-                            .offset(x: 4, y: -2)
+            HStack(spacing: 5) {
+                Image(systemName: pane.icon)
+                    .font(.dd(13, .medium))
+                    .overlay(alignment: .topTrailing) {
+                        if pane == .queue, activeCount > 0 {
+                            Circle()
+                                .fill(DDTheme.accent)
+                                .frame(width: 5, height: 5)
+                                .offset(x: 4, y: -3)
+                        }
                     }
+                if selectedPane == pane {
+                    Text(pane.title)
+                        .font(.dd(9.5, .medium))
+                        .lineLimit(1)
                 }
-                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+            .foregroundStyle(selectedPane == pane ? DDTheme.accent : Color.secondary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(selectedPane == pane ? DDTheme.accentSoft : .clear)
+            )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(pane.title)
@@ -290,31 +294,8 @@ struct MenuBarView: View {
         }
     }
 
-    private var paneHeader: some View {
-        HStack(spacing: 8) {
-            HStack(spacing: 0) {
-                Text("Drop").foregroundStyle(.primary)
-                Text("Drive").foregroundStyle(DDTheme.accent)
-            }
-            .font(.dd(15, .bold))
-            .accessibilityElement()
-            .accessibilityLabel("DropDrive")
-
-            Spacer()
-
-            Text(headerStatus)
-                .font(.dd(10.5))
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 12)
-        .padding(.top, 10)
-        .padding(.bottom, 8)
-    }
-
     private var queuePane: some View {
         VStack(spacing: 0) {
-            paneHeader
-
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(spacing: 12) {
@@ -364,14 +345,13 @@ struct MenuBarView: View {
                             )
                             .transition(.opacity.combined(with: .move(edge: .top)))
                         } else if viewModel.linkAnalysisState == .idle {
-                            if recentCompleted.isEmpty {
-                                emptyQueueHint.transition(.opacity)
-                            } else {
+                            if !recentCompleted.isEmpty {
                                 recentPreview.transition(.opacity)
                             }
                         }
                     }
                     .padding(.horizontal, 12)
+                    .padding(.top, 12)
                     .padding(.bottom, 12)
                     .background(
                         GeometryReader { proxy in
@@ -482,19 +462,6 @@ struct MenuBarView: View {
         .padding(.vertical, 7)
     }
 
-    private var emptyQueueHint: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "tray.and.arrow.down")
-                .font(.dd(22, .light))
-                .foregroundStyle(.tertiary)
-            Text(tr("Paste or drop a Google Drive link to start.", "วางลิงก์ Google Drive เพื่อเริ่มดาวน์โหลด"))
-                .font(.dd(11.5))
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 14)
-    }
-
     @ViewBuilder
     private var analysisArea: some View {
         switch viewModel.linkAnalysisState {
@@ -529,8 +496,6 @@ struct MenuBarView: View {
 
     private var recentPane: some View {
         VStack(spacing: 0) {
-            paneHeader
-
             ScrollView {
                 VStack(spacing: 16) {
                     if historyStore.items.isEmpty {
@@ -554,6 +519,7 @@ struct MenuBarView: View {
                     }
                 }
                 .padding(.horizontal, 12)
+                .padding(.top, 12)
                 .padding(.bottom, 12)
                 .background(
                     GeometryReader { proxy in
@@ -635,11 +601,12 @@ private struct ContentHeightKey: PreferenceKey {
     }
 }
 
-// MARK: - Rail account button
+// MARK: - Header account button
 
-/// The "P" avatar at the bottom of the rail — tap for account details and
-/// disconnect when signed in, or a connect prompt when not.
-private struct RailAccountButton: View {
+/// A small account control in the window's top-right corner — the profile
+/// avatar (or a person glyph when signed out). Tap for account details and
+/// disconnect, or a connect prompt.
+private struct HeaderAccountButton: View {
     let account: GoogleAccount?
     let isSigningIn: Bool
     let isLocked: Bool
@@ -658,7 +625,7 @@ private struct RailAccountButton: View {
         .disabled(isSigningIn)
         .help(account?.email ?? tr("Connect Google Drive", "เชื่อมต่อ Google Drive"))
         .accessibilityLabel(account.map { "Account: \($0.name)" } ?? "Connect Google Drive")
-        .popover(isPresented: $showPopover, arrowEdge: .trailing) {
+        .popover(isPresented: $showPopover, arrowEdge: .bottom) {
             // The popover chrome is drawn by AppKit in the SYSTEM appearance,
             // but its SwiftUI content inherits the main window's forced-light
             // environment — black text on a dark popover. Resolve the actual
@@ -685,13 +652,14 @@ private struct RailAccountButton: View {
                     initialCircle(String(account.name.prefix(1)).uppercased())
                 }
             }
-            .frame(width: 24, height: 24)
+            .frame(width: 22, height: 22)
             .clipShape(Circle())
+            .overlay { Circle().strokeBorder(DDTheme.border, lineWidth: 0.5) }
         } else {
             Image(systemName: "person.crop.circle")
-                .font(.dd(17))
+                .font(.dd(16))
                 .foregroundStyle(.secondary)
-                .frame(width: 24, height: 24)
+                .frame(width: 22, height: 22)
         }
     }
 

@@ -5,6 +5,27 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.8.1] - Two corruption risks in the new parallel writer
+
+Found by reviewing 6.8.0's own changes — both are silent-corruption
+paths, neither would have announced itself.
+
+### Fixed
+- **A download killed mid-flight could be mistaken for a finished one.**
+  Writing ranges straight to the final filename meant a force quit,
+  crash, or power loss left a full-size file with holes in it — and the
+  folder-resume check treats "file exists" as "file is done", so it would
+  skip that file forever. Ranges now land in a sibling `.dddownload`
+  staging file that is renamed into place only after every range
+  completes; the real name never exists in a half-written state. Renaming
+  within a volume is free, so peak disk usage is unchanged. Stale
+  `.dddownload` files are cleared when a folder download resumes.
+- **A short range was written as zeros.** A server may legally answer a
+  range request with less data than asked for; that tail was left as the
+  zeros the sparse file was created with, in a file that otherwise looked
+  complete. Each range now verifies it received exactly the bytes it
+  asked for and fails over to the single-stream path otherwise.
+
 ## [6.8.0] - Parallel downloads no longer cost extra disk space
 
 The whole point of this app is downloading straight from Drive instead

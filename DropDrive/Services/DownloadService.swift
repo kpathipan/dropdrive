@@ -219,8 +219,17 @@ private final class RangedStreamCoordinator: NSObject, URLSessionDataDelegate, @
     private var didResume = false
     private var failure: Error?
 
-    init(fileHandle: FileHandle, startOffset: UInt64, onBytes: @escaping @Sendable (Int64) -> Void) throws {
+    private let expectedBytes: Int64
+    private var writtenBytes: Int64 = 0
+
+    init(
+        fileHandle: FileHandle,
+        startOffset: UInt64,
+        expectedBytes: Int64,
+        onBytes: @escaping @Sendable (Int64) -> Void
+    ) throws {
         self.fileHandle = fileHandle
+        self.expectedBytes = expectedBytes
         self.onBytes = onBytes
         super.init()
         try fileHandle.seek(toOffset: startOffset)
@@ -281,6 +290,7 @@ private final class RangedStreamCoordinator: NSObject, URLSessionDataDelegate, @
         BandwidthLimiter.shared.throttle(bytes: Int64(data.count))
         do {
             try fileHandle.write(contentsOf: data)
+            stateLock.lock(); writtenBytes += Int64(data.count); stateLock.unlock()
             onBytes(Int64(data.count))
         } catch {
             stateLock.lock(); failure = error; stateLock.unlock()
@@ -291,12 +301,19 @@ private final class RangedStreamCoordinator: NSObject, URLSessionDataDelegate, @
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         stateLock.lock()
         let recorded = failure
+        let written = writtenBytes
         stateLock.unlock()
 
         if let recorded {
             complete(.failure(recorded))
         } else if let error {
             complete(.failure(error))
+        } else if written != expectedBytes {
+            // A server is allowed to answer a range request with *less* than was
+            // asked for. Silently accepting that would leave the untouched tail
+            // of this slice as zeros in a file that otherwise looks complete, so
+            // treat a short range as a failure and let the caller fall back.
+            complete(.failure(DriveDownloadError.server(206, "Range returned \(written) of \(expectedBytes) bytes")))
         } else {
             complete(.success(()))
         }
@@ -667,6 +684,10 @@ struct GoogleDriveDownloadService: DownloadServicing {
         progress(DownloadProgress(currentFileName: "Scanning folder contents…"))
         let plan = try await enumerate(folderID: request.itemID, into: rootFolderURL, credential: credential, resourceKeys: resourceKeys)
 
+        // Half-written files from a run that was killed rather than cancelled:
+        // clear them so this attempt restarts those files cleanly.
+        Self.removePartialFiles(in: rootFolderURL)
+
         let totalBytes = plan.reduce(Int64(0)) { $0 + ($1.file.size ?? 0) }
         let alreadyDone = plan.filter { FileManager.default.fileExists(atPath: $0.destinationFolderURL.appendingPathComponent(Self.fileName(for: $0.file)).path) }
         let completedBytes = alreadyDone.reduce(Int64(0)) { $0 + ($1.file.size ?? 0) }
@@ -947,6 +968,12 @@ struct GoogleDriveDownloadService: DownloadServicing {
     ///
     /// Any part failing throws, and the caller falls back to a single-stream
     /// download — multi-part resume isn't supported, only fresh starts.
+    ///
+    /// Bytes land in a sibling `.dddownload` file that is renamed into place only
+    /// once every range has completed. Writing directly to the final name would
+    /// mean a download killed mid-flight (force quit, crash, power loss — the
+    /// `catch` never runs) leaves a full-size file full of holes, and both the
+    /// folder-resume skip check and the user would read it as finished.
     private func multiPartDownload(
         requestURL: URL,
         credential: DriveCredential,
@@ -955,44 +982,54 @@ struct GoogleDriveDownloadService: DownloadServicing {
         totalBytes: Int64,
         onBytes: @escaping @Sendable (Int64) -> Void
     ) async throws {
-        if FileManager.default.fileExists(atPath: destinationURL.path) {
-            try FileManager.default.removeItem(at: destinationURL)
+        let stagingURL = destinationURL.appendingPathExtension(Self.partialExtension)
+        for url in [destinationURL, stagingURL] where FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.removeItem(at: url)
         }
-        guard FileManager.default.createFile(atPath: destinationURL.path, contents: nil) else {
+        guard FileManager.default.createFile(atPath: stagingURL.path, contents: nil) else {
             throw DriveDownloadError.invalidResponse
         }
 
-        // Give the file its full logical size so every range has somewhere to
-        // land; APFS keeps it sparse until the bytes are actually written.
-        let sizing = try FileHandle(forWritingTo: destinationURL)
-        try sizing.truncate(atOffset: UInt64(totalBytes))
-        try sizing.close()
+        do {
+            // Give the file its full logical size so every range has somewhere to
+            // land; APFS keeps it sparse until the bytes are actually written.
+            let sizing = try FileHandle(forWritingTo: stagingURL)
+            try sizing.truncate(atOffset: UInt64(totalBytes))
+            try sizing.close()
 
-        let ranges = Self.splitRanges(totalBytes: totalBytes, partCount: Self.multiPartCount)
+            let ranges = Self.splitRanges(totalBytes: totalBytes, partCount: Self.multiPartCount)
 
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            for range in ranges {
-                group.addTask {
-                    var partRequest = URLRequest(url: requestURL)
-                    credential.applying(to: &partRequest)
-                    Self.applyResourceKeys(resourceKeys, to: &partRequest)
-                    partRequest.setValue("bytes=\(range.lowerBound)-\(range.upperBound)", forHTTPHeaderField: "Range")
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                for range in ranges {
+                    group.addTask {
+                        var partRequest = URLRequest(url: requestURL)
+                        credential.applying(to: &partRequest)
+                        Self.applyResourceKeys(resourceKeys, to: &partRequest)
+                        partRequest.setValue("bytes=\(range.lowerBound)-\(range.upperBound)", forHTTPHeaderField: "Range")
 
-                    // One handle per range: each keeps its own file offset, so
-                    // concurrent writes to different regions don't interfere.
-                    let handle = try FileHandle(forWritingTo: destinationURL)
-                    let coordinator = try RangedStreamCoordinator(
-                        fileHandle: handle,
-                        startOffset: UInt64(range.lowerBound),
-                        onBytes: onBytes
-                    )
-                    let session = URLSession(configuration: .ephemeral, delegate: coordinator, delegateQueue: nil)
-                    defer { session.finishTasksAndInvalidate() }
-                    try await coordinator.run(session: session, request: partRequest)
+                        // One handle per range: each keeps its own file offset, so
+                        // concurrent writes to different regions don't interfere.
+                        let handle = try FileHandle(forWritingTo: stagingURL)
+                        let coordinator = try RangedStreamCoordinator(
+                            fileHandle: handle,
+                            startOffset: UInt64(range.lowerBound),
+                            expectedBytes: range.upperBound - range.lowerBound + 1,
+                            onBytes: onBytes
+                        )
+                        let session = URLSession(configuration: .ephemeral, delegate: coordinator, delegateQueue: nil)
+                        defer { session.finishTasksAndInvalidate() }
+                        try await coordinator.run(session: session, request: partRequest)
+                    }
                 }
+                try await group.waitForAll()
             }
-            try await group.waitForAll()
+        } catch {
+            try? FileManager.default.removeItem(at: stagingURL)
+            throw error
         }
+
+        // Same volume, so this is a rename — no second copy, no extra space.
+        try FileManager.default.moveItem(at: stagingURL, to: destinationURL)
     }
 
     private static func splitRanges(totalBytes: Int64, partCount: Int) -> [ClosedRange<Int64>] {
@@ -1040,6 +1077,10 @@ struct GoogleDriveDownloadService: DownloadServicing {
         return sanitizedName(file.name)
     }
 
+    /// Extension for a file still being written. Only the rename at the end
+    /// publishes the real name, so anything left with this suffix is incomplete.
+    static let partialExtension = "dddownload"
+
     private static let resumeMarkerName = ".dropdrive-inprogress"
 
     /// A brand-new folder download gets a collision-safe unique name (Feature 13). A
@@ -1073,6 +1114,20 @@ struct GoogleDriveDownloadService: DownloadServicing {
             let marker = candidate.appendingPathComponent(resumeMarkerName)
             guard let ownerID = try? String(contentsOf: marker, encoding: .utf8), ownerID == itemID else { continue }
             try? FileManager.default.removeItem(at: candidate)
+        }
+    }
+
+    /// Deletes leftover `.dddownload` staging files anywhere under a folder — a
+    /// download killed mid-flight can't clean up after itself.
+    private static func removePartialFiles(in folderURL: URL) {
+        guard let enumerator = FileManager.default.enumerator(
+            at: folderURL,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        for case let url as URL in enumerator where url.pathExtension == partialExtension {
+            try? FileManager.default.removeItem(at: url)
         }
     }
 

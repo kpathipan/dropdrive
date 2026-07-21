@@ -5,6 +5,28 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.8.0] - Parallel downloads no longer cost extra disk space
+
+The whole point of this app is downloading straight from Drive instead
+of the zip-then-unpack round trip that needs room for two copies. The
+multi-part downloader had quietly reintroduced exactly that: each range
+landed in its own temp file, and the finished file was assembled from
+them, so a download briefly needed about twice the file's size.
+
+### Changed
+- **Ranges now stream directly into their own region of the destination
+  file.** The file is created at its final size up front (sparse on
+  APFS, so blocks are consumed only as bytes arrive) and each connection
+  seeks to its range and writes there. No temp copies, and no assembly
+  pass re-reading and re-writing every byte at the end — so downloads
+  also finish sooner. Peak disk usage is now exactly the file's size.
+  Verified: a 38 MB file fetched over 4 concurrent ranges is
+  byte-identical (matching sha256) to a plain download, with zero temp
+  directories created and disk usage growing from 9 MB mid-flight to
+  38 MB at completion.
+- The free-space check drops its 2x multiplier accordingly and now asks
+  only for the download's size plus headroom.
+
 ## [6.7.0] - Disk space: stop filling it, warn before it's a problem, say so when it happens
 
 Diagnosed from a real incident: a download died mid-flight and the disk

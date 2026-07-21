@@ -484,14 +484,14 @@ final class DropDriveViewModel {
 
     /// Non-nil when the destination volume can't safely hold the pending queue —
     /// the message explains the shortfall and the download is blocked until space
-    /// is freed. Two things this now accounts for that it previously didn't:
+    /// is freed.
     ///
-    /// - **Peak usage is roughly twice the file size** for anything large enough
-    ///   to download in parallel ranges: the staged parts and the assembled file
-    ///   both exist while it's being put together.
-    /// - **Unknown sizes** (every video link, since the card is built from oEmbed
-    ///   data that carries no size) used to bypass the check completely, which is
-    ///   exactly how a disk filled up mid-download.
+    /// A download now only ever occupies the size of the files themselves
+    /// (parallel ranges stream straight into the destination), so this needs no
+    /// multiplier — just the total plus headroom. Downloads of unknown size
+    /// (every video link, since the card is built from oEmbed data that carries
+    /// no size) used to bypass the check completely, which is exactly how a disk
+    /// filled up mid-download; they're now held to a minimum-free-space floor.
     private func diskSpaceShortfall() -> String? {
         guard let destination = readyItems.first?.destinationURL ?? selectedDestinationURL,
               let values = try? destination.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
@@ -509,16 +509,13 @@ final class DropDriveViewModel {
             )
         }
 
-        // Files big enough to be fetched in parallel ranges are assembled from
-        // staged parts, so they need about double their size at the peak.
-        let peak = known * 2 + Self.diskSpaceHeadroomBytes
-        guard free < peak else { return nil }
+        let required = known + Self.diskSpaceHeadroomBytes
+        guard free < required else { return nil }
 
-        let neededText = Formatters.byteCount(peak)
         let knownText = Formatters.byteCount(known)
         return tr(
-            "This download is \(knownText) and needs about \(neededText) of free space while it assembles. The destination disk only has \(freeText). Free up some space first.",
-            "งานนี้ขนาด \(knownText) ต้องใช้พื้นที่ราว \(neededText) ระหว่างประกอบไฟล์ แต่ดิสก์ปลายทางเหลือ \(freeText) กรุณาเคลียร์พื้นที่ก่อน"
+            "This download is \(knownText), but the destination disk only has \(freeText) free. Free up some space first.",
+            "งานนี้ขนาด \(knownText) แต่ดิสก์ปลายทางเหลือ \(freeText) กรุณาเคลียร์พื้นที่ก่อน"
         )
     }
 

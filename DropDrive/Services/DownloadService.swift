@@ -201,6 +201,108 @@ private nonisolated final class ProgressTracker: @unchecked Sendable {
     }
 }
 
+/// Streams one ranged response straight into its slice of the final file.
+///
+/// The multi-part path used to download each range to its own temp file and
+/// concatenate them at the end, which meant a download briefly needed about
+/// twice the file's size on disk — the very "download, then unpack" overhead
+/// this app exists to avoid. Writing each range at its own offset instead means
+/// the only space consumed is the file itself, and there is no assembly pass to
+/// wait through (or to re-read and re-write every byte for).
+private final class RangedStreamCoordinator: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    private let fileHandle: FileHandle
+    private let onBytes: @Sendable (Int64) -> Void
+
+    private let stateLock = NSLock()
+    private var continuation: CheckedContinuation<Void, Error>?
+    private var task: URLSessionDataTask?
+    private var didResume = false
+    private var failure: Error?
+
+    init(fileHandle: FileHandle, startOffset: UInt64, onBytes: @escaping @Sendable (Int64) -> Void) throws {
+        self.fileHandle = fileHandle
+        self.onBytes = onBytes
+        super.init()
+        try fileHandle.seek(toOffset: startOffset)
+    }
+
+    func run(session: URLSession, request: URLRequest) async throws {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                stateLock.lock()
+                self.continuation = continuation
+                let task = session.dataTask(with: request)
+                self.task = task
+                stateLock.unlock()
+                task.resume()
+            }
+        } onCancel: { [weak self] in
+            guard let self else { return }
+            stateLock.lock()
+            let task = self.task
+            stateLock.unlock()
+            task?.cancel()
+        }
+    }
+
+    private func complete(_ result: Result<Void, Error>) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard !didResume else { return }
+        didResume = true
+        try? fileHandle.close()
+        switch result {
+        case .success:
+            continuation?.resume()
+        case .failure(let error):
+            continuation?.resume(throwing: error)
+        }
+    }
+
+    /// A server that ignores `Range` answers 200 with the whole file; accepting
+    /// that here would write the entire file into one slice's offset and corrupt
+    /// the result, so only 206 is allowed through.
+    func urlSession(
+        _ session: URLSession,
+        dataTask: URLSessionDataTask,
+        didReceive response: URLResponse,
+        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
+    ) {
+        guard let http = response as? HTTPURLResponse, http.statusCode == 206 else {
+            let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+            stateLock.lock(); failure = DriveDownloadError.server(code, "Expected a ranged (206) response"); stateLock.unlock()
+            completionHandler(.cancel)
+            return
+        }
+        completionHandler(.allow)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        BandwidthLimiter.shared.throttle(bytes: Int64(data.count))
+        do {
+            try fileHandle.write(contentsOf: data)
+            onBytes(Int64(data.count))
+        } catch {
+            stateLock.lock(); failure = error; stateLock.unlock()
+            dataTask.cancel()
+        }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        stateLock.lock()
+        let recorded = failure
+        stateLock.unlock()
+
+        if let recorded {
+            complete(.failure(recorded))
+        } else if let error {
+            complete(.failure(error))
+        } else {
+            complete(.success(()))
+        }
+    }
+}
+
 /// Bridges URLSessionDownloadTask's delegate callbacks into async/await. Progress
 /// arrives in network-sized chunks as the OS receives them (typically tens of KB,
 /// never one byte at a time), and the completed temp file is moved to its final
@@ -834,11 +936,17 @@ struct GoogleDriveDownloadService: DownloadServicing {
         return http.statusCode == 206
     }
 
-    /// Splits the file into `multiPartCount` byte ranges, downloads each concurrently
-    /// into its own temp part (reusing DownloadTaskCoordinator, so no byte-by-byte
-    /// Swift-level iteration), then concatenates the parts in order into the final
-    /// destination. Any part failure throws, and the caller falls back to a normal
-    /// single-stream download — multi-part resume isn't supported, only fresh starts.
+    /// Splits the file into `multiPartCount` byte ranges and downloads them
+    /// concurrently, each straight into its own region of the destination file.
+    ///
+    /// Nothing is staged anywhere else: the file is created at its final size up
+    /// front (sparse on APFS, so blocks are only consumed as bytes actually
+    /// arrive) and each connection seeks to its range and streams into it. Peak
+    /// disk usage is therefore the file itself and nothing more — no temp copies,
+    /// and no assembly pass re-reading and re-writing every byte at the end.
+    ///
+    /// Any part failing throws, and the caller falls back to a single-stream
+    /// download — multi-part resume isn't supported, only fresh starts.
     private func multiPartDownload(
         requestURL: URL,
         credential: DriveCredential,
@@ -847,54 +955,43 @@ struct GoogleDriveDownloadService: DownloadServicing {
         totalBytes: Int64,
         onBytes: @escaping @Sendable (Int64) -> Void
     ) async throws {
-        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("DropDrive-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
+        if FileManager.default.fileExists(atPath: destinationURL.path) {
+            try FileManager.default.removeItem(at: destinationURL)
+        }
+        guard FileManager.default.createFile(atPath: destinationURL.path, contents: nil) else {
+            throw DriveDownloadError.invalidResponse
+        }
+
+        // Give the file its full logical size so every range has somewhere to
+        // land; APFS keeps it sparse until the bytes are actually written.
+        let sizing = try FileHandle(forWritingTo: destinationURL)
+        try sizing.truncate(atOffset: UInt64(totalBytes))
+        try sizing.close()
 
         let ranges = Self.splitRanges(totalBytes: totalBytes, partCount: Self.multiPartCount)
 
-        let parts = try await withThrowingTaskGroup(of: (Int, URL).self) { group in
-            for (index, range) in ranges.enumerated() {
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for range in ranges {
                 group.addTask {
                     var partRequest = URLRequest(url: requestURL)
                     credential.applying(to: &partRequest)
                     Self.applyResourceKeys(resourceKeys, to: &partRequest)
                     partRequest.setValue("bytes=\(range.lowerBound)-\(range.upperBound)", forHTTPHeaderField: "Range")
 
-                    let partURL = tempDir.appendingPathComponent("part\(index)")
-                    let coordinator = DownloadTaskCoordinator(destinationURL: partURL, onBytes: onBytes, requireStatusCode: 206)
+                    // One handle per range: each keeps its own file offset, so
+                    // concurrent writes to different regions don't interfere.
+                    let handle = try FileHandle(forWritingTo: destinationURL)
+                    let coordinator = try RangedStreamCoordinator(
+                        fileHandle: handle,
+                        startOffset: UInt64(range.lowerBound),
+                        onBytes: onBytes
+                    )
                     let session = URLSession(configuration: .ephemeral, delegate: coordinator, delegateQueue: nil)
                     defer { session.finishTasksAndInvalidate() }
-                    _ = try await coordinator.run(session: session, request: partRequest)
-                    return (index, partURL)
+                    try await coordinator.run(session: session, request: partRequest)
                 }
             }
-
-            var collected: [Int: URL] = [:]
-            for try await (index, url) in group {
-                collected[index] = url
-            }
-            return collected
-        }
-
-        if FileManager.default.fileExists(atPath: destinationURL.path) {
-            try FileManager.default.removeItem(at: destinationURL)
-        }
-        FileManager.default.createFile(atPath: destinationURL.path, contents: nil)
-        let output = try FileHandle(forWritingTo: destinationURL)
-        defer { try? output.close() }
-
-        for index in 0..<Self.multiPartCount {
-            guard let partURL = parts[index] else { throw DriveDownloadError.invalidResponse }
-            let input = try FileHandle(forReadingFrom: partURL)
-            while let chunk = try input.read(upToCount: 1_048_576), !chunk.isEmpty {
-                output.write(chunk)
-            }
-            try? input.close()
-            // Each part is dropped as soon as it has been appended. Holding all
-            // of them until the end meant a multi-part download briefly needed
-            // twice the file's size on disk — the parts plus the assembled copy.
-            try? FileManager.default.removeItem(at: partURL)
+            try await group.waitForAll()
         }
     }
 

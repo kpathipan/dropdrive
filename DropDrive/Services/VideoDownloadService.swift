@@ -37,7 +37,55 @@ struct VideoDownloadService {
             .deletingLastPathComponent().path
     }
 
-    // MARK: - Analysis
+    // MARK: - Fast analysis (oEmbed)
+
+    /// Title/uploader/thumbnail from the platform's oEmbed endpoint — roughly
+    /// 0.4s versus the ~12s yt-dlp spends resolving every format. Used to show
+    /// the confirm card immediately; `analyze` then fills in duration and size
+    /// in the background. Returns nil for platforms without a usable oEmbed
+    /// (Instagram's needs a Facebook token), so the caller falls back to yt-dlp.
+    func quickAnalyze(_ link: String) async -> DriveLinkAnalysis? {
+        guard let endpoint = Self.oEmbedEndpoint(for: link) else { return nil }
+
+        var request = URLRequest(url: endpoint)
+        request.timeoutInterval = 6
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let title = json["title"] as? String, !title.isEmpty else {
+            return nil
+        }
+
+        return DriveLinkAnalysis(
+            itemID: "video:\(link)",
+            name: title,
+            type: .file,
+            isPublic: true,
+            requiresAuthentication: false,
+            totalBytes: nil,
+            fileCount: nil,
+            ownerName: json["author_name"] as? String,
+            categoryBreakdown: nil,
+            isVideo: true,
+            thumbnailURL: json["thumbnail_url"] as? String,
+            durationSeconds: nil
+        )
+    }
+
+    private static func oEmbedEndpoint(for link: String) -> URL? {
+        guard let url = URL(string: link), let host = url.host?.lowercased() else { return nil }
+        let encoded = link.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? link
+
+        if host.contains("youtube.com") || host.contains("youtu.be") {
+            return URL(string: "https://www.youtube.com/oembed?url=\(encoded)&format=json")
+        }
+        if host.contains("tiktok.com") {
+            return URL(string: "https://www.tiktok.com/oembed?url=\(encoded)")
+        }
+        return nil
+    }
+
+    // MARK: - Full analysis (yt-dlp)
 
     func analyze(_ link: String) async throws -> DriveLinkAnalysis {
         let output = try await Self.run(

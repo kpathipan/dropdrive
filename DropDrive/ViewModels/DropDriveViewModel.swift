@@ -292,6 +292,16 @@ final class DropDriveViewModel {
     /// result feeds the same analyzed-card confirm flow as a Drive link.
     private func runVideoAnalysis(for trimmedLink: String) async {
         linkAnalysisState = .analyzing
+
+        // oEmbed answers in well under a second where yt-dlp takes ~12, so the
+        // card appears immediately; duration and size arrive right after.
+        if let quick = await videoDownloadService.quickAnalyze(trimmedLink) {
+            guard !Task.isCancelled else { return }
+            handleSuccessfulAnalysis(quick, trimmedLink: trimmedLink)
+            enrichVideoAnalysis(for: trimmedLink, itemID: quick.itemID)
+            return
+        }
+
         do {
             let analysis = try await videoDownloadService.analyze(trimmedLink)
             guard !Task.isCancelled else { return }
@@ -301,6 +311,19 @@ final class DropDriveViewModel {
             let message = (error as? VideoDownloadService.VideoError)?.message
                 ?? tr("Couldn't read this video link.", "อ่านลิงก์วิดีโอนี้ไม่ได้")
             linkAnalysisState = .failed(message)
+        }
+    }
+
+    /// Fills the already-shown card with the details oEmbed can't provide
+    /// (duration, approximate size). Silently gives up if it fails or if the
+    /// user has moved on — the card is already usable without them.
+    private func enrichVideoAnalysis(for link: String, itemID: String) {
+        Task { [weak self] in
+            guard let self, let full = try? await videoDownloadService.analyze(link) else { return }
+            // Only swap in if that same card is still on screen and untouched —
+            // both analyses share the "video:<link>" item ID.
+            guard case .analyzed(let shown) = linkAnalysisState, shown.itemID == itemID else { return }
+            linkAnalysisState = .analyzed(full)
         }
     }
 

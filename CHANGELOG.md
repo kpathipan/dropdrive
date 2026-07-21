@@ -5,6 +5,18 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.6.1] - Video links analyze in under a second
+
+### Fixed
+- **Pasting a video link took ~13 seconds to show its card.** All of it
+  was yt-dlp resolving every available format just to read a title.
+  Analysis now asks the platform's oEmbed endpoint first (measured 0.35s
+  for YouTube, 0.56s for TikTok, versus 12.7s for yt-dlp), which returns
+  the title, uploader, and thumbnail the card needs. yt-dlp still runs,
+  but in the background, and only swaps in once it has the duration and
+  size — by which time the card has long been on screen and usable.
+  Instagram has no open oEmbed, so it still falls back to yt-dlp.
+
 ## [6.6.0] - Bottom tabs, shorter window
 
 ### Changed
@@ -18,10 +30,9 @@ and this project follows [Semantic Versioning](https://semver.org/).
   the old rail).
 - **Quit moved to the menu bar icon** — right-click (or control-click)
   the icon for a Quit menu; the in-app power button is gone.
-- **Menu bar icon stays a monochrome template** (tray + down arrow) so
-  it blends with the other status icons, turning into a progress ring
-  while downloading, a checkmark on finish, and a warning triangle on
-  failure.
+- **Menu bar icon is the app icon** in full color when idle, turning
+  into a progress ring while downloading, a checkmark on finish, and a
+  warning triangle on failure.
 
 ### Under the hood
 - Migrated from SwiftUI `MenuBarExtra` to a manual `NSStatusItem` +

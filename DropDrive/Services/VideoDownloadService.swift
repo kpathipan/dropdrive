@@ -170,10 +170,11 @@ struct VideoDownloadService {
             arguments += ["--ffmpeg-location", ffmpegDirectory]
         }
 
+        let smoother = RateSmoother()
         let handleLine: @Sendable (String, inout String?) -> Void = { line, finalPath in
             if line.hasPrefix("/") {
                 finalPath = line
-            } else if let progress = Self.parseProgress(line: line, fileName: title) {
+            } else if let progress = Self.parseProgress(line: line, fileName: title, smoother: smoother) {
                 onProgress(progress)
             } else if line.hasPrefix("[Merger]") || line.hasPrefix("[VideoRemuxer]") {
                 onProgress(DownloadProgress(currentFileName: tr("Merging tracks…", "กำลังรวมไฟล์วิดีโอ…")))
@@ -337,7 +338,7 @@ struct VideoDownloadService {
     }
 
     /// "[download]  45.2% of ~  12.34MiB at    2.34MiB/s ETA 00:12"
-    private static func parseProgress(line: String, fileName: String) -> DownloadProgress? {
+    private static func parseProgress(line: String, fileName: String, smoother: RateSmoother) -> DownloadProgress? {
         guard line.hasPrefix("[download]"), line.contains("%") else { return nil }
         let pattern = /\[download\]\s+(?<pct>[\d.]+)% of ~?\s*(?<size>[\d.]+)(?<unit>KiB|MiB|GiB)(?:\s+at\s+(?<speed>[\d.]+)(?<sunit>KiB|MiB|GiB)\/s)?/
         guard let match = line.firstMatch(of: pattern),
@@ -356,7 +357,11 @@ struct VideoDownloadService {
             totalFiles: 1,
             bytesDownloaded: downloaded,
             totalBytes: totalBytes,
-            bytesPerSecond: speed
+            // yt-dlp reports the instantaneous rate of the fragment it happens to
+            // be on, which swings hard as fragments start and finish. Smoothed
+            // with the same weighting the Drive path uses so the number reads as
+            // a speed rather than a flicker.
+            bytesPerSecond: smoother.smoothing(speed)
         )
     }
 
@@ -367,6 +372,20 @@ struct VideoDownloadService {
         case "GiB": 1024 * 1024 * 1024
         default: 1
         }
+    }
+}
+
+/// Exponential moving average over yt-dlp's per-fragment speed readings.
+private final class RateSmoother: @unchecked Sendable {
+    private let lock = NSLock()
+    private var smoothed: Double = 0
+
+    func smoothing(_ instant: Double) -> Double {
+        lock.lock()
+        defer { lock.unlock() }
+        guard instant > 0 else { return smoothed }
+        smoothed = smoothed == 0 ? instant : smoothed * 0.7 + instant * 0.3
+        return smoothed
     }
 }
 

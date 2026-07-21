@@ -106,18 +106,29 @@ private enum DriveCredential: Sendable {
 private actor AnalysisCache {
     static let shared = AnalysisCache()
 
+    /// Bounded so a long-running session can't accumulate every link ever
+    /// pasted; folder analyses in particular hold a full category breakdown.
+    private static let capacity = 100
+
     private var storage: [String: LinkAnalysisResult] = [:]
+    private var insertionOrder: [String] = []
 
     func get(_ key: String) -> LinkAnalysisResult? {
         storage[key]
     }
 
     func set(_ key: String, _ value: LinkAnalysisResult) {
-        storage[key] = value
+        if storage.updateValue(value, forKey: key) == nil {
+            insertionOrder.append(key)
+        }
+        while insertionOrder.count > Self.capacity {
+            storage.removeValue(forKey: insertionOrder.removeFirst())
+        }
     }
 
     func clear() {
         storage.removeAll()
+        insertionOrder.removeAll()
     }
 }
 
@@ -198,6 +209,21 @@ private nonisolated final class ProgressTracker: @unchecked Sendable {
             totalBytes: totalBytes,
             bytesPerSecond: smoothedRate
         )
+    }
+}
+
+/// Thread-safe tally of bytes a single download attempt reported.
+private final class ByteCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Int64 = 0
+
+    func add(_ count: Int64) {
+        lock.lock(); value += count; lock.unlock()
+    }
+
+    var total: Int64 {
+        lock.lock(); defer { lock.unlock() }
+        return value
     }
 }
 
@@ -885,6 +911,10 @@ struct GoogleDriveDownloadService: DownloadServicing {
 
         if matchingResumeData == nil, !isExport, let expectedSize = file.size, expectedSize > Self.multiPartThresholdBytes,
            await supportsRangeRequests(url: requestURL, credential: credential, resourceKeys: resourceKeys) {
+            // Bytes this attempt reported, so a fallback can take them back out
+            // of the progress total — otherwise the single-stream retry counts
+            // the same bytes a second time and the bar sails past 100%.
+            let attemptBytes = ByteCounter()
             do {
                 try await multiPartDownload(
                     requestURL: requestURL,
@@ -892,12 +922,17 @@ struct GoogleDriveDownloadService: DownloadServicing {
                     resourceKeys: resourceKeys,
                     destinationURL: destinationURL,
                     totalBytes: expectedSize,
-                    onBytes: onBytes
+                    onBytes: { count in
+                        attemptBytes.add(count)
+                        onBytes(count)
+                    }
                 )
                 ResumeEnvelopeStore.clear(for: resumeID)
                 return destinationURL
             } catch {
                 try? FileManager.default.removeItem(at: destinationURL)
+                let counted = attemptBytes.total
+                if counted > 0 { onBytes(-counted) }
                 // A cancelled/paused part surfaces the same DownloadInterruption error as a
                 // genuinely failed one, so the only reliable signal for "the user stopped
                 // this, don't silently start a fresh single-stream download instead" is

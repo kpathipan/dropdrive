@@ -44,6 +44,7 @@ struct MenuBarView: View {
     /// tell friends the app lives in the menu bar and has no Dock icon.
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
     @State private var theme = AppTheme.shared
+    @State private var statusCache = FileStatusCache.shared
 
     private static let springMotion = Animation.spring(response: 0.38, dampingFraction: 0.86)
     /// Fixed chrome above and below the scrolling content: the top logo bar plus
@@ -385,8 +386,10 @@ struct MenuBarView: View {
         historyStore.items.filter { item in
             guard item.status == .completed, let url = item.itemURL else { return false }
             // A row whose file was deleted or moved would have a dead Open
-            // button — leave it to the full Recent pane instead.
-            return FileManager.default.fileExists(atPath: url.path)
+            // button — leave it to the full Recent pane instead. Read through
+            // the cache: this runs on every redraw, and hitting the filesystem
+            // here stutters the window.
+            return statusCache.status(for: url)?.exists ?? true
         }
     }
 

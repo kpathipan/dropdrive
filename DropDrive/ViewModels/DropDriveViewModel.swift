@@ -656,6 +656,10 @@ final class DropDriveViewModel {
         QueueStore.save(queue)
 
         let item = queue[index]
+        // Files just appeared, moved, or were cleaned up — drop the cached
+        // "does this exist" answers so Recent reflects reality.
+        FileStatusCache.shared.invalidate()
+
         switch status {
         case .completed:
             if let resultURL {

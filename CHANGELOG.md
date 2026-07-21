@@ -5,6 +5,27 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.9.0] - Smoother readouts, honest progress, lighter UI
+
+The rest of the code-review findings.
+
+### Fixed
+- **Video download speed no longer flickers.** yt-dlp reports the
+  instantaneous rate of whichever fragment it is on, which swings hard as
+  fragments start and finish; that raw number went straight to the
+  screen. It is now smoothed with the same weighting the Drive path uses.
+- **Progress can no longer sail past 100%.** When a parallel download
+  failed and fell back to a single stream, the bytes the failed attempt
+  had already reported stayed in the total and were then counted again.
+  The fallback now subtracts them first.
+- **The Recent gallery no longer hits the disk while drawing.** Every
+  tile ran `fileExists` (and a directory check) inside its body, which
+  SwiftUI re-runs freely — on the main thread. Those answers come from a
+  small cache now, refreshed off the main actor and invalidated whenever
+  a download finishes.
+- **The link-analysis cache is bounded** at 100 entries, so a long
+  session can't accumulate every folder breakdown ever scanned.
+
 ## [6.8.1] - Two corruption risks in the new parallel writer
 
 Found by reviewing 6.8.0's own changes — both are silent-corruption

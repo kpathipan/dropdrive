@@ -139,12 +139,22 @@ private struct GalleryTile: View {
     let onCopyLink: () -> Void
 
     @State private var isHovering = false
+    @State private var statusCache = FileStatusCache.shared
 
     private var url: URL? { item.itemURL }
-    private var exists: Bool { url.map { FileManager.default.fileExists(atPath: $0.path) } ?? false }
+    /// Cached lookup — a tile's body must not touch the filesystem. Until the
+    /// first check lands the tile renders as present, which is right the vast
+    /// majority of the time and avoids a flash of "missing" on every open.
+    private var status: FileStatusCache.Status? {
+        url.flatMap { statusCache.status(for: $0) }
+    }
+    private var exists: Bool {
+        guard url != nil else { return false }
+        return status?.exists ?? true
+    }
     private var isFolder: Bool {
-        guard let url, exists else { return (item.fileCount ?? 1) > 1 }
-        return (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
+        if let status, status.exists { return status.isDirectory }
+        return (item.fileCount ?? 1) > 1
     }
     private var isAudio: Bool {
         ["mp3", "m4a", "aac", "wav", "flac"].contains(url?.pathExtension.lowercased() ?? "")

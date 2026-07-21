@@ -5,6 +5,35 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.7.0] - Disk space: stop filling it, warn before it's a problem, say so when it happens
+
+Diagnosed from a real incident: a download died mid-flight and the disk
+turned out to be full, with no clue from the app as to why.
+
+### Fixed
+- **Abandoned downloads no longer strand gigabytes of scratch files.**
+  Multi-part downloads stage byte ranges in temp directories that are
+  only cleaned up on the way out — which never happens when the app is
+  killed mid-download. Found 20 leftover directories holding 14 GB on the
+  reporting machine, which is what filled the disk. Startup now sweeps
+  any `DropDrive-*` scratch older than an hour (younger ones may belong
+  to a download still in flight).
+- **A multi-part download no longer needs double the file's size.** Each
+  staged part is deleted the moment it's appended to the assembled file,
+  instead of all parts being held until the end.
+- **"Something went wrong" replaced with the actual reason.** A disk that
+  fills mid-download now says so, as do rate limiting (429), Drive
+  outages (5xx), timeouts, dropped connections, and unwritable
+  destinations — each with what to do next, in Thai and English.
+
+### Changed
+- **The free-space check now blocks instead of warning, and catches the
+  cases it used to miss.** It accounts for the ~2x peak a parallel
+  download needs while assembling, and no longer skips downloads of
+  unknown size (every video link, since the card is built from oEmbed
+  data that carries no size — the exact path that filled the disk). The
+  alert offers to open the destination folder so space can be cleared.
+
 ## [6.6.2] - Video downloads reuse the analysis work
 
 ### Changed

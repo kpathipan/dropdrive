@@ -887,10 +887,14 @@ struct GoogleDriveDownloadService: DownloadServicing {
         for index in 0..<Self.multiPartCount {
             guard let partURL = parts[index] else { throw DriveDownloadError.invalidResponse }
             let input = try FileHandle(forReadingFrom: partURL)
-            defer { try? input.close() }
             while let chunk = try input.read(upToCount: 1_048_576), !chunk.isEmpty {
                 output.write(chunk)
             }
+            try? input.close()
+            // Each part is dropped as soon as it has been appended. Holding all
+            // of them until the end meant a multi-part download briefly needed
+            // twice the file's size on disk — the parts plus the assembled copy.
+            try? FileManager.default.removeItem(at: partURL)
         }
     }
 

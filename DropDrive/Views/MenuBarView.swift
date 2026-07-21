@@ -112,8 +112,8 @@ struct MenuBarView: View {
             viewModel.restoreLogin()
         }
         .alert(tr("Not enough disk space", "พื้นที่ดิสก์ไม่พอ"), isPresented: $viewModel.showDiskSpaceWarning) {
-            Button(tr("Cancel", "ยกเลิก"), role: .cancel) { viewModel.cancelDiskSpaceWarning() }
-            Button(tr("Download anyway", "ดาวน์โหลดต่อ"), role: .destructive) { viewModel.confirmDiskSpaceAndStart() }
+            Button(tr("Open destination folder", "เปิดโฟลเดอร์ปลายทาง")) { viewModel.revealDestinationForCleanup() }
+            Button(tr("OK", "ตกลง"), role: .cancel) { viewModel.cancelDiskSpaceWarning() }
         } message: {
             Text(viewModel.diskSpaceWarningMessage)
         }

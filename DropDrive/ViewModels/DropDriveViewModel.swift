@@ -449,9 +449,13 @@ final class DropDriveViewModel {
     var showDiskSpaceWarning = false
     var diskSpaceWarningMessage = ""
 
-    /// Headroom on top of the download size itself, so a download can't fill the
-    /// disk to the last byte even when the estimate is exact.
-    private static let diskSpaceHeadroomBytes: Int64 = 200 * 1024 * 1024
+    /// Breathing room on top of the download itself, so a download can never take
+    /// the volume to its last byte (macOS gets unhappy well before zero).
+    private static let diskSpaceHeadroomBytes: Int64 = 2 * 1024 * 1024 * 1024
+    /// Required free space when the download's size is unknown — video links are
+    /// confirmed from oEmbed data, which carries no size at all, and those used
+    /// to skip the check entirely.
+    private static let unknownSizeFloorBytes: Int64 = 5 * 1024 * 1024 * 1024
 
     func startQueueDownloads() {
         guard canStartQueue else { return }
@@ -467,37 +471,54 @@ final class DropDriveViewModel {
         }
     }
 
-    /// The user saw the free-space warning and chose to download anyway.
-    func confirmDiskSpaceAndStart() {
-        showDiskSpaceWarning = false
-        if isLargeDownload {
-            showLargeDownloadWarning = true
-        } else {
-            processQueueIfNeeded()
-        }
-    }
-
     func cancelDiskSpaceWarning() {
         showDiskSpaceWarning = false
     }
 
-    /// Non-nil when the pending queue's known size won't fit in the destination
-    /// volume's free space (plus headroom). Sizes Drive didn't report count as
-    /// zero — better an occasional missed warning than a false one.
+    /// Opens the destination in Finder so the user can clear space right away.
+    func revealDestinationForCleanup() {
+        showDiskSpaceWarning = false
+        guard let destination = readyItems.first?.destinationURL ?? selectedDestinationURL else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([destination])
+    }
+
+    /// Non-nil when the destination volume can't safely hold the pending queue —
+    /// the message explains the shortfall and the download is blocked until space
+    /// is freed. Two things this now accounts for that it previously didn't:
+    ///
+    /// - **Peak usage is roughly twice the file size** for anything large enough
+    ///   to download in parallel ranges: the staged parts and the assembled file
+    ///   both exist while it's being put together.
+    /// - **Unknown sizes** (every video link, since the card is built from oEmbed
+    ///   data that carries no size) used to bypass the check completely, which is
+    ///   exactly how a disk filled up mid-download.
     private func diskSpaceShortfall() -> String? {
-        let needed = queueSummary.totalBytes
-        guard needed > 0,
-              let destination = readyItems.first?.destinationURL ?? selectedDestinationURL,
+        guard let destination = readyItems.first?.destinationURL ?? selectedDestinationURL,
               let values = try? destination.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
               let free = values.volumeAvailableCapacityForImportantUsage,
-              free > 0,
-              free < needed + Self.diskSpaceHeadroomBytes else { return nil }
+              free > 0 else { return nil }
 
-        let neededText = Formatters.byteCount(needed)
+        let known = queueSummary.totalBytes
         let freeText = Formatters.byteCount(free)
+
+        guard known > 0 else {
+            guard free < Self.unknownSizeFloorBytes else { return nil }
+            return tr(
+                "Only \(freeText) free on the destination disk, and this download's size isn't known yet. Free up some space first.",
+                "ดิสก์ปลายทางเหลือ \(freeText) และยังไม่ทราบขนาดของงานนี้ กรุณาเคลียร์พื้นที่ก่อน"
+            )
+        }
+
+        // Files big enough to be fetched in parallel ranges are assembled from
+        // staged parts, so they need about double their size at the peak.
+        let peak = known * 2 + Self.diskSpaceHeadroomBytes
+        guard free < peak else { return nil }
+
+        let neededText = Formatters.byteCount(peak)
+        let knownText = Formatters.byteCount(known)
         return tr(
-            "This download needs \(neededText), but the destination disk only has \(freeText) free.",
-            "ดาวน์โหลดนี้ต้องใช้พื้นที่ \(neededText) แต่ดิสก์ปลายทางเหลือ \(freeText)"
+            "This download is \(knownText) and needs about \(neededText) of free space while it assembles. The destination disk only has \(freeText). Free up some space first.",
+            "งานนี้ขนาด \(knownText) ต้องใช้พื้นที่ราว \(neededText) ระหว่างประกอบไฟล์ แต่ดิสก์ปลายทางเหลือ \(freeText) กรุณาเคลียร์พื้นที่ก่อน"
         )
     }
 
@@ -797,27 +818,101 @@ final class DropDriveViewModel {
         QueueStore.clear()
     }
 
+    /// Every message a failed download can show. The goal is that the row itself
+    /// says what to do about it — a disk that filled up mid-download used to
+    /// surface as "Something went wrong", leaving the user to work out the cause
+    /// on their own.
     private static func friendlyMessage(for error: Error) -> String {
+        if isOutOfSpace(error) {
+            return tr(
+                "The disk is full. Free up some space, then retry.",
+                "พื้นที่ดิสก์เต็ม กรุณาเคลียร์พื้นที่แล้วกดลองใหม่"
+            )
+        }
+
         if let driveError = error as? DriveDownloadError {
             switch driveError {
             case .server(let statusCode, _):
                 switch statusCode {
                 case 404:
-                    return "This link doesn't point to an existing Google Drive file or folder."
+                    return tr(
+                        "This link doesn't point to an existing Google Drive file or folder.",
+                        "ลิงก์นี้ไม่ตรงกับไฟล์หรือโฟลเดอร์ที่มีอยู่ใน Google Drive"
+                    )
                 case 403:
-                    return "You don't have permission to access this item."
+                    return tr(
+                        "You don't have permission to access this item.",
+                        "คุณไม่มีสิทธิ์เข้าถึงรายการนี้"
+                    )
+                case 429:
+                    return tr(
+                        "Google Drive is rate-limiting downloads right now. Wait a few minutes, then retry.",
+                        "Google Drive กำลังจำกัดการดาวน์โหลด รอสักครู่แล้วกดลองใหม่"
+                    )
+                case 500...599:
+                    return tr(
+                        "Google Drive is having trouble right now. Retry in a moment.",
+                        "Google Drive ขัดข้องชั่วคราว รอสักครู่แล้วลองใหม่"
+                    )
                 default:
-                    return "Google Drive couldn't process this link right now."
+                    return tr(
+                        "Google Drive couldn't process this link right now.",
+                        "Google Drive ประมวลผลลิงก์นี้ไม่ได้ในตอนนี้"
+                    )
                 }
-            case .invalidResponse, .unsupportedFileType:
-                return driveError.errorDescription ?? "Google Drive couldn't process this link right now."
+            case .invalidResponse:
+                return tr(
+                    "Google Drive sent back something unexpected. Retry in a moment.",
+                    "Google Drive ตอบกลับผิดปกติ รอสักครู่แล้วลองใหม่"
+                )
+            case .unsupportedFileType:
+                return tr(
+                    "This file type can't be downloaded directly from Google Drive.",
+                    "ไฟล์ชนิดนี้ดาวน์โหลดตรงจาก Google Drive ไม่ได้"
+                )
             }
         }
 
-        if error is URLError {
-            return "Check your internet connection and try again."
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .notConnectedToInternet, .networkConnectionLost:
+                return tr(
+                    "The internet connection dropped. It will retry automatically.",
+                    "เน็ตหลุด ระบบจะลองใหม่ให้อัตโนมัติ"
+                )
+            case .timedOut:
+                return tr(
+                    "The connection timed out. Check your internet, then retry.",
+                    "การเชื่อมต่อหมดเวลา เช็คเน็ตแล้วกดลองใหม่"
+                )
+            default:
+                return tr(
+                    "Check your internet connection and try again.",
+                    "เช็คการเชื่อมต่ออินเทอร์เน็ตแล้วลองใหม่"
+                )
+            }
         }
 
-        return "Something went wrong. Please try again."
+        if (error as NSError).domain == NSPOSIXErrorDomain || (error as NSError).domain == NSCocoaErrorDomain {
+            return tr(
+                "Couldn't write the file to the destination folder. Check the folder still exists and has space.",
+                "เขียนไฟล์ลงโฟลเดอร์ปลายทางไม่ได้ ตรวจสอบว่าโฟลเดอร์ยังอยู่และมีพื้นที่พอ"
+            )
+        }
+
+        return tr("Something went wrong. Please try again.", "เกิดข้อผิดพลาด กรุณาลองใหม่")
+    }
+
+    /// Disk-full surfaces differently depending on which layer hit it: Foundation
+    /// file writes report `NSFileWriteOutOfSpaceError`, raw POSIX writes report
+    /// `ENOSPC`.
+    private static func isOutOfSpace(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        if nsError.domain == NSCocoaErrorDomain, nsError.code == NSFileWriteOutOfSpaceError { return true }
+        if nsError.domain == NSPOSIXErrorDomain, nsError.code == Int(ENOSPC) { return true }
+        if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError {
+            return isOutOfSpace(underlying)
+        }
+        return false
     }
 }

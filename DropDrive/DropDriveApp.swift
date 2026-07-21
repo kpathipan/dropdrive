@@ -16,6 +16,8 @@ final class DropDriveAppDelegate: NSObject, NSApplicationDelegate {
         NSUpdateDynamicServices()
         // Start watching the iCloud Drive phone inbox.
         _ = PhoneInboxService.shared
+        // Reclaim scratch space from downloads a previous run never finished.
+        TempCleaner.sweepInBackground()
         // The menu bar presence (left-click opens the popover, right-click a
         // Quit menu). Driven manually via NSStatusItem rather than SwiftUI's
         // MenuBarExtra so right-click can show its own menu.

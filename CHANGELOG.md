@@ -5,6 +5,17 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.6.2] - Video downloads reuse the analysis work
+
+### Changed
+- **A video download no longer re-extracts what analysis already
+  resolved.** yt-dlp spends most of a download resolving formats, and it
+  was doing that twice — once for the card, once on Download. The info
+  from analysis is now cached for 30 minutes and passed back via
+  `--load-info-json`, measured at 36.2s -> 18.4s for the same file.
+  Signed media URLs expire, so a rejected cache silently falls back to a
+  full extraction, and a missing cache just takes the normal path.
+
 ## [6.6.1] - Video links analyze in under a second
 
 ### Fixed

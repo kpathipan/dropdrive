@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Downloads videos from TikTok / YouTube / Facebook links through the bundled
@@ -102,6 +103,11 @@ struct VideoDownloadService {
             ))
         }
 
+        // Keep the extracted info so the download doesn't have to redo it —
+        // resolving formats is the slow half of a video download (measured
+        // ~2x faster end to end when reused).
+        try? data.write(to: Self.infoCacheURL(for: link))
+
         let size = (json["filesize_approx"] as? Int64) ?? (json["filesize"] as? Int64)
         let uploader = (json["uploader"] as? String) ?? (json["channel"] as? String)
         let duration = (json["duration"] as? Double) ?? (json["duration"] as? Int).map(Double.init)
@@ -163,10 +169,8 @@ struct VideoDownloadService {
         if let ffmpegDirectory = Self.ffmpegDirectory {
             arguments += ["--ffmpeg-location", ffmpegDirectory]
         }
-        arguments.append(link)
 
-        var finalPath: String?
-        let output = try await Self.run(arguments: arguments) { line in
+        let handleLine: @Sendable (String, inout String?) -> Void = { line, finalPath in
             if line.hasPrefix("/") {
                 finalPath = line
             } else if let progress = Self.parseProgress(line: line, fileName: title) {
@@ -175,6 +179,32 @@ struct VideoDownloadService {
                 onProgress(DownloadProgress(currentFileName: tr("Merging tracks…", "กำลังรวมไฟล์วิดีโอ…")))
             } else if line.hasPrefix("[ExtractAudio]") {
                 onProgress(DownloadProgress(currentFileName: tr("Converting to MP3…", "กำลังแปลงเป็น MP3…")))
+            }
+        }
+
+        var finalPath: String?
+        var output: String
+
+        if let cachedInfo = Self.freshInfoCache(for: link) {
+            // Reuse the formats resolved during analysis instead of making
+            // yt-dlp extract them all over again.
+            do {
+                output = try await Self.run(arguments: arguments + ["--load-info-json", cachedInfo.path]) { line in
+                    handleLine(line, &finalPath)
+                }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // Cached URLs expire; fall back to a full extraction once.
+                try? FileManager.default.removeItem(at: cachedInfo)
+                finalPath = nil
+                output = try await Self.run(arguments: arguments + [link]) { line in
+                    handleLine(line, &finalPath)
+                }
+            }
+        } else {
+            output = try await Self.run(arguments: arguments + [link]) { line in
+                handleLine(line, &finalPath)
             }
         }
 
@@ -190,6 +220,33 @@ struct VideoDownloadService {
             ))
         }
         return URL(fileURLWithPath: path)
+    }
+
+    // MARK: - Extracted-info cache
+
+    /// Where the `-J` output for a link is parked between analysis and download.
+    private static func infoCacheURL(for link: String) -> URL {
+        let digest = SHA256.hash(data: Data(link.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+            .prefix(32)
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("DropDrive-info", isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory.appendingPathComponent("\(digest).json")
+    }
+
+    /// The cached info only if it's recent enough to still hold usable media
+    /// URLs — platforms sign those with a few hours' expiry, so this stays well
+    /// inside that window and the download falls back to a fresh extraction
+    /// whenever the cache is missing, stale, or rejected.
+    private static func freshInfoCache(for link: String) -> URL? {
+        let url = infoCacheURL(for: link)
+        guard let modified = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+              Date().timeIntervalSince(modified) < 30 * 60 else {
+            return nil
+        }
+        return url
     }
 
     /// Removes yt-dlp's partial artifacts (`.part`, `.ytdl`, fragment files) for

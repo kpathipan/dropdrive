@@ -5,6 +5,60 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.11.0] - A bug hunt, and the engine off the main thread
+
+A second read of the whole codebase, this time looking for things that
+were wrong rather than things that were slow.
+
+### Fixed
+- **A finished download could show up in Recent greyed out and
+  un-openable.** The gallery caches "is this file still on disk?"
+  answers. A tile drawn while the file was still downloading started a
+  check that answered "missing"; the download then finished and cleared
+  the cache, and that stale answer landed *afterwards* — writing
+  "missing" back into the empty cache with nothing able to ask again.
+  In-flight checks are now abandoned along with the cached answers.
+- **Pasting a link that's already in the queue said nothing.** Clearing
+  the text field re-triggers analysis, which resets the card state — and
+  it was done *after* the "Already in queue" state was set, wiping it in
+  the same turn. The card never appeared; the link just vanished.
+- **"Download Again" queued the item but didn't start it,** unlike every
+  other confirm button, so nothing happened until the user found
+  "Download All".
+- **Downloading a single file could overwrite an unrelated file of the
+  same name** in the destination folder, destroying it. Single files now
+  land beside it as "name (1)", the way folder downloads already did.
+  (Inside a folder the plain name is kept on purpose — that's how
+  resuming knows what it already has.)
+- **Cancelling or removing one queue item could kill a different
+  download.** Removing an item swept away *every* `.dddownload` staging
+  file in the destination, including the one a still-running multi-part
+  download was writing into — throwing away everything it had
+  transferred. It now removes only its own.
+- **Pausing in the instant before a connection opened was ignored** and
+  the transfer ran to completion: cancellation could arrive before there
+  was a task to cancel, and nothing recorded that it had.
+- **The "N today" count in the header froze at yesterday's number** if
+  the app sat idle across midnight.
+- Quick Look could be handed an empty file list.
+- More English-only strings translated: the notification titles and
+  their buttons, the folder picker's own panel, and the Preferences
+  bandwidth/folder controls.
+
+### Changed
+- **The download engine no longer runs on the main thread.** Creating a
+  folder's directory tree, statting every planned file, sweeping stale
+  staging files, truncating and renaming — all of it was main-actor
+  isolated by the project's default, so the window couldn't redraw while
+  any of it ran. Measured mid-download, the main thread now stalls at
+  most ~4 ms.
+
+### Internal
+- Removed three unused declarations, one of which was an English-only
+  string that would eventually have shown up in the UI.
+- The offline harness gained coverage for overwrite protection and a
+  main-thread responsiveness check.
+
 ## [6.10.0] - A pass over everything for speed
 
 No new features — a sweep through the whole codebase for work the app was

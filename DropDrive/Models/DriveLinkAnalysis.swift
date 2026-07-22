@@ -1,14 +1,14 @@
 import Foundation
 
-struct DriveLinkAnalysis: Equatable, Sendable, Codable {
-    enum ItemType: String, Equatable, Sendable, Codable {
+nonisolated struct DriveLinkAnalysis: Equatable, Sendable, Codable {
+    nonisolated enum ItemType: String, Equatable, Sendable, Codable {
         case file
         case folder
     }
 
     /// File-type breakdown for a folder's contents, gathered during the same recursive
     /// scan used for size/file count — no extra API calls. Only populated for folders.
-    struct CategoryBreakdown: Equatable, Sendable, Codable {
+    nonisolated struct CategoryBreakdown: Equatable, Sendable, Codable {
         var images = 0
         var videos = 0
         var documents = 0
@@ -66,7 +66,7 @@ struct DriveLinkAnalysis: Equatable, Sendable, Codable {
     }
 }
 
-enum LinkAnalysisResult: Equatable, Sendable {
+nonisolated enum LinkAnalysisResult: Equatable, Sendable {
     case success(DriveLinkAnalysis)
     case needsAuthentication
 }

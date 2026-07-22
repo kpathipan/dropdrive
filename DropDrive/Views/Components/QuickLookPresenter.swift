@@ -15,6 +15,9 @@ final class QuickLookPresenter: NSObject, QLPreviewPanelDataSource, QLPreviewPan
     }
 
     func preview(_ urls: [URL], startingAt index: Int) {
+        // An empty list would clamp the index to 0 and leave the panel indexing
+        // into nothing if it ever asked for an item.
+        guard !urls.isEmpty else { return }
         self.urls = urls
         self.index = max(0, min(index, urls.count - 1))
         guard let panel = QLPreviewPanel.shared() else { return }

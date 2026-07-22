@@ -1,6 +1,6 @@
 import Foundation
 
-struct DownloadRequest: Equatable {
+nonisolated struct DownloadRequest: Equatable, Sendable {
     let driveLink: String
     let itemID: String
     let destinationURL: URL

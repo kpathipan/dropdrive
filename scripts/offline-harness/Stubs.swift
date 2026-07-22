@@ -5,7 +5,7 @@ import Foundation
 
 struct GoogleAccount: Sendable { let name = ""; let email = "" }
 
-protocol LoginManaging {
+protocol LoginManaging: Sendable {
     func restoreSavedAccount() async -> GoogleAccount?
     func signIn() async throws -> GoogleAccount
     func signOut()

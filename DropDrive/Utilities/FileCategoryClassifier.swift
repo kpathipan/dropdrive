@@ -4,7 +4,7 @@ import Foundation
 /// Images/videos are classified by MIME type (reliable from Drive); documents and
 /// archives lean on file extension too, since Drive often reports generic MIME types
 /// (e.g. application/octet-stream) for files uploaded rather than created in Drive.
-enum FileCategoryClassifier {
+nonisolated enum FileCategoryClassifier {
     private static let documentExtensions: Set<String> = [
         "pdf", "doc", "docx", "rtf", "txt", "odt", "pages",
         "xls", "xlsx", "csv", "numbers",

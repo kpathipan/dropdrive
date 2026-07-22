@@ -1,6 +1,12 @@
 import Foundation
 
-protocol DownloadServicing {
+/// `nonisolated` on the protocol, not just the implementation: the requirement's
+/// own isolation is what the caller adopts, so leaving it at the project's
+/// MainActor default meant every download ran its filesystem work — creating a
+/// folder's directory tree, statting thousands of planned files, sweeping stale
+/// staging files, truncating and renaming — on the main thread, with the window
+/// unable to redraw until it finished.
+nonisolated protocol DownloadServicing {
     @discardableResult
     func download(_ request: DownloadRequest, progress: @escaping @Sendable (DownloadProgress) -> Void) async throws -> URL
     func analyzeLink(itemID: String, resourceKey: String?) async throws -> LinkAnalysisResult
@@ -263,6 +269,8 @@ private final class RangedStreamCoordinator: NSObject, URLSessionDataDelegate, @
     private var task: URLSessionDataTask?
     private var didResume = false
     private var failure: Error?
+    /// Set when cancellation arrives before there is a task to cancel — see `run`.
+    private var cancelledEarly = false
 
     private let expectedBytes: Int64
     private var writtenBytes: Int64 = 0
@@ -280,6 +288,10 @@ private final class RangedStreamCoordinator: NSObject, URLSessionDataDelegate, @
         try fileHandle.seek(toOffset: startOffset)
     }
 
+    /// `onCancel` can fire before the body has created the task — a task
+    /// cancelled in the window between the group scheduling it and it starting
+    /// would otherwise find nothing to cancel and then download the whole range
+    /// anyway, ignoring the pause the user just asked for.
     func run(session: URLSession, request: URLRequest) async throws {
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -287,13 +299,16 @@ private final class RangedStreamCoordinator: NSObject, URLSessionDataDelegate, @
                 self.continuation = continuation
                 let task = session.dataTask(with: request)
                 self.task = task
+                let alreadyCancelled = cancelledEarly
                 stateLock.unlock()
                 task.resume()
+                if alreadyCancelled { task.cancel() }
             }
         } onCancel: { [weak self] in
             guard let self else { return }
             stateLock.lock()
             let task = self.task
+            if task == nil { cancelledEarly = true }
             stateLock.unlock()
             task?.cancel()
         }
@@ -380,6 +395,9 @@ private final class DownloadTaskCoordinator: NSObject, URLSessionDownloadDelegat
     private var continuation: CheckedContinuation<URL, Error>?
     private var task: URLSessionDownloadTask?
     private var didResume = false
+    /// See `RangedStreamCoordinator.run` — cancellation can beat the task into
+    /// existence, and a download that ignores it keeps running to completion.
+    private var cancelledEarly = false
 
     /// `requireStatusCode` is set to 206 for multi-part ranged downloads: a server
     /// that silently ignores the `Range` header (some CDNs do this inconsistently,
@@ -402,13 +420,16 @@ private final class DownloadTaskCoordinator: NSObject, URLSessionDownloadDelegat
                 self.continuation = continuation
                 let task = session.downloadTask(with: request)
                 self.task = task
+                let alreadyCancelled = cancelledEarly
                 stateLock.unlock()
                 task.resume()
+                if alreadyCancelled { task.cancel { _ in } }
             }
         } onCancel: { [weak self] in
             guard let self else { return }
             stateLock.lock()
             let task = self.task
+            if task == nil { cancelledEarly = true }
             stateLock.unlock()
             task?.cancel { _ in }
         }
@@ -423,13 +444,16 @@ private final class DownloadTaskCoordinator: NSObject, URLSessionDownloadDelegat
                 self.continuation = continuation
                 let task = session.downloadTask(withResumeData: resumeData)
                 self.task = task
+                let alreadyCancelled = cancelledEarly
                 stateLock.unlock()
                 task.resume()
+                if alreadyCancelled { task.cancel { _ in } }
             }
         } onCancel: { [weak self] in
             guard let self else { return }
             stateLock.lock()
             let task = self.task
+            if task == nil { cancelledEarly = true }
             stateLock.unlock()
             task?.cancel { _ in }
         }
@@ -499,10 +523,10 @@ private final class DownloadTaskCoordinator: NSObject, URLSessionDownloadDelegat
     }
 }
 
-struct GoogleDriveDownloadService: DownloadServicing {
-    private nonisolated static let apiBase = "https://www.googleapis.com/drive/v3/files"
-    private nonisolated static let metadataFields = "id,name,mimeType,size,owners(displayName),shortcutDetails(targetId,targetMimeType,targetResourceKey),resourceKey"
-    private nonisolated static let listFields = "nextPageToken, files(id, name, mimeType, size, shortcutDetails(targetId,targetMimeType,targetResourceKey), resourceKey)"
+nonisolated struct GoogleDriveDownloadService: DownloadServicing {
+    private static let apiBase = "https://www.googleapis.com/drive/v3/files"
+    private static let metadataFields = "id,name,mimeType,size,owners(displayName),shortcutDetails(targetId,targetMimeType,targetResourceKey),resourceKey"
+    private static let listFields = "nextPageToken, files(id, name, mimeType, size, shortcutDetails(targetId,targetMimeType,targetResourceKey), resourceKey)"
 
     /// Multi-part ranged downloads only pay off past this size; below it the extra
     /// round trips (probe + N connection setups) aren't worth it.
@@ -529,7 +553,7 @@ struct GoogleDriveDownloadService: DownloadServicing {
 
     /// `JSONDecoder` is stateless for our purposes but not free to construct, and
     /// a folder scan decodes one response per page per folder.
-    private nonisolated static let decoder = JSONDecoder()
+    private static let decoder = JSONDecoder()
 
     /// A folder full of small files used to download one at a time, so most of the
     /// wall-clock time was per-file round-trip latency rather than actual transfer —
@@ -558,7 +582,7 @@ struct GoogleDriveDownloadService: DownloadServicing {
     }
 
     private let loginManager: LoginManaging
-    private nonisolated let urlSession: URLSession
+    private let urlSession: URLSession
 
     init(loginManager: LoginManaging, urlSession: URLSession = .shared) {
         self.loginManager = loginManager
@@ -735,7 +759,7 @@ struct GoogleDriveDownloadService: DownloadServicing {
     /// Google Drive "shortcut" items point at a real file/folder elsewhere; they carry
     /// no size or downloadable content of their own. Transparently follows one hop to
     /// the target's real metadata, folding in any resource key the target requires.
-    private nonisolated func resolvingShortcut(
+    private func resolvingShortcut(
         _ file: DriveFile,
         credential: DriveCredential,
         resourceKeys: [String: String]
@@ -753,7 +777,7 @@ struct GoogleDriveDownloadService: DownloadServicing {
         return (target, updatedKeys)
     }
 
-    private nonisolated static func applyResourceKeys(_ resourceKeys: [String: String], to request: inout URLRequest) {
+    private static func applyResourceKeys(_ resourceKeys: [String: String], to request: inout URLRequest) {
         guard !resourceKeys.isEmpty else { return }
         let value = resourceKeys.map { "\($0.key)/\($0.value)" }.joined(separator: ",")
         request.setValue(value, forHTTPHeaderField: "X-Goog-Drive-Resource-Keys")
@@ -786,7 +810,8 @@ struct GoogleDriveDownloadService: DownloadServicing {
             into: request.destinationURL,
             credential: credential,
             resourceKeys: resourceKeys,
-            resumeID: request.resumeID
+            resumeID: request.resumeID,
+            avoidingOverwrite: true
         ) { chunkSize in
             if let update = tracker.addingBytes(chunkSize) {
                 progress(update)
@@ -942,7 +967,7 @@ struct GoogleDriveDownloadService: DownloadServicing {
         return items
     }
 
-    private nonisolated func fetchMetadata(fileID: String, credential: DriveCredential, resourceKeys: [String: String]) async throws -> DriveFile {
+    private func fetchMetadata(fileID: String, credential: DriveCredential, resourceKeys: [String: String]) async throws -> DriveFile {
         var components = URLComponents(string: "\(Self.apiBase)/\(fileID)")!
         components.queryItems = [
             URLQueryItem(name: "fields", value: Self.metadataFields),
@@ -959,7 +984,7 @@ struct GoogleDriveDownloadService: DownloadServicing {
         return try Self.decoder.decode(DriveFile.self, from: data)
     }
 
-    private nonisolated func listChildren(of folderID: String, credential: DriveCredential, resourceKeys: [String: String]) async throws -> [DriveFile] {
+    private func listChildren(of folderID: String, credential: DriveCredential, resourceKeys: [String: String]) async throws -> [DriveFile] {
         var files: [DriveFile] = []
         var pageToken: String?
 
@@ -1000,6 +1025,15 @@ struct GoogleDriveDownloadService: DownloadServicing {
     /// Resumes from previously-saved resume data when it matches this exact file,
     /// and transparently splits large plain files into concurrent ranged requests
     /// when the server supports it and no resume is in play.
+    ///
+    /// `avoidingOverwrite` is on only for a lone file the user asked for by
+    /// link. Everything that lands at the destination is a *finished* file —
+    /// a single stream keeps its partial bytes in system temp and a multi-part
+    /// download stages beside the destination under `.dddownload` — so a name
+    /// already taken there means a real, unrelated file of the user's, and
+    /// writing over it would destroy it. Folder downloads deliberately keep the
+    /// plain name: inside a folder, "this file already exists" is how resuming
+    /// knows not to fetch it again.
     @discardableResult
     private func downloadFile(
         _ file: DriveFile,
@@ -1007,9 +1041,10 @@ struct GoogleDriveDownloadService: DownloadServicing {
         credential: DriveCredential,
         resourceKeys: [String: String],
         resumeID: UUID,
+        avoidingOverwrite: Bool = false,
         onBytes: @escaping @Sendable (Int64) -> Void
     ) async throws -> URL {
-        let destinationURL: URL
+        var destinationURL: URL
         let requestURL: URL
         let isExport: Bool
 
@@ -1032,6 +1067,10 @@ struct GoogleDriveDownloadService: DownloadServicing {
             ]
             credential.applying(to: &components)
             requestURL = components.url!
+        }
+
+        if avoidingOverwrite {
+            destinationURL = UniqueDestinationNaming.uniqueURL(for: destinationURL)
         }
 
         let envelope = ResumeEnvelopeStore.load(for: resumeID)
@@ -1221,7 +1260,7 @@ struct GoogleDriveDownloadService: DownloadServicing {
         return ranges
     }
 
-    private nonisolated static func validate(_ response: URLResponse, data: Data?) throws {
+    private static func validate(_ response: URLResponse, data: Data?) throws {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw DriveDownloadError.invalidResponse
         }
@@ -1294,18 +1333,18 @@ struct GoogleDriveDownloadService: DownloadServicing {
         }
     }
 
-    /// Deletes leftover `.dddownload` staging files sitting directly in a folder
-    /// (not recursing), for a single-file download that was killed mid-flight.
-    static func removePartialFiles(directlyIn folderURL: URL) {
-        let contents = (try? FileManager.default.contentsOfDirectory(
-            at: folderURL,
-            includingPropertiesForKeys: nil,
-            options: [.skipsSubdirectoryDescendants, .skipsHiddenFiles]
-        )) ?? []
-
-        for url in contents where url.pathExtension == partialExtension {
-            try? FileManager.default.removeItem(at: url)
-        }
+    /// Deletes the `.dddownload` staging file belonging to one specific item.
+    ///
+    /// Deliberately targeted rather than sweeping every `.dddownload` in the
+    /// folder: cancelling or removing one queue item would otherwise delete the
+    /// staging file of a *different* download that is still running into the
+    /// same destination, which drops that download back to a single stream and
+    /// throws away everything it had transferred.
+    static func removePartialFile(named name: String, in folderURL: URL) {
+        let staging = folderURL
+            .appendingPathComponent(sanitizedName(name))
+            .appendingPathExtension(partialExtension)
+        try? FileManager.default.removeItem(at: staging)
     }
 
     /// Deletes leftover `.dddownload` staging files anywhere under a folder — a

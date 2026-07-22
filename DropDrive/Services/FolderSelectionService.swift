@@ -9,9 +9,12 @@ protocol FolderSelectionServicing {
 struct FolderSelectionService: FolderSelectionServicing {
     func chooseDestinationFolder() async -> URL? {
         let panel = NSOpenPanel()
-        panel.title = "Choose Destination"
-        panel.message = "Downloaded files will be saved inside a new folder here."
-        panel.prompt = "Choose"
+        panel.title = tr("Choose Destination", "เลือกโฟลเดอร์ปลายทาง")
+        panel.message = tr(
+            "Downloaded files will be saved inside a new folder here.",
+            "ไฟล์ที่ดาวน์โหลดจะถูกเก็บในโฟลเดอร์ใหม่ที่นี่"
+        )
+        panel.prompt = tr("Choose", "เลือก")
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false

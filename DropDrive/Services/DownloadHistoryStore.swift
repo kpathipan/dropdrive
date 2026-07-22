@@ -27,6 +27,11 @@ final class DownloadHistoryStore {
 
     private(set) var totals = Totals()
 
+    /// `completedToday` is the one rollup that goes stale on its own: the app
+    /// sits in the menu bar for days at a time, so without this the header would
+    /// still be reporting yesterday's count at breakfast.
+    private var midnightTask: Task<Void, Never>?
+
     private init() {
         items = Self.load()
         recomputeTotals()
@@ -57,6 +62,25 @@ final class DownloadHistoryStore {
             if calendar.isDateInToday(item.date) { next.completedToday += 1 }
         }
         totals = next
+        scheduleMidnightRefresh()
+    }
+
+    private func scheduleMidnightRefresh() {
+        midnightTask?.cancel()
+        let calendar = Calendar.current
+        guard let midnight = calendar.nextDate(
+            after: .now,
+            matching: DateComponents(hour: 0, minute: 0, second: 5),
+            matchingPolicy: .nextTime
+        ) else { return }
+
+        let interval = midnight.timeIntervalSinceNow
+        guard interval > 0 else { return }
+        midnightTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(interval))
+            guard !Task.isCancelled else { return }
+            self?.recomputeTotals()
+        }
     }
 
     private func save() {

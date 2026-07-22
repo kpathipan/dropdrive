@@ -11,8 +11,16 @@ enum NotificationService {
         let center = UNUserNotificationCenter.current()
         center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
 
-        let revealAction = UNNotificationAction(identifier: openFolderActionID, title: "Reveal in Finder", options: [])
-        let openDropDriveAction = UNNotificationAction(identifier: openDropDriveActionID, title: "Open DropDrive", options: [])
+        let revealAction = UNNotificationAction(
+            identifier: openFolderActionID,
+            title: tr("Reveal in Finder", "เปิดใน Finder"),
+            options: []
+        )
+        let openDropDriveAction = UNNotificationAction(
+            identifier: openDropDriveActionID,
+            title: tr("Open DropDrive", "เปิด DropDrive"),
+            options: []
+        )
         let downloadCategory = UNNotificationCategory(
             identifier: downloadCategoryID,
             actions: [revealAction, openDropDriveAction],
@@ -41,7 +49,7 @@ enum NotificationService {
 
     static func notifyDownloadComplete(name: String, folderURL: URL, playSound: Bool) {
         let content = UNMutableNotificationContent()
-        content.title = "Download Complete"
+        content.title = tr("Download Complete", "ดาวน์โหลดเสร็จแล้ว")
         content.body = name
         content.categoryIdentifier = downloadCategoryID
         content.userInfo = [folderPathKey: folderURL.path]

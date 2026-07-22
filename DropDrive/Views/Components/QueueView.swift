@@ -241,7 +241,7 @@ private struct QueueRow: View {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 3)
                         .background(Capsule().fill(DDTheme.accentSoft))
-                        .help("Open the downloaded item")
+                        .help(tr("Open the downloaded item", "เปิดไฟล์ที่ดาวน์โหลด"))
                         .accessibilityLabel("Open \(item.analysis.name)")
 
                     Button(action: onRevealInFinder) {
@@ -250,7 +250,7 @@ private struct QueueRow: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
-                    .help("Reveal in Finder")
+                    .help(tr("Reveal in Finder", "เปิดใน Finder"))
                     .accessibilityLabel("Reveal in Finder")
                 }
 
@@ -267,7 +267,7 @@ private struct QueueRow: View {
                     }
                     .buttonStyle(.borderless)
                     .foregroundStyle(isHovering ? Color.primary : Color.secondary)
-                    .help("Remove from queue")
+                    .help(tr("Remove from queue", "เอาออกจากคิว"))
                     .accessibilityLabel("Remove from queue")
                 }
             }

@@ -61,7 +61,7 @@ struct DownloadFormView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(driveLink.isEmpty || isLocked)
-                .help("Download")
+                .help(tr("Download", "ดาวน์โหลด"))
                 .accessibilityLabel("Download")
             }
 

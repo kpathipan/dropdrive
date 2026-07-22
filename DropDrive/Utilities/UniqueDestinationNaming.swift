@@ -3,7 +3,7 @@ import Foundation
 /// Prevents accidental overwrites: if a destination path already exists on disk,
 /// finds the next available "name (1)", "name (2)"... variant, preserving the
 /// original extension.
-enum UniqueDestinationNaming {
+nonisolated enum UniqueDestinationNaming {
     static func uniqueURL(for url: URL, fileManager: FileManager = .default) -> URL {
         guard fileManager.fileExists(atPath: url.path) else { return url }
 

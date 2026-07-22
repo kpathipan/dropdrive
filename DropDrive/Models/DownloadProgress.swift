@@ -22,22 +22,4 @@ struct DownloadProgress: Equatable, Sendable {
         guard bytesPerSecond > 0, totalBytes > bytesDownloaded else { return nil }
         return Double(totalBytes - bytesDownloaded) / bytesPerSecond
     }
-
-    var progressDescription: String {
-        let downloaded = Formatters.byteCount(bytesDownloaded)
-        let total = Formatters.byteCount(totalBytes)
-
-        if totalBytes > 0 {
-            return "\(downloaded) / \(total)"
-        } else if totalFiles > 1 {
-            return "\(completedFiles) / \(totalFiles) files"
-        } else {
-            return downloaded
-        }
-    }
-
-    var estimatedTimeRemaining: String? {
-        guard let seconds = etaSeconds else { return nil }
-        return Formatters.remainingTime(seconds)
-    }
 }

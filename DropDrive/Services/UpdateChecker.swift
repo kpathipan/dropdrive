@@ -63,8 +63,8 @@ final class UpdateChecker {
 
     private func notifyUpdateAvailable(version: String, releaseURL: URL) {
         let content = UNMutableNotificationContent()
-        content.title = "DropDrive Update Available"
-        content.body = "\(version) is available on GitHub."
+        content.title = tr("DropDrive Update Available", "มีอัปเดต DropDrive")
+        content.body = tr("\(version) is available on GitHub.", "เวอร์ชัน \(version) พร้อมให้อัปเดตบน GitHub")
         content.categoryIdentifier = Self.updateAvailableCategoryID
         content.userInfo = [Self.releaseURLKey: releaseURL.absoluteString]
 

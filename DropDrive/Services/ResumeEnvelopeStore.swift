@@ -3,7 +3,7 @@ import Foundation
 /// Pairs URLSession's opaque resume-data blob with the destination file name it
 /// belongs to, so a later resume attempt can confirm the blob still matches the file
 /// it's about to be applied to before trusting it.
-struct ResumeEnvelope: Codable {
+nonisolated struct ResumeEnvelope: Codable, Sendable {
     let fileName: String
     let data: Data
 }
@@ -11,8 +11,11 @@ struct ResumeEnvelope: Codable {
 /// Persists resume envelopes to disk, keyed by queue item id. UserDefaults isn't
 /// appropriate for this (binary, can be several KB, one per queued item), so these
 /// live in Application Support instead.
-enum ResumeEnvelopeStore {
-    private static var directory: URL? = {
+nonisolated enum ResumeEnvelopeStore {
+    // `let`, not `var`: it was only ever assigned once by its own initializer,
+    // and as a `var` it counted as mutable global state the moment this type
+    // stopped being main-actor isolated.
+    private static let directory: URL? = {
         guard let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             return nil
         }

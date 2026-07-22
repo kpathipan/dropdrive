@@ -497,7 +497,7 @@ private struct RecentDownloadRow: View {
                 }
                 .buttonStyle(.borderless)
                 .foregroundStyle(isHovering ? Color.accentColor : .secondary)
-                .help("Reveal in Finder")
+                .help(tr("Reveal in Finder", "เปิดใน Finder"))
                 .accessibilityLabel("Reveal in Finder")
             }
 

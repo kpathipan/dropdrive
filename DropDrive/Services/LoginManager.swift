@@ -3,7 +3,10 @@ import AppAuth
 import Foundation
 import GTMAppAuth
 
-protocol LoginManaging {
+/// `Sendable` because the download engine is `nonisolated` and holds one: the
+/// conforming type is a MainActor class, so its methods still run on the main
+/// actor, they're just awaited from off it.
+protocol LoginManaging: Sendable {
     func restoreSavedAccount() async -> GoogleAccount?
     func signIn() async throws -> GoogleAccount
     func signOut()

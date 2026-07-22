@@ -192,7 +192,31 @@ defer { try? FileManager.default.removeItem(at: sandbox) }
 counter.reset()
 let folderRequest = DownloadRequest(driveLink: "x", itemID: "root", destinationURL: sandbox,
                                     resourceKey: nil, resumeID: UUID())
+
+// While the download runs, sample how long the main actor stays blocked. The
+// engine creates directories, stats every planned file and sweeps stale staging
+// files; when that ran main-actor-isolated the sampler below starved.
+final class Stall: @unchecked Sendable {
+    private let lock = NSLock()
+    private var worst: Double = 0
+    func record(_ gap: Double) { lock.lock(); worst = max(worst, gap); lock.unlock() }
+    var worstGap: Double { lock.lock(); defer { lock.unlock() }; return worst }
+}
+let stall = Stall()
+let sampling = Task { @MainActor in
+    var last = Date()
+    while !Task.isCancelled {
+        try? await Task.sleep(nanoseconds: 2_000_000)
+        let now = Date()
+        stall.record(now.timeIntervalSince(last))
+        last = now
+    }
+}
+
 let folderURL = try await service.download(folderRequest) { _ in }
+sampling.cancel()
+pass("main actor stayed responsive during the download",
+     stall.worstGap < 0.25, String(format: "worst stall %.0f ms", stall.worstGap * 1000))
 
 var downloaded = 0
 var corrupt: [String] = []
@@ -262,6 +286,24 @@ _ = try await service.download(
     DownloadRequest(driveLink: "x", itemID: bigID, destinationURL: bigDest,
                     resourceKey: nil, resumeID: UUID())) { _ in }
 check("second large file: ranges without a fresh probe", counter.count("range") - rangeBefore, 6)
+
+// MARK: - 6. A single file never overwrites something already there
+
+print("--- single-file overwrite protection")
+let singleDest = sandbox.appendingPathComponent("single")
+try FileManager.default.createDirectory(at: singleDest, withIntermediateDirectories: true)
+// A file of the user's that happens to share the name Drive will hand back.
+let collision = singleDest.appendingPathComponent("solo.jpg")
+let precious = Data("do not lose me".utf8)
+try precious.write(to: collision)
+
+let soloURL = try await service.download(
+    DownloadRequest(driveLink: "x", itemID: "solo", destinationURL: singleDest,
+                    resourceKey: nil, resumeID: UUID())) { _ in }
+check("downloaded alongside, not over", soloURL.lastPathComponent, "solo (1).jpg")
+check("the existing file is untouched", try Data(contentsOf: collision), precious)
+pass("the new file has the downloaded bytes",
+     (try Data(contentsOf: soloURL)) == contents(for: "solo", size: fileSize))
 
 print(failures == 0 ? "\nALL PASS" : "\n\(failures) FAILURE(S)")
 exit(failures == 0 ? 0 : 1)

@@ -348,9 +348,14 @@ final class DropDriveViewModel {
             if existing.status == .completed {
                 linkAnalysisState = .duplicateCompleted(analysis)
             } else {
+                // Clearing the field first, deliberately: `driveLink`'s didSet
+                // reschedules analysis, which resets the state to `.idle`. Doing
+                // it after setting `.duplicateActive` wiped that state in the
+                // same turn, so the "Already in queue" card never appeared at
+                // all — the pasted link just vanished with no explanation.
+                driveLink = ""
                 linkAnalysisState = .duplicateActive
                 flashDuplicate(itemID: analysis.itemID)
-                driveLink = ""
             }
             return
         }
@@ -423,6 +428,13 @@ final class DropDriveViewModel {
         let trimmedLink = driveLink.trimmingCharacters(in: .whitespacesAndNewlines)
         enqueue(analysis: analysis, driveLink: trimmedLink)
         driveLink = ""
+        linkAnalysisState = .idle
+        // Same as confirming a fresh link: "Download Again" is a download
+        // instruction, and leaving it merely queued meant the user had to go
+        // press "Download All" afterwards to make anything happen.
+        if !isQueueProcessing {
+            startQueueDownloads()
+        }
     }
 
     /// The download button / Return key: confirms an already-analyzed link, or
@@ -723,8 +735,10 @@ final class DropDriveViewModel {
         } else {
             // A single file stages as "<name>.dddownload" next to its
             // destination; a run that was killed rather than cancelled leaves
-            // that behind in the user's own folder.
-            GoogleDriveDownloadService.removePartialFiles(directlyIn: destinationURL)
+            // that behind in the user's own folder. Matched by this item's own
+            // name — sweeping every `.dddownload` in the folder would take out
+            // a different download still running into the same place.
+            GoogleDriveDownloadService.removePartialFile(named: item.analysis.name, in: destinationURL)
         }
     }
 

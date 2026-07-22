@@ -5,6 +5,45 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.10.0] - A pass over everything for speed
+
+No new features — a sweep through the whole codebase for work the app was
+doing that it didn't need to do.
+
+### Changed
+- **Folder scanning walks the tree in parallel.** Both the analysis card
+  and the download plan listed one folder, waited for the answer, then
+  listed the next, so a tree cost the sum of every round trip in it.
+  Sibling folders are now listed a level at a time, six at once — a
+  17-folder tree scans in 0.65s where it used to take 2.2s, with the same
+  file count, byte total, and category breakdown coming out. The listing
+  and its JSON decoding also moved off the main thread, so a folder with
+  thousands of files no longer stalls the window while it's read.
+  Folders that reach themselves through a shortcut now stop instead of
+  looping.
+- **Big files get more connections.** Drive throttles each connection
+  regardless of the link's real speed, so throughput scales with the
+  number of streams: files over 200 MB now use 6 ranged connections and
+  files over 1 GB use 8, instead of a flat 4.
+- **The "does this server do ranged requests?" probe runs once per host**
+  rather than once per large file — a folder of big files was spending a
+  wasted round trip apiece to re-learn the same answer.
+- **A folder download checks each planned file's existence once**, not
+  three times, before it starts.
+- **Menu bar and phone-inbox timers have slack**, so an idle app lets
+  macOS coalesce its wake-ups instead of forcing its own twice a second.
+  The iCloud inbox scan also moved off the main thread.
+
+### Fixed
+- The remaining-time readout was English-only; it's bilingual now.
+
+### Internal
+- Formatters, file-type icons, and file-existence checks are cached
+  instead of being rebuilt inside SwiftUI bodies that redraw several
+  times a second during a download; queue and history totals are
+  computed once per change rather than per redraw. The thumbnail cache
+  is now bounded.
+
 ## [6.9.3] - Confirmations you can actually click
 
 Found by driving the real app rather than reading the code.

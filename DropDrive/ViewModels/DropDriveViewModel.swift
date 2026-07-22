@@ -83,18 +83,27 @@ final class DropDriveViewModel {
 
     var isQueueProcessing: Bool { activeQueueItemID != nil }
 
-    var readyItems: [QueueItem] { queue.filter { $0.status == .ready } }
-
+    /// One pass over the queue instead of an intermediate array plus two
+    /// reductions. Every one of the properties below used to build its own copy
+    /// of `readyItems`, and the whole set is re-read on each SwiftUI redraw —
+    /// which, mid-download, is several times a second.
     var queueSummary: QueueSummary {
-        let items = readyItems
-        let totalFiles = items.reduce(0) { $0 + ($1.analysis.fileCount ?? 1) }
-        let totalBytes = items.reduce(Int64(0)) { $0 + ($1.analysis.totalBytes ?? 0) }
+        var linkCount = 0
+        var totalFiles = 0
+        var totalBytes: Int64 = 0
+        for item in queue where item.status == .ready {
+            linkCount += 1
+            totalFiles += item.analysis.fileCount ?? 1
+            totalBytes += item.analysis.totalBytes ?? 0
+        }
         let estimatedSeconds = totalBytes > 0 ? Double(totalBytes) / Self.assumedDownloadRateBytesPerSecond : nil
-        return QueueSummary(linkCount: items.count, totalFiles: totalFiles, totalBytes: totalBytes, estimatedSeconds: estimatedSeconds)
+        return QueueSummary(linkCount: linkCount, totalFiles: totalFiles, totalBytes: totalBytes, estimatedSeconds: estimatedSeconds)
     }
 
+    private var hasReadyItems: Bool { queue.contains { $0.status == .ready } }
+
     var canStartQueue: Bool {
-        !readyItems.isEmpty && selectedDestinationURL != nil && !isQueueProcessing && !isSigningIn
+        hasReadyItems && selectedDestinationURL != nil && !isQueueProcessing && !isSigningIn
     }
 
     var isLargeDownload: Bool {
@@ -476,7 +485,7 @@ final class DropDriveViewModel {
 
     /// Opens the destination in Finder so the user can clear space right away.
     func revealDestinationForCleanup() {
-        guard let destination = readyItems.first?.destinationURL ?? selectedDestinationURL else { return }
+        guard let destination = queue.first(where: { $0.status == .ready })?.destinationURL ?? selectedDestinationURL else { return }
         NSWorkspace.shared.activateFileViewerSelecting([destination])
     }
 
@@ -491,7 +500,7 @@ final class DropDriveViewModel {
     /// no size) used to bypass the check completely, which is exactly how a disk
     /// filled up mid-download; they're now held to a minimum-free-space floor.
     private func diskSpaceShortfall() -> String? {
-        guard let destination = readyItems.first?.destinationURL ?? selectedDestinationURL,
+        guard let destination = queue.first(where: { $0.status == .ready })?.destinationURL ?? selectedDestinationURL,
               let values = try? destination.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
               let free = values.volumeAvailableCapacityForImportantUsage,
               free > 0 else { return nil }

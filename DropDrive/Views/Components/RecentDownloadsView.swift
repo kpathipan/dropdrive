@@ -26,7 +26,10 @@ struct RecentDownloadsView: View {
             } else {
                 if items.count > 1 { searchField }
 
-                if filteredItems.isEmpty {
+                // Filtered once and passed down — it used to be recomputed for
+                // the emptiness check and again for whichever layout won.
+                let visible = filteredItems
+                if visible.isEmpty {
                     Text(tr("No matching downloads", "ไม่พบรายการที่ค้นหา"))
                         .font(.dd(11.5))
                         .foregroundStyle(.secondary)
@@ -34,9 +37,9 @@ struct RecentDownloadsView: View {
                         .padding(.vertical, 14)
                         .cardBackground()
                 } else if galleryMode {
-                    gallery
+                    gallery(visible)
                 } else {
-                    list
+                    list(visible)
                 }
             }
         }
@@ -74,9 +77,9 @@ struct RecentDownloadsView: View {
 
     private let columns = [GridItem(.adaptive(minimum: 92, maximum: 120), spacing: 8)]
 
-    private var gallery: some View {
+    private func gallery(_ visible: [DownloadHistoryItem]) -> some View {
         LazyVGrid(columns: columns, spacing: 8) {
-            ForEach(filteredItems) { item in
+            ForEach(visible) { item in
                 GalleryTile(
                     item: item,
                     onOpenFolder: { openedFolder = item },
@@ -87,9 +90,9 @@ struct RecentDownloadsView: View {
         }
     }
 
-    private var list: some View {
+    private func list(_ visible: [DownloadHistoryItem]) -> some View {
         VStack(spacing: 0) {
-            ForEach(Array(filteredItems.enumerated()), id: \.element.id) { index, item in
+            ForEach(Array(visible.enumerated()), id: \.element.id) { index, item in
                 if index > 0 {
                     Divider().padding(.leading, 38)
                 }
@@ -262,13 +265,30 @@ private struct FileThumbnail: View {
                     .resizable()
                     .aspectRatio(contentMode: .fill)
             } else {
-                Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+                Image(nsImage: FileTypeIcon.forFile(at: url))
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 34, height: 34)
             }
         }
         .onAppear { model.load(url: url, side: 120) }
+    }
+}
+
+/// `NSWorkspace.icon(forFile:)` is a LaunchServices round trip, and the
+/// placeholder that calls it sits in a tile body — so it ran for every visible
+/// tile on every redraw until its thumbnail arrived. The icon only depends on
+/// the file's type, so one lookup per extension covers the whole gallery.
+@MainActor
+private enum FileTypeIcon {
+    private static var cache: [String: NSImage] = [:]
+
+    static func forFile(at url: URL) -> NSImage {
+        let key = url.pathExtension.lowercased()
+        if let cached = cache[key] { return cached }
+        let icon = NSWorkspace.shared.icon(forFile: url.path)
+        cache[key] = icon
+        return icon
     }
 }
 
@@ -323,7 +343,7 @@ private struct FolderCover: View {
                 .padding(4)
         }
         .task {
-            covers = Thumbnailer.shared.coverCandidates(in: folderURL)
+            covers = await Thumbnailer.shared.coverCandidates(in: folderURL)
         }
     }
 }
@@ -378,14 +398,10 @@ private struct FolderContentsGallery: View {
             }
         }
         .task {
-            files = (try? FileManager.default.contentsOfDirectory(
-                at: item.itemURL ?? URL(fileURLWithPath: "/"),
-                includingPropertiesForKeys: [.isRegularFileKey],
-                options: [.skipsHiddenFiles]
-            ))?
-            .filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true }
-            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
-            ?? []
+            guard let folderURL = item.itemURL else { return }
+            // Off the main actor: a folder with hundreds of files means as many
+            // `resourceValues` calls, and this view appears mid-animation.
+            files = await Thumbnailer.shared.files(in: folderURL)
         }
     }
 }

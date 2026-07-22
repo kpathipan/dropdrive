@@ -8,11 +8,26 @@ import QuickLookThumbnailing
 actor Thumbnailer {
     static let shared = Thumbnailer()
 
+    /// Decoded thumbnails are full bitmaps; a long session browsing a big
+    /// history would otherwise hold every one it ever generated.
+    private static let cacheCapacity = 200
+
     private var cache: [String: NSImage] = [:]
+    private var cacheOrder: [String] = []
     private var inFlight: [String: Task<NSImage?, Never>] = [:]
 
     private func key(_ url: URL, _ side: CGFloat) -> String {
         "\(url.path)|\(Int(side))"
+    }
+
+    private func store(_ image: NSImage, for key: String) {
+        if cache.index(forKey: key) == nil {
+            cacheOrder.append(key)
+        }
+        cache[key] = image
+        while cacheOrder.count > Self.cacheCapacity {
+            cache.removeValue(forKey: cacheOrder.removeFirst())
+        }
     }
 
     func thumbnail(for url: URL, side: CGFloat) async -> NSImage? {
@@ -33,23 +48,33 @@ actor Thumbnailer {
         inFlight[key] = task
         let image = await task.value
         inFlight[key] = nil
-        if let image { cache[key] = image }
+        if let image { store(image, for: key) }
         return image
     }
 
-    /// The first few file URLs directly inside a folder, sorted, for a 2×2 cover
-    /// collage. Directories are skipped so the cover shows actual media.
-    nonisolated func coverCandidates(in folderURL: URL, limit: Int = 4) -> [URL] {
+    /// Every regular file directly inside a folder, sorted by name.
+    ///
+    /// Actor-isolated rather than `nonisolated` on purpose: its callers are
+    /// SwiftUI `.task` blocks, which run on the main actor, so a `nonisolated`
+    /// version did its directory read and its per-file `resourceValues` calls on
+    /// the main thread — a visible stall for a folder with many files, and worse
+    /// on a network or iCloud volume.
+    func files(in folderURL: URL, limit: Int? = nil) -> [URL] {
         let contents = (try? FileManager.default.contentsOfDirectory(
             at: folderURL,
             includingPropertiesForKeys: [.isRegularFileKey],
             options: [.skipsHiddenFiles]
         )) ?? []
-        return contents
+        let sorted = contents
             .filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true }
             .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
-            .prefix(limit)
-            .map { $0 }
+        guard let limit else { return sorted }
+        return Array(sorted.prefix(limit))
+    }
+
+    /// The first few files inside a folder, for its 2×2 cover collage.
+    func coverCandidates(in folderURL: URL, limit: Int = 4) -> [URL] {
+        files(in: folderURL, limit: limit)
     }
 }
 

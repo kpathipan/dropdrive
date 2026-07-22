@@ -47,6 +47,11 @@ final class StatusItemController: NSObject {
         let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refreshIcon() }
         }
+        // The app sits idle in the menu bar for hours at a time, and an exact
+        // half-second tick forces its own wake-up every time. Slack lets the OS
+        // coalesce this with whatever else it was already waking for; the icon
+        // still refreshes far faster than the eye needs.
+        timer.tolerance = 0.25
         RunLoop.main.add(timer, forMode: .common)
         refreshTimer = timer
 

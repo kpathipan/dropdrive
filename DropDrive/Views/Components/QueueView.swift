@@ -97,9 +97,18 @@ struct QueueView: View {
     }
 
     private var footerSummary: String {
-        let downloading = queue.filter { $0.status == .downloading || $0.status == .paused }.count
-        let pending = queue.filter { $0.status == .ready }.count
-        let done = queue.filter { $0.status == .completed }.count
+        // One pass, not three: this is rebuilt on every progress tick.
+        var downloading = 0
+        var pending = 0
+        var done = 0
+        for item in queue {
+            switch item.status {
+            case .downloading, .paused: downloading += 1
+            case .ready: pending += 1
+            case .completed: done += 1
+            case .failed, .cancelled: break
+            }
+        }
         var parts: [String] = []
         if downloading > 0 { parts.append(tr("\(downloading) downloading", "กำลังโหลด \(downloading)")) }
         if pending > 0 { parts.append(tr("\(pending) queued", "รอคิว \(pending)")) }
@@ -185,6 +194,16 @@ private struct QueueRow: View {
     let onOpen: () -> Void
 
     @State private var isHovering = false
+    @State private var statusCache = FileStatusCache.shared
+
+    /// Whether the finished item is still where it was put. Read through the
+    /// cache rather than `fileExists`: this row redraws with every progress
+    /// update, and a synchronous stat per redraw is a stat several times a
+    /// second per completed row.
+    private var resultStillOnDisk: Bool {
+        guard let url = item.resultURL else { return false }
+        return statusCache.status(for: url)?.exists ?? true
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -214,8 +233,7 @@ private struct QueueRow: View {
 
                 Spacer(minLength: 8)
 
-                if item.status == .completed, let url = item.resultURL,
-                   FileManager.default.fileExists(atPath: url.path) {
+                if item.status == .completed, resultStillOnDisk {
                     Button(tr("Open", "เปิด"), action: onOpen)
                         .buttonStyle(.plain)
                         .font(.dd(11, .medium))

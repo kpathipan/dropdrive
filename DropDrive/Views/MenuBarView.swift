@@ -330,8 +330,12 @@ struct MenuBarView: View {
                             )
                             .transition(.opacity.combined(with: .move(edge: .top)))
                         } else if viewModel.linkAnalysisState == .idle {
-                            if !recentCompleted.isEmpty {
-                                recentPreview.transition(.opacity)
+                            // Resolved once per redraw and handed down, rather
+                            // than recomputed for the emptiness check and again
+                            // for the rows.
+                            let recent = recentCompleted
+                            if !recent.isEmpty {
+                                recentPreview(recent).transition(.opacity)
                             }
                         }
                     }
@@ -360,26 +364,32 @@ struct MenuBarView: View {
 
     private var headerStatus: String {
         if viewModel.isQueueProcessing { return tr("Downloading…", "กำลังดาวน์โหลด…") }
-        let cal = Calendar.current
-        let today = historyStore.items.filter { $0.status == .completed && cal.isDateInToday($0.date) }.count
+        let today = historyStore.totals.completedToday
         if today > 0 { return tr("\(today) today", "วันนี้ \(today) รายการ") }
         return tr("Ready", "พร้อมใช้งาน")
     }
 
+    /// Only ever shown three at a time, so the scan stops there rather than
+    /// filtering all 50 history entries — twice — on every redraw.
     private var recentCompleted: [DownloadHistoryItem] {
-        historyStore.items.filter { item in
-            guard item.status == .completed, let url = item.itemURL else { return false }
+        var found: [DownloadHistoryItem] = []
+        found.reserveCapacity(3)
+        for item in historyStore.items {
+            guard item.status == .completed, let url = item.itemURL else { continue }
             // A row whose file was deleted or moved would have a dead Open
             // button — leave it to the full Recent pane instead. Read through
             // the cache: this runs on every redraw, and hitting the filesystem
             // here stutters the window.
-            return statusCache.status(for: url)?.exists ?? true
+            guard statusCache.status(for: url)?.exists ?? true else { continue }
+            found.append(item)
+            if found.count == 3 { break }
         }
+        return found
     }
 
     /// Fills the empty-queue space with something useful: the last few finished
     /// downloads, openable in place, with a jump to the full Recent pane.
-    private var recentPreview: some View {
+    private func recentPreview(_ items: [DownloadHistoryItem]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(tr("Recent", "ล่าสุด"))
@@ -400,7 +410,7 @@ struct MenuBarView: View {
             .padding(.horizontal, 2)
 
             VStack(spacing: 0) {
-                ForEach(Array(recentCompleted.prefix(3).enumerated()), id: \.element.id) { index, item in
+                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                     if index > 0 {
                         Divider().padding(.leading, 32)
                     }

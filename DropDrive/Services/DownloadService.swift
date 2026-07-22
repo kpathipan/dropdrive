@@ -7,12 +7,12 @@ protocol DownloadServicing {
     func clearAnalysisCache() async
 }
 
-struct DriveFile: Decodable {
-    private struct Owner: Decodable {
+nonisolated struct DriveFile: Decodable, Sendable {
+    private nonisolated struct Owner: Decodable {
         let displayName: String?
     }
 
-    struct ShortcutDetails: Decodable {
+    nonisolated struct ShortcutDetails: Decodable {
         let targetId: String
         let targetMimeType: String?
         let targetResourceKey: String?
@@ -50,7 +50,7 @@ struct DriveFile: Decodable {
     }
 }
 
-private struct DriveListResponse: Decodable {
+private nonisolated struct DriveListResponse: Decodable, Sendable {
     let files: [DriveFile]
     let nextPageToken: String?
 }
@@ -134,6 +134,18 @@ private actor AnalysisCache {
         storage.removeAll()
         insertionOrder.removeAll()
     }
+}
+
+/// Remembers, per host, whether ranged requests are honoured. Whether a server
+/// answers 206 is a property of the server rather than of any one file, so the
+/// probe only needs to happen once per session instead of once per large file.
+private actor RangeSupportCache {
+    static let shared = RangeSupportCache()
+
+    private var storage: [String: Bool] = [:]
+
+    func get(_ host: String) -> Bool? { storage[host] }
+    func set(_ host: String, _ supported: Bool) { storage[host] = supported }
 }
 
 /// Delegate-based downloads deliver `didWriteData` callbacks on URLSession's own
@@ -488,14 +500,36 @@ private final class DownloadTaskCoordinator: NSObject, URLSessionDownloadDelegat
 }
 
 struct GoogleDriveDownloadService: DownloadServicing {
-    private static let apiBase = "https://www.googleapis.com/drive/v3/files"
-    private static let metadataFields = "id,name,mimeType,size,owners(displayName),shortcutDetails(targetId,targetMimeType,targetResourceKey),resourceKey"
-    private static let listFields = "nextPageToken, files(id, name, mimeType, size, shortcutDetails(targetId,targetMimeType,targetResourceKey), resourceKey)"
+    private nonisolated static let apiBase = "https://www.googleapis.com/drive/v3/files"
+    private nonisolated static let metadataFields = "id,name,mimeType,size,owners(displayName),shortcutDetails(targetId,targetMimeType,targetResourceKey),resourceKey"
+    private nonisolated static let listFields = "nextPageToken, files(id, name, mimeType, size, shortcutDetails(targetId,targetMimeType,targetResourceKey), resourceKey)"
 
     /// Multi-part ranged downloads only pay off past this size; below it the extra
     /// round trips (probe + N connection setups) aren't worth it.
     private static let multiPartThresholdBytes: Int64 = 20 * 1024 * 1024
-    private static let multiPartCount = 4
+
+    /// Drive throttles each connection to a few MB/s regardless of the link's real
+    /// capacity, so throughput on a single file scales with the number of streams,
+    /// not with bandwidth. A big file therefore earns more connections than a
+    /// merely large one — with a ceiling, since past this the per-connection
+    /// setup and Drive's own per-item rate limiting take the gains back.
+    private static func multiPartCount(forSize bytes: Int64) -> Int {
+        switch bytes {
+        case ..<(200 * 1024 * 1024): 4
+        case ..<(1024 * 1024 * 1024): 6
+        default: 8
+        }
+    }
+
+    /// One folder scan can list hundreds of subfolders; walking them one at a
+    /// time meant the whole tree cost one round trip after another. Sibling
+    /// folders are now listed concurrently, capped here so a wide tree can't turn
+    /// into a burst big enough for Drive to start answering 429.
+    private static let maxConcurrentListings = 6
+
+    /// `JSONDecoder` is stateless for our purposes but not free to construct, and
+    /// a folder scan decodes one response per page per folder.
+    private nonisolated static let decoder = JSONDecoder()
 
     /// A folder full of small files used to download one at a time, so most of the
     /// wall-clock time was per-file round-trip latency rather than actual transfer —
@@ -524,7 +558,7 @@ struct GoogleDriveDownloadService: DownloadServicing {
     }
 
     private let loginManager: LoginManaging
-    private let urlSession: URLSession
+    private nonisolated let urlSession: URLSession
 
     init(loginManager: LoginManaging, urlSession: URLSession = .shared) {
         self.loginManager = loginManager
@@ -604,37 +638,96 @@ struct GoogleDriveDownloadService: DownloadServicing {
         )
     }
 
+    /// Walks the tree breadth-first, listing up to `maxConcurrentListings` folders
+    /// at a time. Depth-first recursion made every folder wait for the previous
+    /// one's round trip, so a tree's analysis cost the sum of all its listings;
+    /// one bounded task group per level means it costs roughly the deepest path
+    /// instead, without ever having more requests in flight than the cap.
     private func estimateFolderContents(
         folderID: String,
         credential: DriveCredential,
         resourceKeys: [String: String]
     ) async throws -> (fileCount: Int, totalBytes: Int64, breakdown: DriveLinkAnalysis.CategoryBreakdown) {
-        try Task.checkCancellation()
-        let children = try await listChildren(of: folderID, credential: credential, resourceKeys: resourceKeys)
         var count = 0
         var bytes: Int64 = 0
         var breakdown = DriveLinkAnalysis.CategoryBreakdown()
 
-        for rawChild in children {
-            let (child, updatedKeys) = try await resolvingShortcut(rawChild, credential: credential, resourceKeys: resourceKeys)
-            if child.isFolder {
-                let (childCount, childBytes, childBreakdown) = try await estimateFolderContents(folderID: child.id, credential: credential, resourceKeys: updatedKeys)
-                count += childCount
-                bytes += childBytes
-                breakdown.images += childBreakdown.images
-                breakdown.videos += childBreakdown.videos
-                breakdown.documents += childBreakdown.documents
-                breakdown.archives += childBreakdown.archives
-                breakdown.other += childBreakdown.other
-            } else if Self.isDownloadable(mimeType: child.mimeType) {
-                count += 1
-                bytes += child.size ?? 0
-                let category = FileCategoryClassifier.categorize(mimeType: child.mimeType, name: child.name)
-                breakdown[keyPath: category] += 1
+        // A folder reachable from itself through a shortcut would otherwise be
+        // walked forever — the old depth-first version would at least have run
+        // out of stack; this one would just never finish.
+        var visited: Set<String> = [folderID]
+        var frontier: [FolderScan] = [FolderScan(id: folderID, resourceKeys: resourceKeys)]
+        while !frontier.isEmpty {
+            var next: [FolderScan] = []
+            for resolved in try await scanLevel(frontier, credential: credential) {
+                for (child, childKeys) in resolved {
+                    if child.isFolder {
+                        guard visited.insert(child.id).inserted else { continue }
+                        next.append(FolderScan(id: child.id, resourceKeys: childKeys))
+                    } else if Self.isDownloadable(mimeType: child.mimeType) {
+                        count += 1
+                        bytes += child.size ?? 0
+                        let category = FileCategoryClassifier.categorize(mimeType: child.mimeType, name: child.name)
+                        breakdown[keyPath: category] += 1
+                    }
+                }
             }
+            frontier = next
         }
 
         return (count, bytes, breakdown)
+    }
+
+    /// One folder queued for listing: its Drive ID, the resource keys reaching it,
+    /// and (when building a download plan) where its contents land locally.
+    private struct FolderScan: Sendable {
+        let id: String
+        let resourceKeys: [String: String]
+        var localURL: URL?
+    }
+
+    /// Lists every folder in one level of the tree concurrently and returns their
+    /// shortcut-resolved children, in the same order the folders were given —
+    /// callers depend on that for a stable download order.
+    private func scanLevel(
+        _ folders: [FolderScan],
+        credential: DriveCredential
+    ) async throws -> [[(DriveFile, [String: String])]] {
+        try Task.checkCancellation()
+
+        var pending = Array(folders.enumerated())[...]
+        var results = [[(DriveFile, [String: String])]](repeating: [], count: folders.count)
+
+        try await withThrowingTaskGroup(of: (Int, [(DriveFile, [String: String])]).self) { group in
+            func startNext() {
+                guard let (index, folder) = pending.popFirst() else { return }
+                group.addTask {
+                    let children = try await listChildren(
+                        of: folder.id,
+                        credential: credential,
+                        resourceKeys: folder.resourceKeys
+                    )
+                    var resolved: [(DriveFile, [String: String])] = []
+                    resolved.reserveCapacity(children.count)
+                    for rawChild in children {
+                        resolved.append(try await resolvingShortcut(
+                            rawChild,
+                            credential: credential,
+                            resourceKeys: folder.resourceKeys
+                        ))
+                    }
+                    return (index, resolved)
+                }
+            }
+
+            for _ in 0..<Self.maxConcurrentListings { startNext() }
+            while let (index, resolved) = try await group.next() {
+                results[index] = resolved
+                startNext()
+            }
+        }
+
+        return results
     }
 
     // MARK: - Shortcuts / resource keys
@@ -642,7 +735,7 @@ struct GoogleDriveDownloadService: DownloadServicing {
     /// Google Drive "shortcut" items point at a real file/folder elsewhere; they carry
     /// no size or downloadable content of their own. Transparently follows one hop to
     /// the target's real metadata, folding in any resource key the target requires.
-    private func resolvingShortcut(
+    private nonisolated func resolvingShortcut(
         _ file: DriveFile,
         credential: DriveCredential,
         resourceKeys: [String: String]
@@ -721,15 +814,31 @@ struct GoogleDriveDownloadService: DownloadServicing {
         // clear them so this attempt restarts those files cleanly.
         Self.removePartialFiles(in: rootFolderURL)
 
-        let totalBytes = plan.reduce(Int64(0)) { $0 + ($1.file.size ?? 0) }
-        let alreadyDone = plan.filter { FileManager.default.fileExists(atPath: $0.destinationFolderURL.appendingPathComponent(Self.fileName(for: $0.file)).path) }
-        let completedBytes = alreadyDone.reduce(Int64(0)) { $0 + ($1.file.size ?? 0) }
-        let tracker = ProgressTracker(totalFiles: plan.count, totalBytes: totalBytes, completedFiles: alreadyDone.count, bytesDownloaded: completedBytes)
+        // One `stat` per planned file, not three: the totals, the already-done
+        // tally, and the remaining work all come out of the same pass. A folder
+        // with thousands of files paid for every extra pass in syscalls before
+        // a single byte moved.
+        var totalBytes: Int64 = 0
+        var completedFiles = 0
+        var completedBytes: Int64 = 0
+        var pending: [PlanItem] = []
+        pending.reserveCapacity(plan.count)
 
-        // already downloaded in a prior attempt at this same item — resume, don't redo it
-        var remaining = plan.filter {
-            !FileManager.default.fileExists(atPath: $0.destinationFolderURL.appendingPathComponent(Self.fileName(for: $0.file)).path)
-        }[...]
+        for item in plan {
+            let size = item.file.size ?? 0
+            totalBytes += size
+            let path = item.destinationFolderURL.appendingPathComponent(Self.fileName(for: item.file)).path
+            if FileManager.default.fileExists(atPath: path) {
+                // already downloaded in a prior attempt at this same item — resume, don't redo it
+                completedFiles += 1
+                completedBytes += size
+            } else {
+                pending.append(item)
+            }
+        }
+
+        let tracker = ProgressTracker(totalFiles: plan.count, totalBytes: totalBytes, completedFiles: completedFiles, bytesDownloaded: completedBytes)
+        var remaining = pending[...]
 
         // Bounded-concurrency worker pool: `maxConcurrentFileDownloads` files in
         // flight at once, refilling as each finishes, rather than the unbounded
@@ -789,36 +898,51 @@ struct GoogleDriveDownloadService: DownloadServicing {
         return .oauth(token)
     }
 
-    private struct PlanItem {
+    private struct PlanItem: Sendable {
         let file: DriveFile
         let destinationFolderURL: URL
     }
 
+    /// Breadth-first for the same reason `estimateFolderContents` is: sibling
+    /// folders list concurrently instead of each waiting on the last. Files come
+    /// out level by level rather than depth-first, which only changes the order
+    /// they're downloaded in.
     private func enumerate(
         folderID: String,
         into localFolderURL: URL,
         credential: DriveCredential,
         resourceKeys: [String: String]
     ) async throws -> [PlanItem] {
-        try Task.checkCancellation()
-        let children = try await listChildren(of: folderID, credential: credential, resourceKeys: resourceKeys)
         var items: [PlanItem] = []
+        var visited: Set<String> = [folderID]
+        var frontier = [FolderScan(id: folderID, resourceKeys: resourceKeys, localURL: localFolderURL)]
 
-        for rawChild in children {
-            let (child, updatedKeys) = try await resolvingShortcut(rawChild, credential: credential, resourceKeys: resourceKeys)
-            if child.isFolder {
-                let childURL = localFolderURL.appendingPathComponent(Self.sanitizedName(child.name), isDirectory: true)
-                try FileManager.default.createDirectory(at: childURL, withIntermediateDirectories: true)
-                items.append(contentsOf: try await enumerate(folderID: child.id, into: childURL, credential: credential, resourceKeys: updatedKeys))
-            } else if Self.isDownloadable(mimeType: child.mimeType) {
-                items.append(PlanItem(file: child, destinationFolderURL: localFolderURL))
+        while !frontier.isEmpty {
+            var next: [FolderScan] = []
+            let level = try await scanLevel(frontier, credential: credential)
+
+            for (folder, resolved) in zip(frontier, level) {
+                guard let parentURL = folder.localURL else { continue }
+                for (child, childKeys) in resolved {
+                    if child.isFolder {
+                        // See `estimateFolderContents`: shortcut cycles.
+                        guard visited.insert(child.id).inserted else { continue }
+                        let childURL = parentURL.appendingPathComponent(Self.sanitizedName(child.name), isDirectory: true)
+                        try FileManager.default.createDirectory(at: childURL, withIntermediateDirectories: true)
+                        next.append(FolderScan(id: child.id, resourceKeys: childKeys, localURL: childURL))
+                    } else if Self.isDownloadable(mimeType: child.mimeType) {
+                        items.append(PlanItem(file: child, destinationFolderURL: parentURL))
+                    }
+                }
             }
+
+            frontier = next
         }
 
         return items
     }
 
-    private func fetchMetadata(fileID: String, credential: DriveCredential, resourceKeys: [String: String]) async throws -> DriveFile {
+    private nonisolated func fetchMetadata(fileID: String, credential: DriveCredential, resourceKeys: [String: String]) async throws -> DriveFile {
         var components = URLComponents(string: "\(Self.apiBase)/\(fileID)")!
         components.queryItems = [
             URLQueryItem(name: "fields", value: Self.metadataFields),
@@ -832,10 +956,10 @@ struct GoogleDriveDownloadService: DownloadServicing {
 
         let (data, response) = try await urlSession.data(for: request)
         try Self.validate(response, data: data)
-        return try JSONDecoder().decode(DriveFile.self, from: data)
+        return try Self.decoder.decode(DriveFile.self, from: data)
     }
 
-    private func listChildren(of folderID: String, credential: DriveCredential, resourceKeys: [String: String]) async throws -> [DriveFile] {
+    private nonisolated func listChildren(of folderID: String, credential: DriveCredential, resourceKeys: [String: String]) async throws -> [DriveFile] {
         var files: [DriveFile] = []
         var pageToken: String?
 
@@ -862,7 +986,7 @@ struct GoogleDriveDownloadService: DownloadServicing {
             let (data, response) = try await urlSession.data(for: request)
             try Self.validate(response, data: data)
 
-            let decoded = try JSONDecoder().decode(DriveListResponse.self, from: data)
+            let decoded = try Self.decoder.decode(DriveListResponse.self, from: data)
             files.append(contentsOf: decoded.files)
             pageToken = decoded.nextPageToken
         } while pageToken != nil
@@ -986,7 +1110,14 @@ struct GoogleDriveDownloadService: DownloadServicing {
 
     // MARK: - Multi-threaded ranged downloads
 
+    /// Whether the host will honour a `Range` header. Answered from a probe the
+    /// first time and remembered per host afterwards: the answer is a property of
+    /// the server, not of the file, so a folder of large files used to spend one
+    /// wasted round trip apiece re-learning the same thing.
     private func supportsRangeRequests(url: URL, credential: DriveCredential, resourceKeys: [String: String]) async -> Bool {
+        guard let host = url.host else { return false }
+        if let known = await RangeSupportCache.shared.get(host) { return known }
+
         var request = URLRequest(url: url)
         credential.applying(to: &request)
         Self.applyResourceKeys(resourceKeys, to: &request)
@@ -994,9 +1125,13 @@ struct GoogleDriveDownloadService: DownloadServicing {
 
         guard let (_, response) = try? await urlSession.data(for: request),
               let http = response as? HTTPURLResponse else {
+            // A failed probe says nothing about the host — don't cache it, or one
+            // dropped connection disables multi-part downloads for the session.
             return false
         }
-        return http.statusCode == 206
+        let supported = http.statusCode == 206
+        await RangeSupportCache.shared.set(host, supported)
+        return supported
     }
 
     /// Splits the file into `multiPartCount` byte ranges and downloads them
@@ -1039,7 +1174,7 @@ struct GoogleDriveDownloadService: DownloadServicing {
             try sizing.truncate(atOffset: UInt64(totalBytes))
             try sizing.close()
 
-            let ranges = Self.splitRanges(totalBytes: totalBytes, partCount: Self.multiPartCount)
+            let ranges = Self.splitRanges(totalBytes: totalBytes, partCount: Self.multiPartCount(forSize: totalBytes))
 
             try await withThrowingTaskGroup(of: Void.self) { group in
                 for range in ranges {
@@ -1086,7 +1221,7 @@ struct GoogleDriveDownloadService: DownloadServicing {
         return ranges
     }
 
-    private static func validate(_ response: URLResponse, data: Data?) throws {
+    private nonisolated static func validate(_ response: URLResponse, data: Data?) throws {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw DriveDownloadError.invalidResponse
         }

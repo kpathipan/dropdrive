@@ -19,7 +19,7 @@ final class PhoneInboxService {
     }
 
     /// Visible in Finder as "DropDrive" at the top level of iCloud Drive.
-    static let inboxURL = FileManager.default.homeDirectoryForCurrentUser
+    nonisolated static let inboxURL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs/DropDrive", isDirectory: true)
 
     private static let defaultsKey = "phoneInboxEnabled"
@@ -36,6 +36,9 @@ final class PhoneInboxService {
         let timer = Timer(timeInterval: 8, repeats: true) { _ in
             Task { @MainActor in PhoneInboxService.shared.scan() }
         }
+        // Nothing here is time-critical, and this runs for the app's whole
+        // lifetime — let the OS fold the wake-up into one it was making anyway.
+        timer.tolerance = 2
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
         scan()
@@ -46,12 +49,27 @@ final class PhoneInboxService {
         timer = nil
     }
 
+    /// The listing happens off the main actor: this is an iCloud folder, so the
+    /// read can block on the network, and it was blocking the UI every 8
+    /// seconds whether or not anything was ever in there.
     private func scan() {
-        let contents = (try? FileManager.default.contentsOfDirectory(
-            at: Self.inboxURL, includingPropertiesForKeys: nil,
-            options: [.skipsSubdirectoryDescendants, .skipsHiddenFiles]
-        )) ?? []
+        Task {
+            let contents = await Self.inboxContents()
+            guard !contents.isEmpty else { return }
+            consume(contents)
+        }
+    }
 
+    private static func inboxContents() async -> [URL] {
+        await Task.detached(priority: .utility) {
+            (try? FileManager.default.contentsOfDirectory(
+                at: inboxURL, includingPropertiesForKeys: nil,
+                options: [.skipsSubdirectoryDescendants, .skipsHiddenFiles]
+            )) ?? []
+        }.value
+    }
+
+    private func consume(_ contents: [URL]) {
         for file in contents {
             let ext = file.pathExtension.lowercased()
 

@@ -14,8 +14,22 @@ final class DownloadHistoryStore {
 
     private(set) var items: [DownloadHistoryItem] = []
 
+    /// Rollups the UI reads on every redraw — the header's "N today", the
+    /// Statistics pane's three totals. Derived once when the list changes
+    /// instead of re-filtering and re-reducing the whole history each time a
+    /// progress tick redraws the window.
+    struct Totals {
+        var completedCount = 0
+        var completedToday = 0
+        var totalFiles = 0
+        var totalBytes: Int64 = 0
+    }
+
+    private(set) var totals = Totals()
+
     private init() {
         items = Self.load()
+        recomputeTotals()
     }
 
     func record(_ item: DownloadHistoryItem) {
@@ -23,12 +37,26 @@ final class DownloadHistoryStore {
         if items.count > Self.maxItems {
             items.removeLast(items.count - Self.maxItems)
         }
+        recomputeTotals()
         save()
     }
 
     func clear() {
         items = []
+        recomputeTotals()
         save()
+    }
+
+    private func recomputeTotals() {
+        let calendar = Calendar.current
+        var next = Totals()
+        for item in items where item.status == .completed {
+            next.completedCount += 1
+            next.totalFiles += item.fileCount ?? 1
+            next.totalBytes += item.sizeBytes ?? 0
+            if calendar.isDateInToday(item.date) { next.completedToday += 1 }
+        }
+        totals = next
     }
 
     private func save() {

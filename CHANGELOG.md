@@ -5,6 +5,24 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.9.1] - YouTube files that actually open, and a folder picker that stays put
+
+### Fixed
+- **YouTube downloads produced files a Mac can't open.** Left to pick the
+  best quality, yt-dlp chose AV1 video with Opus audio in a `.webm`
+  container — rejected by QuickTime, Finder preview, and most editing
+  software, so it looked like the download had failed. Video downloads now
+  ask for H.264 + AAC in MP4, verified playable via AVFoundation. A new
+  Preferences toggle ("Keep videos playable on Mac") turns this off for
+  anyone who would rather have 4K, since resolutions above 1080p are
+  AV1-only on YouTube; either way the container is MP4, never webm.
+- **The destination folder couldn't be changed once a link was
+  analyzed.** Opening the folder chooser takes key focus, and the popover
+  dismisses the moment that happens — taking the analysis card with it,
+  so the click appeared to do nothing. The popover is now pinned while
+  the chooser is up, and the app comes forward so the panel can't open
+  behind another window.
+
 ## [6.9.0] - Smoother readouts, honest progress, lighter UI
 
 The rest of the code-review findings.

@@ -164,7 +164,23 @@ struct VideoDownloadService {
             // the best VBR quality.
             arguments += ["-f", "ba/b", "-x", "--audio-format", "mp3", "--audio-quality", "0"]
         } else {
-            arguments += ["-f", "bv*+ba/b"]
+            // Left to itself yt-dlp picks whatever is highest quality, which on
+            // YouTube means AV1 or VP9 audio-in-webm — a file QuickTime, Finder
+            // preview, and most editing software all refuse to open, so it just
+            // looks like a broken download. Prefer H.264 + AAC in MP4, which
+            // plays and edits everywhere on a Mac, and only fall back to other
+            // codecs when a video offers nothing else (still forced into an MP4
+            // container rather than webm).
+            if PreferencesStore.shared.preferCompatibleVideo {
+                arguments += [
+                    "-f", "bv*[vcodec^=avc1]+ba[acodec^=mp4a]/bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b",
+                    "--merge-output-format", "mp4"
+                ]
+            } else {
+                // Highest quality available, still packed into MP4 rather than
+                // webm so the container at least behaves.
+                arguments += ["-f", "bv*+ba/b", "--merge-output-format", "mp4"]
+            }
         }
         if let ffmpegDirectory = Self.ffmpegDirectory {
             arguments += ["--ffmpeg-location", ffmpegDirectory]

@@ -74,6 +74,21 @@ struct PreferencesView: View {
             }
 
             Section {
+                Toggle(
+                    tr("Keep videos playable on Mac (H.264/MP4)", "ให้วิดีโอเปิดได้บน Mac (H.264/MP4)"),
+                    isOn: $preferences.preferCompatibleVideo
+                )
+            } header: {
+                Text(tr("Video", "วิดีโอ"))
+            } footer: {
+                Text(tr(
+                    "On means files always open in QuickTime and editing software, capped at 1080p on videos whose higher resolutions are AV1 only. Off takes the best available, up to 4K.",
+                    "เปิดไว้ = ไฟล์เปิดได้ใน QuickTime และโปรแกรมตัดต่อเสมอ แต่บางคลิปจะได้สูงสุด 1080p (เพราะ 4K มีเฉพาะ AV1) ปิด = เอาคุณภาพสูงสุดถึง 4K"
+                ))
+                .foregroundStyle(.secondary)
+            }
+
+            Section {
                 Picker(tr("Limit download speed", "จำกัดความเร็วดาวน์โหลด"), selection: bandwidthPresetBinding) {
                     ForEach(BandwidthPreset.presets, id: \.self) { preset in
                         Text(preset.label).tag(preset)

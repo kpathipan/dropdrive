@@ -9,10 +9,22 @@ import Observation
 /// light timer so no Observation plumbing is needed in AppKit.
 @MainActor
 final class StatusItemController: NSObject {
+    /// The live controller, so code that opens a modal panel can keep the
+    /// popover from dismissing underneath it.
+    private(set) static weak var current: StatusItemController?
+
     private let statusItem: NSStatusItem
     private let popover: NSPopover
     private var refreshTimer: Timer?
     private var lastImageKey = ""
+
+    /// While a system panel (the folder chooser) is up it takes key focus, and a
+    /// `.transient` popover closes the instant that happens — taking the card
+    /// the user was working with away with it. Pinning switches the popover to
+    /// dismissing only when we say so, for the duration of that panel.
+    func setPopoverPinned(_ pinned: Bool) {
+        popover.behavior = pinned ? .applicationDefined : .transient
+    }
 
     override init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -37,6 +49,8 @@ final class StatusItemController: NSObject {
         }
         RunLoop.main.add(timer, forMode: .common)
         refreshTimer = timer
+
+        Self.current = self
     }
 
     // MARK: - Click handling

@@ -41,7 +41,7 @@ final class DropDriveViewModel {
     var isQueuePaused = false
 
     var pendingRestoreQueue: [QueueItem]?
-    var showRestorePrompt = false
+    private var hasAskedAboutRestore = false
 
     private let loginManager: LoginManaging
     private let downloadService: DownloadServicing
@@ -446,9 +446,6 @@ final class DropDriveViewModel {
         QueueStore.save(queue)
     }
 
-    var showDiskSpaceWarning = false
-    var diskSpaceWarningMessage = ""
-
     /// Breathing room on top of the download itself, so a download can never take
     /// the volume to its last byte (macOS gets unhappy well before zero).
     private static let diskSpaceHeadroomBytes: Int64 = 2 * 1024 * 1024 * 1024
@@ -460,8 +457,14 @@ final class DropDriveViewModel {
     func startQueueDownloads() {
         guard canStartQueue else { return }
         if let message = diskSpaceShortfall() {
-            diskSpaceWarningMessage = message
-            showDiskSpaceWarning = true
+            // A real panel, not a popover-attached alert — see SystemAlert.
+            let openFolder = SystemAlert.inform(
+                title: tr("Not enough disk space", "พื้นที่ดิสก์ไม่พอ"),
+                message: message,
+                confirmTitle: tr("Open destination folder", "เปิดโฟลเดอร์ปลายทาง"),
+                secondaryTitle: tr("OK", "ตกลง")
+            )
+            if openFolder { revealDestinationForCleanup() }
             return
         }
         if isLargeDownload {
@@ -471,13 +474,8 @@ final class DropDriveViewModel {
         }
     }
 
-    func cancelDiskSpaceWarning() {
-        showDiskSpaceWarning = false
-    }
-
     /// Opens the destination in Finder so the user can clear space right away.
     func revealDestinationForCleanup() {
-        showDiskSpaceWarning = false
         guard let destination = readyItems.first?.destinationURL ?? selectedDestinationURL else { return }
         NSWorkspace.shared.activateFileViewerSelecting([destination])
     }
@@ -802,7 +800,26 @@ final class DropDriveViewModel {
     private func checkForSavedQueue() {
         guard let saved = QueueStore.load(), !saved.isEmpty else { return }
         pendingRestoreQueue = saved
-        showRestorePrompt = true
+    }
+
+    /// Asked the first time the user opens the window, not at launch. Launch is
+    /// the wrong moment for a modal: with "launch at login" on it would ambush
+    /// them at every boot, and an agent app has no window for it to belong to.
+    func promptForSavedQueueIfNeeded() {
+        guard let saved = pendingRestoreQueue, !saved.isEmpty, !hasAskedAboutRestore else { return }
+        hasAskedAboutRestore = true
+
+        let count = saved.count
+        let restore = SystemAlert.confirm(
+            title: tr("Restore previous queue?", "กู้คืนคิวจากครั้งก่อน?"),
+            message: tr(
+                "You have \(count) item\(count == 1 ? "" : "s") from your last session.",
+                "มี \(count) รายการค้างจากครั้งที่แล้ว"
+            ),
+            confirmTitle: tr("Restore", "กู้คืน"),
+            cancelTitle: tr("Discard", "ทิ้งไป")
+        )
+        if restore { restoreSavedQueue() } else { discardSavedQueue() }
     }
 
     /// A queue item that was mid-download when the app last quit never finished;
@@ -814,13 +831,11 @@ final class DropDriveViewModel {
         }
         queue = saved
         pendingRestoreQueue = nil
-        showRestorePrompt = false
         QueueStore.save(queue)
     }
 
     func discardSavedQueue() {
         pendingRestoreQueue = nil
-        showRestorePrompt = false
         QueueStore.clear()
     }
 

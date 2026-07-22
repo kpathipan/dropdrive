@@ -42,7 +42,11 @@ final class ShareViewController: NSViewController {
 
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             extensionContext?.open(target) { [weak self] _ in
-                self?.extensionContext?.completeRequest(returningItems: nil)
+                // `open`'s completion arrives on the main thread, but the closure
+                // is `@Sendable`, so touching the context has to say so.
+                MainActor.assumeIsolated {
+                    self?.extensionContext?.completeRequest(returningItems: nil)
+                }
                 continuation.resume()
             }
         }

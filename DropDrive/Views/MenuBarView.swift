@@ -111,24 +111,8 @@ struct MenuBarView: View {
         }
         .task {
             viewModel.restoreLogin()
+            viewModel.promptForSavedQueueIfNeeded()
         }
-        .alert(tr("Not enough disk space", "พื้นที่ดิสก์ไม่พอ"), isPresented: $viewModel.showDiskSpaceWarning) {
-            Button(tr("Open destination folder", "เปิดโฟลเดอร์ปลายทาง")) { viewModel.revealDestinationForCleanup() }
-            Button(tr("OK", "ตกลง"), role: .cancel) { viewModel.cancelDiskSpaceWarning() }
-        } message: {
-            Text(viewModel.diskSpaceWarningMessage)
-        }
-        .alert(tr("Restore previous queue?", "กู้คืนคิวจากครั้งก่อน?"), isPresented: $viewModel.showRestorePrompt) {
-            Button(tr("Discard", "ทิ้งไป"), role: .destructive) { viewModel.discardSavedQueue() }
-            Button(tr("Restore", "กู้คืน")) { viewModel.restoreSavedQueue() }
-        } message: {
-            Text(restoreMessage)
-        }
-    }
-
-    private var restoreMessage: String {
-        let count = viewModel.pendingRestoreQueue?.count ?? 0
-        return tr("You have \(count) item\(count == 1 ? "" : "s") from your last session.", "มี \(count) รายการค้างจากครั้งที่แล้ว")
     }
 
     // MARK: - Welcome

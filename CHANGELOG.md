@@ -5,6 +5,25 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.9.3] - Confirmations you can actually click
+
+Found by driving the real app rather than reading the code.
+
+### Fixed
+- **Confirmation dialogs ignored every click.** The restore-queue prompt
+  and the disk-space warning were SwiftUI alerts attached to the menu bar
+  popover, and such an alert only accepts input while its window is key —
+  which for an agent app is rarely true. The dialog rendered, the buttons
+  highlighted, and nothing happened. Both are real `NSAlert` panels now,
+  which bring the app forward and run their own modal session.
+- **The restore prompt no longer ambushes you at login.** It fired during
+  app launch, so with "launch at login" enabled it would interrupt every
+  boot. It's asked the first time the window is opened instead.
+- **Stale LaunchServices registrations** from old build folders were
+  hijacking the `dropdrive://` scheme, so deep links (and by extension
+  the Share extension and the phone inbox) silently went nowhere. The
+  installed app is now the only registered copy.
+
 ## [6.9.2] - Data races cleared out
 
 A full pass with strict concurrency checking turned on, which surfaced

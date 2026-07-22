@@ -7,7 +7,7 @@ import Foundation
 /// the process is killed mid-download (force quit, crash, restart). Each
 /// abandoned attempt then strands its parts — observed in the wild at 20 leftover
 /// directories holding 14 GB, which is what filled the user's disk.
-enum TempCleaner {
+nonisolated enum TempCleaner {
     /// Directories younger than this may belong to a download still running in
     /// another instance, so they're left alone.
     private static let minimumAge: TimeInterval = 60 * 60

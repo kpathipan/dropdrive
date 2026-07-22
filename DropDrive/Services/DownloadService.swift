@@ -118,9 +118,13 @@ private actor AnalysisCache {
     }
 
     func set(_ key: String, _ value: LinkAnalysisResult) {
-        if storage.updateValue(value, forKey: key) == nil {
+        // Tracked by key rather than by comparing the stored value: the result
+        // type's `Equatable` conformance is main-actor isolated and can't be
+        // used from inside this actor.
+        if storage.index(forKey: key) == nil {
             insertionOrder.append(key)
         }
+        storage[key] = value
         while insertionOrder.count > Self.capacity {
             storage.removeValue(forKey: insertionOrder.removeFirst())
         }
@@ -184,7 +188,10 @@ private nonisolated final class ProgressTracker: @unchecked Sendable {
         let elapsed = now.timeIntervalSince(lastSampleTime)
         guard elapsed >= 0.2 else { return nil }
 
-        let deltaBytes = bytesDownloaded - lastSampleBytes
+        // A failed parallel attempt hands its bytes back as a negative count so
+        // the total stays honest, which makes this delta negative for one
+        // sample. Clamped, or the readout briefly shows a negative speed.
+        let deltaBytes = max(0, bytesDownloaded - lastSampleBytes)
         let instantRate = elapsed > 0 ? Double(deltaBytes) / elapsed : 0
         smoothedRate = smoothedRate == 0 ? instantRate : (smoothedRate * 0.7 + instantRate * 0.3)
         lastSampleTime = now
@@ -213,7 +220,7 @@ private nonisolated final class ProgressTracker: @unchecked Sendable {
 }
 
 /// Thread-safe tally of bytes a single download attempt reported.
-private final class ByteCounter: @unchecked Sendable {
+private nonisolated final class ByteCounter: @unchecked Sendable {
     private let lock = NSLock()
     private var value: Int64 = 0
 
@@ -1149,6 +1156,20 @@ struct GoogleDriveDownloadService: DownloadServicing {
             let marker = candidate.appendingPathComponent(resumeMarkerName)
             guard let ownerID = try? String(contentsOf: marker, encoding: .utf8), ownerID == itemID else { continue }
             try? FileManager.default.removeItem(at: candidate)
+        }
+    }
+
+    /// Deletes leftover `.dddownload` staging files sitting directly in a folder
+    /// (not recursing), for a single-file download that was killed mid-flight.
+    static func removePartialFiles(directlyIn folderURL: URL) {
+        let contents = (try? FileManager.default.contentsOfDirectory(
+            at: folderURL,
+            includingPropertiesForKeys: nil,
+            options: [.skipsSubdirectoryDescendants, .skipsHiddenFiles]
+        )) ?? []
+
+        for url in contents where url.pathExtension == partialExtension {
+            try? FileManager.default.removeItem(at: url)
         }
     }
 

@@ -192,18 +192,22 @@ final class LoginManager: LoginManaging {
         request: OIDAuthorizationRequest,
         window: NSWindow
     ) async throws -> OIDAuthState {
-        try await withCheckedThrowingContinuation { continuation in
+        // AppAuth's `OIDAuthState` isn't Sendable, and it comes back through a
+        // completion handler, so it stays boxed across the continuation and is
+        // only unwrapped here on the main actor.
+        let boxed: UncheckedSendable<OIDAuthState> = try await withCheckedThrowingContinuation { continuation in
             currentAuthorizationFlow = OIDAuthState.authState(
                 byPresenting: request,
                 presenting: window
             ) { authState, error in
                 if let authState {
-                    continuation.resume(returning: authState)
+                    continuation.resume(returning: UncheckedSendable(authState))
                 } else {
                     continuation.resume(throwing: error ?? LoginManagerError.notSignedIn)
                 }
             }
         }
+        return boxed.value
     }
 
     private func loadSession() -> AuthSession? {
@@ -296,4 +300,12 @@ enum LoginManagerError: LocalizedError {
             "Could not obtain a valid Google access token."
         }
     }
+}
+
+/// Carries a value across an isolation boundary the compiler can't verify.
+/// Used where a callback-based API hands back a non-Sendable object it has
+/// already finished with.
+struct UncheckedSendable<Value>: @unchecked Sendable {
+    let value: Value
+    init(_ value: Value) { self.value = value }
 }

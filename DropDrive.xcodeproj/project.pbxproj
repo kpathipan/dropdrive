@@ -377,7 +377,7 @@
 				CODE_SIGN_ENTITLEMENTS = DropDrive.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 39;
+				CURRENT_PROJECT_VERSION = 40;
 				DEVELOPMENT_TEAM = YM8Y88VSBF;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
@@ -388,7 +388,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 6.9.1;
+				MARKETING_VERSION = 6.9.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.dropdrive.DropDrive;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -409,7 +409,7 @@
 				CODE_SIGN_ENTITLEMENTS = DropDrive.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 39;
+				CURRENT_PROJECT_VERSION = 40;
 				DEVELOPMENT_TEAM = YM8Y88VSBF;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
@@ -420,7 +420,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 6.9.1;
+				MARKETING_VERSION = 6.9.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.dropdrive.DropDrive;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -438,7 +438,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = DropDriveShare/DropDriveShare.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 39;
+				CURRENT_PROJECT_VERSION = 40;
 				DEVELOPMENT_TEAM = YM8Y88VSBF;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = DropDriveShare/Info.plist;
@@ -450,7 +450,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 6.9.1;
+				MARKETING_VERSION = 6.9.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.dropdrive.DropDrive.Share;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
@@ -465,7 +465,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = DropDriveShare/DropDriveShare.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 39;
+				CURRENT_PROJECT_VERSION = 40;
 				DEVELOPMENT_TEAM = YM8Y88VSBF;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = DropDriveShare/Info.plist;
@@ -477,7 +477,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 6.9.1;
+				MARKETING_VERSION = 6.9.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.dropdrive.DropDrive.Share;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;

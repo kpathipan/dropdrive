@@ -40,7 +40,12 @@ final class AppTheme {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.systemIsDark = Self.currentSystemIsDark()
+            // Delivered on the main queue by the `queue: .main` above, but the
+            // closure itself is `@Sendable`, so the isolation has to be stated
+            // rather than assumed.
+            MainActor.assumeIsolated {
+                self?.systemIsDark = Self.currentSystemIsDark()
+            }
         }
     }
 

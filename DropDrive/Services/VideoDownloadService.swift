@@ -187,45 +187,49 @@ struct VideoDownloadService {
         }
 
         let smoother = RateSmoother()
-        let handleLine: @Sendable (String, inout String?) -> Void = { line, finalPath in
+        // yt-dlp's output is parsed on the pipe-reader thread, so the discovered
+        // path can't live in a plain captured `var` — that was a genuine data
+        // race, and losing the write means a finished download reporting that it
+        // can't find its own file.
+        let finalPath = PathBox()
+        let mergingText = tr("Merging tracks…", "กำลังรวมไฟล์วิดีโอ…")
+        let convertingText = tr("Converting to MP3…", "กำลังแปลงเป็น MP3…")
+
+        let handleLine: @Sendable (String) -> Void = { line in
             if line.hasPrefix("/") {
-                finalPath = line
+                finalPath.value = line
             } else if let progress = Self.parseProgress(line: line, fileName: title, smoother: smoother) {
                 onProgress(progress)
             } else if line.hasPrefix("[Merger]") || line.hasPrefix("[VideoRemuxer]") {
-                onProgress(DownloadProgress(currentFileName: tr("Merging tracks…", "กำลังรวมไฟล์วิดีโอ…")))
+                onProgress(DownloadProgress(currentFileName: mergingText))
             } else if line.hasPrefix("[ExtractAudio]") {
-                onProgress(DownloadProgress(currentFileName: tr("Converting to MP3…", "กำลังแปลงเป็น MP3…")))
+                onProgress(DownloadProgress(currentFileName: convertingText))
             }
         }
 
-        var finalPath: String?
         var output: String
 
         if let cachedInfo = Self.freshInfoCache(for: link) {
             // Reuse the formats resolved during analysis instead of making
             // yt-dlp extract them all over again.
             do {
-                output = try await Self.run(arguments: arguments + ["--load-info-json", cachedInfo.path]) { line in
-                    handleLine(line, &finalPath)
-                }
+                output = try await Self.run(
+                    arguments: arguments + ["--load-info-json", cachedInfo.path],
+                    onProgressLine: handleLine
+                )
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
                 // Cached URLs expire; fall back to a full extraction once.
                 try? FileManager.default.removeItem(at: cachedInfo)
-                finalPath = nil
-                output = try await Self.run(arguments: arguments + [link]) { line in
-                    handleLine(line, &finalPath)
-                }
+                finalPath.value = nil
+                output = try await Self.run(arguments: arguments + [link], onProgressLine: handleLine)
             }
         } else {
-            output = try await Self.run(arguments: arguments + [link]) { line in
-                handleLine(line, &finalPath)
-            }
+            output = try await Self.run(arguments: arguments + [link], onProgressLine: handleLine)
         }
 
-        let path = finalPath ?? output
+        let path = finalPath.value ?? output
             .split(separator: "\n")
             .last(where: { $0.hasPrefix("/") })
             .map(String.init)
@@ -354,7 +358,7 @@ struct VideoDownloadService {
     }
 
     /// "[download]  45.2% of ~  12.34MiB at    2.34MiB/s ETA 00:12"
-    private static func parseProgress(line: String, fileName: String, smoother: RateSmoother) -> DownloadProgress? {
+    private nonisolated static func parseProgress(line: String, fileName: String, smoother: RateSmoother) -> DownloadProgress? {
         guard line.hasPrefix("[download]"), line.contains("%") else { return nil }
         let pattern = /\[download\]\s+(?<pct>[\d.]+)% of ~?\s*(?<size>[\d.]+)(?<unit>KiB|MiB|GiB)(?:\s+at\s+(?<speed>[\d.]+)(?<sunit>KiB|MiB|GiB)\/s)?/
         guard let match = line.firstMatch(of: pattern),
@@ -381,7 +385,7 @@ struct VideoDownloadService {
         )
     }
 
-    private static func multiplier(_ unit: String) -> Double {
+    private nonisolated static func multiplier(_ unit: String) -> Double {
         switch unit {
         case "KiB": 1024
         case "MiB": 1024 * 1024
@@ -391,8 +395,20 @@ struct VideoDownloadService {
     }
 }
 
+/// Thread-safe holder for the output path yt-dlp prints, written from the
+/// pipe-reader thread and read once the process exits.
+private nonisolated final class PathBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: String?
+
+    var value: String? {
+        get { lock.lock(); defer { lock.unlock() }; return stored }
+        set { lock.lock(); stored = newValue; lock.unlock() }
+    }
+}
+
 /// Exponential moving average over yt-dlp's per-fragment speed readings.
-private final class RateSmoother: @unchecked Sendable {
+private nonisolated final class RateSmoother: @unchecked Sendable {
     private let lock = NSLock()
     private var smoothed: Double = 0
 
@@ -407,7 +423,7 @@ private final class RateSmoother: @unchecked Sendable {
 
 /// Accumulates pipe data and emits complete lines; Process pipes deliver
 /// arbitrary chunks, not lines.
-private final class LineCollector: @unchecked Sendable {
+private nonisolated final class LineCollector: @unchecked Sendable {
     private let lock = NSLock()
     private var buffer = Data()
     private var collected = ""

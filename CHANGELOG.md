@@ -5,6 +5,34 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.9.2] - Data races cleared out
+
+A full pass with strict concurrency checking turned on, which surfaced
+20+ isolation problems the normal build says nothing about.
+
+### Fixed
+- **The path of a finished video download was written from one thread and
+  read from another.** yt-dlp's output is parsed on the pipe-reader
+  thread, and the discovered file path lived in a plain captured
+  variable — a real race, and losing that write means a completed
+  download reporting it can't find its own file. It's held in a
+  lock-protected box now.
+- **Helpers used from download threads claimed to be main-actor
+  isolated.** BandwidthLimiter (which deliberately sleeps its caller),
+  the yt-dlp output collector, the progress rate smoother, and the byte
+  counter all do their own locking but were annotated as if they only
+  ran on the main thread — the opposite of how they're used, and
+  BandwidthLimiter would have frozen the UI had anything called it from
+  the main thread. All are explicitly `nonisolated` now.
+- **Startup temp cleanup is genuinely off the main thread**, so sweeping
+  gigabytes of abandoned scratch can't stall the UI.
+- **Theme changes, the auth-state handoff, and the analysis cache** no
+  longer cross isolation boundaries unchecked.
+- **A negative speed could flash on screen** for one sample after a
+  parallel download handed its bytes back during fallback.
+- **A single-file download killed mid-flight left its `.dddownload`
+  staging file** in the user's folder; it's cleaned up now.
+
 ## [6.9.1] - YouTube files that actually open, and a folder picker that stays put
 
 ### Fixed

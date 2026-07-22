@@ -713,6 +713,11 @@ final class DropDriveViewModel {
             VideoDownloadService.cleanupPartials(title: item.analysis.name, in: destinationURL)
         } else if item.analysis.type == .folder {
             GoogleDriveDownloadService.removePartialFolderArtifact(itemID: item.itemID, in: destinationURL)
+        } else {
+            // A single file stages as "<name>.dddownload" next to its
+            // destination; a run that was killed rather than cancelled leaves
+            // that behind in the user's own folder.
+            GoogleDriveDownloadService.removePartialFiles(directlyIn: destinationURL)
         }
     }
 

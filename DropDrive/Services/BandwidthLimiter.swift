@@ -5,7 +5,12 @@ import Foundation
 /// from URLSession delegate callbacks, so it sleeps the calling thread directly rather
 /// than hopping through async/await — the delegate queue is serial, so blocking it here
 /// genuinely throttles further reads instead of just under-reporting progress.
-final class BandwidthLimiter: @unchecked Sendable {
+// `nonisolated` on the type: every caller is a URLSession delegate callback on
+// a background queue, and `throttle` deliberately sleeps the calling thread.
+// Left implicitly MainActor-isolated (this project's default), the annotation
+// claimed the opposite of how it runs — and any future main-thread caller would
+// have frozen the UI for the sleep.
+nonisolated final class BandwidthLimiter: @unchecked Sendable {
     static let shared = BandwidthLimiter()
 
     private let lock = NSLock()

@@ -5,6 +5,28 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.12.2] - No more keychain prompt on every update
+
+### Fixed
+- **Updating asked for the login password every single time.** The app
+  was ad-hoc signed, which means macOS identifies it by the hash of its
+  binary — so every new build looked like a different application, and
+  the keychain refused to hand it the Google session the previous build
+  had saved without the password. Builds are now signed with a
+  certificate, which keeps the identity the same across versions, so the
+  grant carries over.
+
+### Notes
+- This update itself still asks once, because it is the build where the
+  identity changes. After it, updates are silent.
+- Nothing here costs anything: the certificate is the free Apple
+  Development one that comes with any Apple ID through Xcode, not the
+  paid Developer Program. The app still isn't Gatekeeper-approved, so a
+  first manual install still needs the quarantine flag cleared — the
+  in-app updater already does that by itself.
+- Building on a machine with no certificate still works; it falls back
+  to ad-hoc and warns that updates will keep prompting.
+
 ## [6.12.1] - The update offer, where you can see it
 
 ### Added

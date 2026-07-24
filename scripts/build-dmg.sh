@@ -38,15 +38,39 @@ if [ ! -d "$APP_PATH" ]; then
   exit 1
 fi
 
-echo "==> Ad-hoc signing (appex first, then app)"
+# Signing identity. A stable one matters for more than tidiness: an ad-hoc
+# signature identifies the app by the hash of its binary, so every build looks
+# like a different application to the system — and the keychain then demands the
+# login password before handing the new build the Google session the old one
+# saved. Signing with a certificate makes the identity the certificate instead,
+# which is the same across builds, so the grant survives an update.
+#
+# This is an Apple Development certificate, which comes free with any Apple ID
+# through Xcode; it is not the paid Developer Program, and it does not make the
+# app pass Gatekeeper — quarantine still has to be cleared on first launch.
+# Falls back to ad-hoc when no certificate is present, so a fresh checkout on
+# another machine still builds.
+SIGN_ID=$(security find-identity -v -p codesigning 2>/dev/null \
+  | grep -oE '"Apple Develop(ment|er ID Application)[^"]*"' | head -1 | tr -d '"')
+if [ -n "$SIGN_ID" ]; then
+  echo "==> Signing as: $SIGN_ID"
+else
+  SIGN_ID="-"
+  echo "==> No signing certificate found; falling back to ad-hoc"
+  echo "    (updates will re-prompt for the keychain password every time)"
+fi
+
 if [ -d "$APPEX_PATH" ]; then
-  codesign --force --deep --sign - \
+  codesign --force --deep --sign "$SIGN_ID" \
     --entitlements DropDriveShare/DropDriveShare.entitlements \
     "$APPEX_PATH"
 fi
-codesign --force --deep --sign - \
+codesign --force --deep --sign "$SIGN_ID" \
   --entitlements packaging/DropDrive-adhoc.entitlements \
   "$APP_PATH"
+
+echo "==> Designated requirement (stable across builds when signed by certificate)"
+codesign -d -r- "$APP_PATH" 2>&1 | grep designated || true
 
 echo "==> Verifying signature and entitlements"
 codesign -dv "$APP_PATH" 2>&1 | grep -E "Signature|Authority"

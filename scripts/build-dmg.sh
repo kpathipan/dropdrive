@@ -9,11 +9,11 @@ STAGING_DIR="$BUILD_DIR/staging"
 RW_DMG="$BUILD_DIR/DropDrive-rw.dmg"
 FINAL_DMG="dist/DropDrive-v${VERSION}-adhoc.dmg"
 VOLUME_NAME="DropDrive"
-WINDOW_WIDTH=560
-WINDOW_HEIGHT=460
-APP_ICON_POS="140, 180"
-APPLICATIONS_ICON_POS="420, 180"
-NOTE_ICON_POS="280, 330"
+WINDOW_WIDTH=620
+WINDOW_HEIGHT=650
+APP_ICON_POS="180, 155"
+APPLICATIONS_ICON_POS="440, 155"
+NOTE_ICON_POS="310, 520"
 
 echo "==> Building DropDrive v${VERSION} (ad-hoc, unsigned build product)"
 rm -rf "$BUILD_DIR"
@@ -147,7 +147,7 @@ esac
 echo "==> Staging DMG contents"
 cp -R "$APP_PATH" "$STAGING_DIR/DropDrive.app"
 ln -s /Applications "$STAGING_DIR/Applications"
-cp "packaging/dmg/If DropDrive won't open.html" "$STAGING_DIR/If DropDrive won't open.html"
+cp "packaging/dmg/วิธีเปิดครั้งแรก · First launch.html" "$STAGING_DIR/วิธีเปิดครั้งแรก · First launch.html"
 
 echo "==> Creating writable DMG"
 rm -f "$RW_DMG"
@@ -175,7 +175,7 @@ tell application "Finder"
     set background picture of viewOptions to file ".background:background.png"
     set position of item "DropDrive.app" of container window to {$APP_ICON_POS}
     set position of item "Applications" of container window to {$APPLICATIONS_ICON_POS}
-    set position of item "If DropDrive won't open.html" of container window to {$NOTE_ICON_POS}
+    set position of item "วิธีเปิดครั้งแรก · First launch.html" of container window to {$NOTE_ICON_POS}
     close
     open
     update without registering applications

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>เปิด DropDrive ครั้งแรก · First launch</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --card: #ffffff; --page: #f4f3ef; --text: #1a1a18; --muted: #6b6a65;
+    --border: #e3e1da; --accent-bg: #e6f1fb; --accent: #0c447c; --code-bg: #f1efe8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --card: #2c2c2a; --page: #232322; --text: #f1efe8; --muted: #b4b2a9;
+      --border: #444441; --accent-bg: #042c53; --accent: #85b7eb; --code-bg: #1f1f1e;
+    }
+  }
+  body {
+    margin: 0; padding: 44px 20px; background: var(--page); color: var(--text);
+    font-family: "Sukhumvit Set", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+    display: flex; justify-content: center; line-height: 1.6;
+  }
+  .card { width: 420px; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 26px 28px; }
+  h1 { font-size: 18px; margin: 0 0 3px; font-weight: 600; }
+  .sub { font-size: 12.5px; color: var(--muted); margin: 0 0 18px; }
+  .note { background: var(--accent-bg); color: var(--accent); border-radius: 9px; padding: 11px 13px; font-size: 13px; margin-bottom: 22px; }
+  .note .en { font-size: 11.5px; opacity: .85; display: block; margin-top: 2px; }
+  h2 { font-size: 13.5px; margin: 0 0 9px; font-weight: 600; }
+  ol { margin: 0; padding-left: 19px; font-size: 13.5px; }
+  li { margin-bottom: 5px; }
+  li .en { display: block; font-size: 11.5px; color: var(--muted); }
+  code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; }
+  .cmdrow { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+  .cmd { flex: 1; background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; overflow-x: auto; white-space: nowrap; }
+  button { border: 1px solid var(--border); background: var(--card); color: var(--text); border-radius: 8px; padding: 9px 16px; font-size: 12.5px; font-family: inherit; cursor: pointer; }
+  button:hover { background: var(--accent-bg); color: var(--accent); }
+  hr { border: none; border-top: 1px solid var(--border); margin: 22px 0; }
+  .foot { font-size: 12px; color: var(--muted); margin: 20px 0 0; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>เปิด DropDrive ครั้งแรก</h1>
+    <p class="sub">Opening DropDrive for the first time</p>
+
+    <div class="note">
+      ขึ้นเตือนว่าเปิดไม่ได้เป็นเรื่องปกติ ไม่ใช่ไวรัส ทำครั้งเดียวจบ
+      <span class="en">Normal, not a virus. One time only.</span>
+    </div>
+
+    <h2>วิธีที่เร็วที่สุด · Fastest</h2>
+    <ol>
+      <li>กด <code>⌘ Space</code> พิมพ์ <code>Terminal</code> แล้ว Enter
+        <span class="en">Press ⌘ Space, type Terminal, press Return</span></li>
+      <li>กดปุ่ม Copy แล้ววางใน Terminal กด Enter
+        <span class="en">Click Copy, paste into Terminal, press Return</span></li>
+    </ol>
+    <div class="cmdrow">
+      <div class="cmd" id="cmd">xattr -cr /Applications/DropDrive.app</div>
+      <button id="copyBtn" onclick="copyCmd()">Copy</button>
+    </div>
+
+    <hr>
+
+    <h2>ไม่อยากใช้ Terminal · Without Terminal</h2>
+    <ol>
+      <li>ดับเบิลคลิก DropDrive แล้วกด OK
+        <span class="en">Double-click DropDrive, click OK</span></li>
+      <li>เปิด <strong>System Settings</strong> → <strong>Privacy &amp; Security</strong></li>
+      <li>เลื่อนลงล่างสุด กด <strong>Open Anyway</strong>
+        <span class="en">Scroll to the bottom, click Open Anyway</span></li>
+    </ol>
+
+    <p class="foot">หลังจากนี้แอพอัปเดตตัวเองได้ ไม่ต้องทำขั้นตอนนี้อีก<br>
+      DropDrive updates itself from here on.</p>
+  </div>
+
+<script>
+function copyCmd() {
+  var text = document.getElementById('cmd').textContent;
+  navigator.clipboard.writeText(text).then(function () {
+    var btn = document.getElementById('copyBtn');
+    btn.textContent = 'คัดลอกแล้ว';
+    setTimeout(function () { btn.textContent = 'Copy'; }, 1600);
+  });
+}
+</script>
+</body>
+</html>

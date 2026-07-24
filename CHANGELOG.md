@@ -5,6 +5,21 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.12.6] - An installer window that explains itself
+
+### Changed
+- **The installer window now carries the instructions.** They used to
+  live only in a help file sitting beside the app, which is easy to miss
+  — and someone who meets Gatekeeper's warning having read nothing
+  concludes the app is broken, or malware, and stops. The disk image now
+  says what the warning is, that it isn't a virus, and what to do, in
+  Thai and English, the moment it opens.
+- **The Terminal route is listed first** in both the window and the
+  guide. It has a copy button and nothing to type, so it's two steps
+  where the click-only route through System Settings is three.
+- The guide is bilingual, and trimmed to what someone actually needs to
+  act on.
+
 ## [6.12.5] - See what an update actually changes
 
 ### Added

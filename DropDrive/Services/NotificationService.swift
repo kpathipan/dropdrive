@@ -29,8 +29,12 @@ enum NotificationService {
         )
 
         let updateCategory = UNNotificationCategory(
-            identifier: UpdateChecker.updateAvailableCategoryID,
-            actions: [],
+            identifier: UpdateService.updateAvailableCategoryID,
+            actions: [UNNotificationAction(
+                identifier: UpdateService.installActionID,
+                title: tr("Update now", "อัปเดตเลย"),
+                options: [.foreground]
+            )],
             intentIdentifiers: [],
             options: []
         )
@@ -95,12 +99,14 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         }
 
         // Handle update available notification
-        if actionID == UNNotificationDefaultActionIdentifier,
-           content.categoryIdentifier == UpdateChecker.updateAvailableCategoryID,
-                  let urlString = content.userInfo[UpdateChecker.releaseURLKey] as? String,
-                  let url = URL(string: urlString) {
+        guard content.categoryIdentifier == UpdateService.updateAvailableCategoryID else { return }
+        // Either button installs — the notification's whole purpose is to save
+        // the user a trip into the app, so tapping the body shouldn't just open
+        // a download page they then have to install by hand.
+        if actionID == UpdateService.installActionID || actionID == UNNotificationDefaultActionIdentifier {
             await MainActor.run {
-                _ = NSWorkspace.shared.open(url)
+                NSApp.activate(ignoringOtherApps: true)
+                UpdateService.shared.installUpdate()
             }
         }
     }

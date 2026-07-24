@@ -33,6 +33,7 @@ struct PreferencesView: View {
     @State private var language = AppLanguage.shared
     @State private var theme = AppTheme.shared
     @State private var phoneInbox = PhoneInboxService.shared
+    @State private var updates = UpdateService.shared
     @State private var customLimitMBps: Double = 1
     private let folderSelectionService: FolderSelectionServicing = FolderSelectionService()
 
@@ -133,6 +134,9 @@ struct PreferencesView: View {
 
             Section {
                 LabeledContent(tr("Version", "เวอร์ชัน"), value: appVersion)
+                if updates.isConfigured {
+                    updateRow
+                }
             } header: {
                 Text(tr("About", "เกี่ยวกับ"))
             } footer: {
@@ -147,6 +151,67 @@ struct PreferencesView: View {
             if BandwidthPreset.matching(preferences.bandwidthLimitBytesPerSecond) == .custom,
                let stored = preferences.bandwidthLimitBytesPerSecond {
                 customLimitMBps = stored / 1_048_576
+            }
+        }
+    }
+
+    /// The update control, which is the whole update UI: one row that reflects
+    /// whatever the service is doing — idle, checking, offering, downloading.
+    @ViewBuilder
+    private var updateRow: some View {
+        switch updates.state {
+        case .checking:
+            LabeledContent(tr("Updates", "อัปเดต")) {
+                Text(tr("Checking…", "กำลังตรวจสอบ…")).foregroundStyle(.secondary)
+            }
+        case .upToDate:
+            LabeledContent(tr("Updates", "อัปเดต")) {
+                HStack(spacing: 6) {
+                    Text(tr("Up to date", "เป็นเวอร์ชันล่าสุดแล้ว")).foregroundStyle(.secondary)
+                    Button(tr("Check again", "ตรวจอีกครั้ง")) { updates.checkNow() }
+                }
+            }
+        case .available(let release):
+            VStack(alignment: .leading, spacing: 8) {
+                Text(tr("Version \(release.version) is available", "มีเวอร์ชัน \(release.version)"))
+                    .font(.dd(12.5, .medium))
+                if !release.notes.isEmpty {
+                    Text(release.notes)
+                        .font(.dd(11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Text(Formatters.byteCount(release.sizeBytes))
+                    .font(.dd(10.5))
+                    .foregroundStyle(.secondary)
+                Button(tr("Update and relaunch", "อัปเดตและเปิดใหม่")) { updates.installUpdate() }
+                    .buttonStyle(.borderedProminent)
+            }
+            .padding(.vertical, 2)
+        case .downloading(let fraction):
+            VStack(alignment: .leading, spacing: 6) {
+                Text(tr("Downloading the update…", "กำลังดาวน์โหลดอัปเดต…")).font(.dd(12))
+                ProgressView(value: fraction)
+                Text(fraction, format: .percent.precision(.fractionLength(0)))
+                    .font(.dd(10.5).monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+        case .installing:
+            LabeledContent(tr("Updates", "อัปเดต")) {
+                Text(tr("Installing — DropDrive will reopen…", "กำลังติดตั้ง — แอพจะเปิดใหม่เอง…"))
+                    .foregroundStyle(.secondary)
+            }
+        case .failed(let message):
+            VStack(alignment: .leading, spacing: 6) {
+                Text(message)
+                    .font(.dd(11))
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button(tr("Try again", "ลองใหม่")) { updates.checkNow() }
+            }
+        case .idle:
+            LabeledContent(tr("Updates", "อัปเดต")) {
+                Button(tr("Check for updates", "ตรวจหาอัปเดต")) { updates.checkNow() }
             }
         }
     }

@@ -100,7 +100,7 @@ struct DropDriveApp: App {
     init() {
         UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
         NotificationService.requestAuthorizationIfNeeded()
-        UpdateChecker.shared.checkIfNeeded()
+        UpdateService.shared.checkIfNeeded()
     }
 
     var body: some Scene {

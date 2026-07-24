@@ -1,0 +1,462 @@
+import AppKit
+import CryptoKit
+import Foundation
+import Observation
+import UserNotifications
+
+/// Checks GitHub Releases for a newer build and, on request, installs it.
+///
+/// The app is ad-hoc signed, which rules out Sparkle — its own documentation
+/// says an ad-hoc signature keeps the hardened runtime from loading it. This is
+/// the small replacement: fetch the latest release, compare versions, download
+/// the DMG, verify it against the SHA-256 published in the release notes, and
+/// swap the app bundle in place.
+///
+/// Replacing our own bundle is allowed even with App Management protection
+/// active — verified on macOS 26.5.2: an ad-hoc app in /Applications is blocked
+/// from writing into a *different* signed app, but permitted to replace itself.
+@MainActor
+@Observable
+final class UpdateService {
+    static let shared = UpdateService()
+
+    /// The GitHub repository releases are published to, as "owner/name".
+    /// Empty disables update checking entirely (the state before a repo exists).
+    /// This is the one line to fill in.
+    nonisolated static let repository = ""
+
+    struct Release: Equatable, Sendable {
+        let version: String
+        let notes: String
+        let downloadURL: URL
+        let sizeBytes: Int64
+        /// From a "sha256: <hex>" line in the release notes. Optional, because a
+        /// release published by hand through GitHub's web UI won't have one.
+        let sha256: String?
+    }
+
+    enum State: Equatable {
+        case idle
+        case checking
+        case upToDate
+        case available(Release)
+        case downloading(fraction: Double)
+        case installing
+        case failed(String)
+    }
+
+    private(set) var state: State = .idle
+
+    private static let lastCheckKey = "updateChecker.lastCheckDate"
+    private static let checkInterval: TimeInterval = 24 * 60 * 60
+    static let updateAvailableCategoryID = "UPDATE_AVAILABLE"
+    static let installActionID = "INSTALL_UPDATE"
+    static let releaseURLKey = "releaseURL"
+
+    var isConfigured: Bool { !Self.repository.isEmpty }
+
+    /// True while a download or install is in flight, so the UI can't start a second.
+    var isBusy: Bool {
+        switch state {
+        case .checking, .downloading, .installing: true
+        default: false
+        }
+    }
+
+    // MARK: - Checking
+
+    /// Silent, once a day, at launch.
+    func checkIfNeeded() {
+        guard isConfigured else { return }
+        let lastCheck = UserDefaults.standard.object(forKey: Self.lastCheckKey) as? Date
+        if let lastCheck, Date().timeIntervalSince(lastCheck) < Self.checkInterval { return }
+        Task { await check(notifying: true) }
+    }
+
+    /// Explicit "Check for updates" from Preferences.
+    func checkNow() {
+        guard isConfigured, !isBusy else { return }
+        Task { await check(notifying: false) }
+    }
+
+    private func check(notifying: Bool) async {
+        state = .checking
+        UserDefaults.standard.set(Date(), forKey: Self.lastCheckKey)
+
+        do {
+            guard let release = try await Self.fetchLatestRelease() else {
+                state = .upToDate
+                return
+            }
+            state = .available(release)
+            if notifying { Self.notify(release) }
+        } catch {
+            state = .failed(tr(
+                "Couldn't check for updates. Check your internet connection.",
+                "เช็คอัปเดตไม่ได้ ตรวจสอบการเชื่อมต่ออินเทอร์เน็ต"
+            ))
+        }
+    }
+
+    /// nil when the newest release isn't newer than what's running.
+    private nonisolated static func fetchLatestRelease() async throws -> Release? {
+        let endpoint = URL(string: "https://api.github.com/repos/\(repository)/releases/latest")!
+        var request = URLRequest(url: endpoint)
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 20
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw UpdateError.badResponse
+        }
+
+        let payload = try JSONDecoder().decode(GitHubRelease.self, from: data)
+        guard let current = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+              isNewer(payload.tagName, than: current) else {
+            return nil
+        }
+        // A release with no .dmg attached isn't installable — treat it as nothing
+        // to offer rather than as an error.
+        guard let asset = payload.assets.first(where: { $0.name.hasSuffix(".dmg") }) else {
+            return nil
+        }
+
+        let body = payload.body ?? ""
+        return Release(
+            version: payload.tagName.hasPrefix("v") ? String(payload.tagName.dropFirst()) : payload.tagName,
+            notes: Self.summarize(body),
+            downloadURL: asset.browserDownloadURL,
+            sizeBytes: asset.size,
+            sha256: Self.sha256(fromNotes: body)
+        )
+    }
+
+    /// Pulls "sha256: <hex>" out of the release notes, case-insensitively.
+    private nonisolated static func sha256(fromNotes notes: String) -> String? {
+        for rawLine in notes.split(separator: "\n") {
+            let line = rawLine.trimmingCharacters(in: .whitespaces).lowercased()
+            guard line.hasPrefix("sha256:") else { continue }
+            let value = line.dropFirst("sha256:".count).trimmingCharacters(in: .whitespaces)
+            let hex = value.filter(\.isHexDigit)
+            if hex.count == 64 { return hex }
+        }
+        return nil
+    }
+
+    /// The first few meaningful lines of the release notes, for the update card.
+    private nonisolated static func summarize(_ body: String) -> String {
+        body.split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && !$0.lowercased().hasPrefix("sha256:") && !$0.hasPrefix("#") }
+            .prefix(4)
+            .joined(separator: "\n")
+    }
+
+    // MARK: - Installing
+
+    /// Downloads, verifies, and swaps in the new build, then relaunches.
+    ///
+    /// Refuses while the queue is busy: replacing the running app mid-download
+    /// would kill the transfer and strand its partial files.
+    func installUpdate() {
+        guard case .available(let release) = state else { return }
+
+        if DropDriveViewModel.shared.isQueueProcessing {
+            state = .failed(tr(
+                "Finish or pause the current download first, then update.",
+                "รอให้ดาวน์โหลดที่ค้างอยู่เสร็จ หรือกดหยุดก่อน แล้วค่อยอัปเดต"
+            ))
+            return
+        }
+
+        let installedAt = Bundle.main.bundleURL
+        guard installedAt.path.hasPrefix("/Applications/") else {
+            state = .failed(tr(
+                "DropDrive can only update itself from the Applications folder. Move it there first.",
+                "แอพอัปเดตตัวเองได้เฉพาะตอนอยู่ในโฟลเดอร์ Applications ย้ายไปไว้ที่นั่นก่อน"
+            ))
+            return
+        }
+
+        state = .downloading(fraction: 0)
+        Task {
+            do {
+                let dmg = try await Self.download(release) { fraction in
+                    Task { @MainActor in
+                        if case .downloading = self.state { self.state = .downloading(fraction: fraction) }
+                    }
+                }
+                state = .installing
+                let staged = try await Self.stageApp(fromDMG: dmg, expecting: release.sha256)
+                try Self.swapInPlace(staged: staged, installedAt: installedAt)
+                Self.relaunchAndQuit(installedAt: installedAt)
+            } catch let error as UpdateError {
+                state = .failed(error.message)
+            } catch {
+                state = .failed(tr("The update couldn't be installed.", "ติดตั้งอัปเดตไม่สำเร็จ"))
+            }
+        }
+    }
+
+    private nonisolated static func download(
+        _ release: Release,
+        onProgress: @escaping @Sendable (Double) -> Void
+    ) async throws -> URL {
+        let coordinator = DownloadProgressCoordinator(total: release.sizeBytes, onProgress: onProgress)
+        let session = URLSession(configuration: .ephemeral, delegate: coordinator, delegateQueue: nil)
+        defer { session.finishTasksAndInvalidate() }
+        return try await coordinator.run(session: session, url: release.downloadURL)
+    }
+
+    /// Mounts the DMG, copies the app out, and clears the quarantine flag the
+    /// download attached — without that last step Gatekeeper refuses to launch
+    /// an ad-hoc signed app, which is exactly what a manual install works around
+    /// by right-click-Open.
+    private nonisolated static func stageApp(fromDMG dmg: URL, expecting sha256: String?) async throws -> URL {
+        defer { try? FileManager.default.removeItem(at: dmg) }
+
+        if let expected = sha256 {
+            let actual = try Self.digest(of: dmg)
+            guard actual == expected else { throw UpdateError.checksumMismatch }
+        }
+
+        let mountPoint = FileManager.default.temporaryDirectory
+            .appendingPathComponent("DropDrive-update-\(UUID().uuidString)", isDirectory: true)
+        try run("/usr/bin/hdiutil", ["attach", dmg.path, "-nobrowse", "-quiet", "-mountpoint", mountPoint.path])
+        defer { _ = try? run("/usr/bin/hdiutil", ["detach", mountPoint.path, "-quiet"]) }
+
+        let contents = (try? FileManager.default.contentsOfDirectory(at: mountPoint, includingPropertiesForKeys: nil)) ?? []
+        guard let source = contents.first(where: { $0.pathExtension == "app" }) else {
+            throw UpdateError.noAppInDMG
+        }
+
+        let staging = FileManager.default.temporaryDirectory
+            .appendingPathComponent("DropDrive-staged-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+        let staged = staging.appendingPathComponent(source.lastPathComponent)
+        try FileManager.default.copyItem(at: source, to: staged)
+
+        _ = try? run("/usr/bin/xattr", ["-cr", staged.path])
+        // A truncated or tampered download can still be a mountable DMG; make
+        // sure what came out of it is an intact, signed bundle before it
+        // replaces a working app.
+        try run("/usr/bin/codesign", ["--verify", "--deep", staged.path])
+        return staged
+    }
+
+    /// Moves the current bundle aside and copies the new one into its place. The
+    /// old copy can't be deleted from inside the running process — the relaunch
+    /// helper does that once we've exited.
+    private nonisolated static func swapInPlace(staged: URL, installedAt: URL) throws {
+        let retired = installedAt.appendingPathExtension("old")
+        try? FileManager.default.removeItem(at: retired)
+        try FileManager.default.moveItem(at: installedAt, to: retired)
+        do {
+            try FileManager.default.copyItem(at: staged, to: installedAt)
+        } catch {
+            // Put the working app back rather than leaving nothing installed.
+            try? FileManager.default.moveItem(at: retired, to: installedAt)
+            throw UpdateError.swapFailed
+        }
+        try? FileManager.default.removeItem(at: staged.deletingLastPathComponent())
+    }
+
+    /// Hands off to a detached shell that waits for this process to exit, clears
+    /// the retired bundle, and opens the new one.
+    private nonisolated static func relaunchAndQuit(installedAt: URL) {
+        let script = """
+        while kill -0 \(getpid()) 2>/dev/null; do sleep 0.2; done
+        rm -rf '\(installedAt.path).old'
+        open '\(installedAt.path)'
+        """
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", script]
+        try? process.run()
+
+        Task { @MainActor in
+            NSApp.terminate(nil)
+        }
+    }
+
+    private nonisolated static func digest(of url: URL) throws -> String {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        var hasher = SHA256()
+        while let chunk = try handle.read(upToCount: 1 << 20), !chunk.isEmpty {
+            hasher.update(data: chunk)
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    @discardableResult
+    private nonisolated static func run(_ launchPath: String, _ arguments: [String]) throws -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: launchPath)
+        process.arguments = arguments
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        try process.run()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            throw UpdateError.commandFailed(String(data: data, encoding: .utf8) ?? "")
+        }
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+
+    // MARK: - Notification
+
+    private static func notify(_ release: Release) {
+        let content = UNMutableNotificationContent()
+        content.title = tr("DropDrive \(release.version) is available", "DropDrive \(release.version) พร้อมอัปเดต")
+        content.body = tr("Open DropDrive to install it.", "เปิด DropDrive เพื่อติดตั้ง")
+        content.categoryIdentifier = updateAvailableCategoryID
+        content.userInfo = [releaseURLKey: release.downloadURL.absoluteString]
+        UNUserNotificationCenter.current().add(
+            UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        )
+    }
+
+    // MARK: - Version comparison
+
+    /// Compares two "vX.Y.Z"-style (leading "v" optional) semantic versions.
+    nonisolated static func isNewer(_ candidate: String, than current: String) -> Bool {
+        guard let candidateParts = versionComponents(candidate),
+              let currentParts = versionComponents(current) else { return false }
+        for (a, b) in zip(candidateParts, currentParts) where a != b {
+            return a > b
+        }
+        return candidateParts.count > currentParts.count
+    }
+
+    private nonisolated static func versionComponents(_ version: String) -> [Int]? {
+        let trimmed = version.hasPrefix("v") ? String(version.dropFirst()) : version
+        let stringParts = trimmed.split(separator: ".")
+        let intParts = stringParts.compactMap { Int($0) }
+        guard !intParts.isEmpty, intParts.count == stringParts.count else { return nil }
+        return intParts
+    }
+}
+
+@MainActor
+enum UpdateError: Error {
+    case badResponse
+    case checksumMismatch
+    case noAppInDMG
+    case swapFailed
+    case commandFailed(String)
+
+    var message: String {
+        switch self {
+        case .checksumMismatch:
+            tr(
+                "The downloaded file didn't match its checksum, so it wasn't installed.",
+                "ไฟล์ที่โหลดมาไม่ตรงกับค่าตรวจสอบ จึงไม่ได้ติดตั้ง"
+            )
+        case .noAppInDMG, .badResponse:
+            tr("That update looks incomplete, so it wasn't installed.", "ไฟล์อัปเดตไม่สมบูรณ์ จึงไม่ได้ติดตั้ง")
+        case .swapFailed:
+            tr(
+                "Couldn't replace the installed app. The current version is untouched.",
+                "แทนที่แอพเดิมไม่ได้ เวอร์ชันที่ใช้อยู่ยังอยู่ครบ"
+            )
+        case .commandFailed:
+            tr("The update couldn't be installed.", "ติดตั้งอัปเดตไม่สำเร็จ")
+        }
+    }
+}
+
+// MARK: - GitHub payload
+
+private nonisolated struct GitHubRelease: Decodable, Sendable {
+    struct Asset: Decodable, Sendable {
+        let name: String
+        let size: Int64
+        let browserDownloadURL: URL
+
+        private enum CodingKeys: String, CodingKey {
+            case name, size
+            case browserDownloadURL = "browser_download_url"
+        }
+    }
+
+    let tagName: String
+    let body: String?
+    let assets: [Asset]
+
+    private enum CodingKeys: String, CodingKey {
+        case tagName = "tag_name"
+        case body, assets
+    }
+}
+
+// MARK: - Download plumbing
+
+/// Reports download progress and hands back the finished file. The system
+/// deletes the temp file the moment the delegate callback returns, so it's moved
+/// somewhere durable inside that callback.
+private final class DownloadProgressCoordinator: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+    private let total: Int64
+    private let onProgress: @Sendable (Double) -> Void
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<URL, Error>?
+    private var didResume = false
+
+    init(total: Int64, onProgress: @escaping @Sendable (Double) -> Void) {
+        self.total = total
+        self.onProgress = onProgress
+    }
+
+    func run(session: URLSession, url: URL) async throws -> URL {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
+            lock.lock()
+            self.continuation = continuation
+            lock.unlock()
+            session.downloadTask(with: url).resume()
+        }
+    }
+
+    private func finish(_ result: Result<URL, Error>) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !didResume else { return }
+        didResume = true
+        switch result {
+        case .success(let url): continuation?.resume(returning: url)
+        case .failure(let error): continuation?.resume(throwing: error)
+        }
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didWriteData bytesWritten: Int64,
+        totalBytesWritten: Int64,
+        totalBytesExpectedToWrite: Int64
+    ) {
+        let expected = totalBytesExpectedToWrite > 0 ? totalBytesExpectedToWrite : total
+        guard expected > 0 else { return }
+        onProgress(min(1, Double(totalBytesWritten) / Double(expected)))
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        guard let http = downloadTask.response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            finish(.failure(UpdateError.badResponse))
+            return
+        }
+        let destination = FileManager.default.temporaryDirectory
+            .appendingPathComponent("DropDrive-update-\(UUID().uuidString).dmg")
+        do {
+            try FileManager.default.moveItem(at: location, to: destination)
+            finish(.success(destination))
+        } catch {
+            finish(.failure(error))
+        }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        if let error { finish(.failure(error)) }
+    }
+}

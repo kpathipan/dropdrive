@@ -5,6 +5,35 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.12.0] - Updates that install themselves
+
+The last version anyone has to install by hand. From here on DropDrive
+notices new releases and updates itself.
+
+### Added
+- **Self-updating.** DropDrive checks GitHub Releases once a day, and
+  when there's a newer version it shows a notification. One click
+  downloads it, verifies it against the SHA-256 published with the
+  release, replaces the installed app, and reopens on the new version —
+  no dragging to Applications, and no right-click-Open, because the
+  updater clears the quarantine flag itself.
+- **Preferences → About** gained an update row: check on demand, see
+  what's new, and install from there.
+- `scripts/release.sh` publishes a version in one command — bumps the
+  number, builds the DMG, computes its checksum, and creates the GitHub
+  Release the updater reads.
+
+### Notes
+- The update check is off until a repository is set in
+  `UpdateService.repository`. Versions before 6.12.0 have no working
+  update check at all, so friends need this one installed manually.
+- Updating never interrupts a download: with the queue running, the
+  installer declines and asks you to finish or pause first.
+- If replacing the app fails, the working version is put back rather
+  than leaving nothing installed.
+- Because the app is ad-hoc signed it has no stable code identity, so
+  macOS may ask for notification permission again after an update.
+
 ## [6.11.0] - A bug hunt, and the engine off the main thread
 
 A second read of the whole codebase, this time looking for things that

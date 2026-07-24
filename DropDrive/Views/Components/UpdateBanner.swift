@@ -67,7 +67,7 @@ struct UpdateBanner: View {
             // background check shouldn't put an error on the main screen.
             if updates.hasOfferedUpdate {
                 card {
-                    HStack(spacing: 8) {
+                    HStack(alignment: .top, spacing: 8) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .font(.dd(12))
                             .foregroundStyle(.orange)
@@ -75,6 +75,15 @@ struct UpdateBanner: View {
                             .font(.dd(10.5))
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
+
+                        Spacer(minLength: 4)
+
+                        // Most of these failures are things the user can fix and
+                        // retry — a running download, a dropped connection — so
+                        // the offer has to be reachable again.
+                        Button(tr("Try again", "ลองใหม่")) { updates.retryOffer() }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
                     }
                 }
             }

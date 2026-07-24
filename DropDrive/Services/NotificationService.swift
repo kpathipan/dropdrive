@@ -106,7 +106,7 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         if actionID == UpdateService.installActionID || actionID == UNNotificationDefaultActionIdentifier {
             await MainActor.run {
                 NSApp.activate(ignoringOtherApps: true)
-                UpdateService.shared.installUpdate()
+                UpdateService.shared.installFromNotification()
             }
         }
     }

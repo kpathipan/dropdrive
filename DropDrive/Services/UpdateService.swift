@@ -53,10 +53,17 @@ final class UpdateService {
 
     private(set) var state: State = .idle
 
+    /// The release last offered, kept across a failure so the user can try
+    /// again without hunting for the "check for updates" button. Every failure
+    /// path replaces `.available` with `.failed`, which would otherwise take the
+    /// Update button away permanently — including for the entirely recoverable
+    /// "finish your download first" case.
+    private(set) var offeredRelease: Release?
+
     /// True once a release has been offered this session. Lets the main-screen
     /// banner show install failures while staying silent about a background
     /// check that simply couldn't reach the network.
-    private(set) var hasOfferedUpdate = false
+    var hasOfferedUpdate: Bool { offeredRelease != nil }
 
     private static let lastCheckKey = "updateChecker.lastCheckDate"
     private static let checkInterval: TimeInterval = 24 * 60 * 60
@@ -84,6 +91,31 @@ final class UpdateService {
         Task { await check(notifying: true) }
     }
 
+    /// Puts a previously-offered release back on the table after a failure the
+    /// user has since fixed — pausing the queue, reconnecting, and so on.
+    func retryOffer() {
+        guard let offeredRelease, !isBusy else { return }
+        state = .available(offeredRelease)
+    }
+
+    /// The notification's "Update now" button.
+    ///
+    /// Tapping it can relaunch the app, in which case no check has run and
+    /// there is no release in hand — `installUpdate()` alone would find state
+    /// `.idle`, return silently, and leave the user pressing a button that does
+    /// nothing. Fetch first when that's the case.
+    func installFromNotification() {
+        if case .available = state {
+            installUpdate()
+            return
+        }
+        guard isConfigured, !isBusy else { return }
+        Task {
+            await check(notifying: false)
+            if case .available = state { installUpdate() }
+        }
+    }
+
     /// Explicit "Check for updates" from Preferences.
     func checkNow() {
         guard isConfigured, !isBusy else { return }
@@ -100,8 +132,8 @@ final class UpdateService {
                 return
             }
             UserDefaults.standard.set(Date(), forKey: Self.lastCheckKey)
+            offeredRelease = release
             state = .available(release)
-            hasOfferedUpdate = true
             if notifying { Self.notify(release) }
         } catch {
             state = .failed(tr(
@@ -305,14 +337,20 @@ final class UpdateService {
     /// Hands off to a detached shell that waits for this process to exit, clears
     /// the retired bundle, and opens the new one.
     private nonisolated static func relaunchAndQuit(installedAt: URL) {
+        // Paths arrive as arguments, not spliced into the script text: this
+        // script runs `rm -rf`, and a bundle the user had renamed to something
+        // containing a quote would otherwise change what that line means.
         let script = """
-        while kill -0 \(getpid()) 2>/dev/null; do sleep 0.2; done
-        rm -rf '\(installedAt.path).old'
-        open '\(installedAt.path)'
+        while kill -0 "$1" 2>/dev/null; do sleep 0.2; done
+        rm -rf "$2"
+        open "$3"
         """
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = ["-c", script]
+        process.arguments = [
+            "-c", script, "dropdrive-relaunch",
+            "\(getpid())", installedAt.path + ".old", installedAt.path
+        ]
         try? process.run()
 
         Task { @MainActor in

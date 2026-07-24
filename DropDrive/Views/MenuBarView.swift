@@ -284,6 +284,8 @@ struct MenuBarView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(spacing: 12) {
+                        UpdateBanner()
+
                         DownloadFormView(
                             driveLink: $viewModel.driveLink,
                             destinationURL: viewModel.selectedDestinationURL,

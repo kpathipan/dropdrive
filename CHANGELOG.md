@@ -5,6 +5,19 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.12.1] - The update offer, where you can see it
+
+### Added
+- **Available updates now show on the main screen**, not only in
+  Preferences → About. The notification's "Update now" button already
+  installed in one click, but anyone who missed the notification and
+  simply opened the app had no way to know an update existed.
+
+### Fixed
+- A launch with no internet burned the whole day's update-check
+  allowance. The once-a-day timer now only resets on a check that
+  actually reached GitHub.
+
 ## [6.12.0] - Updates that install themselves
 
 The last version anyone has to install by hand. From here on DropDrive

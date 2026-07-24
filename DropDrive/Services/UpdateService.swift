@@ -47,6 +47,11 @@ final class UpdateService {
 
     private(set) var state: State = .idle
 
+    /// True once a release has been offered this session. Lets the main-screen
+    /// banner show install failures while staying silent about a background
+    /// check that simply couldn't reach the network.
+    private(set) var hasOfferedUpdate = false
+
     private static let lastCheckKey = "updateChecker.lastCheckDate"
     private static let checkInterval: TimeInterval = 24 * 60 * 60
     static let updateAvailableCategoryID = "UPDATE_AVAILABLE"
@@ -81,14 +86,16 @@ final class UpdateService {
 
     private func check(notifying: Bool) async {
         state = .checking
-        UserDefaults.standard.set(Date(), forKey: Self.lastCheckKey)
 
         do {
             guard let release = try await Self.fetchLatestRelease() else {
+                UserDefaults.standard.set(Date(), forKey: Self.lastCheckKey)
                 state = .upToDate
                 return
             }
+            UserDefaults.standard.set(Date(), forKey: Self.lastCheckKey)
             state = .available(release)
+            hasOfferedUpdate = true
             if notifying { Self.notify(release) }
         } catch {
             state = .failed(tr(

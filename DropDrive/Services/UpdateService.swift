@@ -23,7 +23,7 @@ final class UpdateService {
     /// The GitHub repository releases are published to, as "owner/name".
     /// Empty disables update checking entirely (the state before a repo exists).
     /// This is the one line to fill in.
-    nonisolated static let repository = ""
+    nonisolated static let repository = "kpathipan/dropdrive"
 
     struct Release: Equatable, Sendable {
         let version: String

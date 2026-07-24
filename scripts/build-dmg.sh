@@ -52,8 +52,16 @@ fi
 # another machine still builds.
 SIGN_ID=$(security find-identity -v -p codesigning 2>/dev/null \
   | grep -oE '"Apple Develop(ment|er ID Application)[^"]*"' | head -1 | tr -d '"')
+# A secure timestamp, countersigned by Apple, is what keeps a signature valid
+# after the certificate behind it expires. Without one the signature is only
+# good for the certificate's own lifetime — and since the in-app updater
+# verifies every download's signature before installing it, an expired
+# certificate would otherwise make every future update uninstallable, on every
+# friend's Mac at once. Ad-hoc signatures can't be timestamped, hence the split.
+TIMESTAMP_FLAG=()
 if [ -n "$SIGN_ID" ]; then
   echo "==> Signing as: $SIGN_ID"
+  TIMESTAMP_FLAG=(--timestamp)
 else
   SIGN_ID="-"
   echo "==> No signing certificate found; falling back to ad-hoc"
@@ -61,13 +69,18 @@ else
 fi
 
 if [ -d "$APPEX_PATH" ]; then
-  codesign --force --deep --sign "$SIGN_ID" \
+  codesign --force --deep --sign "$SIGN_ID" "${TIMESTAMP_FLAG[@]}" \
     --entitlements DropDriveShare/DropDriveShare.entitlements \
     "$APPEX_PATH"
 fi
-codesign --force --deep --sign "$SIGN_ID" \
+codesign --force --deep --sign "$SIGN_ID" "${TIMESTAMP_FLAG[@]}" \
   --entitlements packaging/DropDrive-adhoc.entitlements \
   "$APP_PATH"
+
+if [ "$SIGN_ID" != "-" ]; then
+  codesign -dvvv "$APP_PATH" 2>&1 | grep -q "^Timestamp=" \
+    || { echo "Refusing to ship: the signature has no secure timestamp, so it would stop verifying when the certificate expires." >&2; exit 1; }
+fi
 
 echo "==> Designated requirement (stable across builds when signed by certificate)"
 codesign -d -r- "$APP_PATH" 2>&1 | grep designated || true

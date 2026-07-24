@@ -5,6 +5,17 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.12.3] - Signatures that outlive the certificate
+
+### Fixed
+- **Updates would have stopped working in July 2027.** Builds carried
+  only a local signing time, not a timestamp countersigned by Apple, so
+  the signature would have been considered valid only as long as the
+  certificate behind it was — and the updater verifies every download's
+  signature before installing. One expiry would have made every future
+  update uninstallable, on every machine at once. Builds are now
+  timestamped, and the build refuses to produce a DMG without one.
+
 ## [6.12.2] - No more keychain prompt on every update
 
 ### Fixed

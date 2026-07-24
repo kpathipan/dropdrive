@@ -5,6 +5,22 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.12.4] - The last keychain prompt
+
+### Fixed
+- **Renewing the signing certificate would have asked for the keychain
+  password all over again.** macOS identifies an app by its designated
+  requirement, and the default one names the certificate's common name —
+  which carries a per-certificate id, so next July's renewal would have
+  produced a different identity and a fresh prompt for everyone. The
+  requirement is now pinned to the Team ID, which belongs to the Apple
+  ID rather than to any one certificate, so renewals no longer change
+  the app's identity.
+
+### Notes
+- This update asks once, being the build where the identity settles.
+  It should be the last time.
+
 ## [6.12.3] - Signatures that outlive the certificate
 
 ### Fixed

@@ -68,14 +68,48 @@ else
   echo "    (updates will re-prompt for the keychain password every time)"
 fi
 
+# Pin the app's identity to the Team ID rather than to this particular
+# certificate. macOS derives an app's identity from its designated requirement,
+# and the default one names the certificate's common name — which carries a
+# per-certificate id, so renewing the certificate next July would produce a
+# different identity and cost everyone the keychain password one more time. The
+# Team ID belongs to the Apple ID, not to any one certificate, so pinning to it
+# survives renewals indefinitely.
+#
+# Signed inside-out rather than with --deep on the outer bundle: --deep would
+# force this requirement onto the nested code too, and the app extension has its
+# own identifier, so the nested signatures come out invalid.
+REQUIREMENT=""
+if [ "$SIGN_ID" != "-" ]; then
+  TEAM_ID=$(security find-certificate -c "$SIGN_ID" -p 2>/dev/null \
+    | openssl x509 -noout -subject 2>/dev/null | grep -oE 'OU ?= ?[A-Z0-9]+' | grep -oE '[A-Z0-9]{10}' | head -1)
+  if [ -n "$TEAM_ID" ]; then
+    REQUIREMENT="designated => identifier \"com.dropdrive.DropDrive\" and anchor apple generic and certificate leaf[subject.OU] = \"$TEAM_ID\""
+    echo "==> Pinning identity to Team ID: $TEAM_ID"
+  else
+    echo "==> Could not read a Team ID; falling back to the default requirement"
+    echo "    (renewing the certificate will cost one keychain prompt)"
+  fi
+fi
+
+for TOOL in "$APP_PATH/Contents/Resources/ffmpeg" "$APP_PATH/Contents/Resources/yt-dlp"; do
+  [ -f "$TOOL" ] && codesign --force --sign "$SIGN_ID" "${TIMESTAMP_FLAG[@]}" "$TOOL"
+done
+
 if [ -d "$APPEX_PATH" ]; then
   codesign --force --deep --sign "$SIGN_ID" "${TIMESTAMP_FLAG[@]}" \
     --entitlements DropDriveShare/DropDriveShare.entitlements \
     "$APPEX_PATH"
 fi
-codesign --force --deep --sign "$SIGN_ID" "${TIMESTAMP_FLAG[@]}" \
+
+REQUIREMENT_FLAG=()
+[ -n "$REQUIREMENT" ] && REQUIREMENT_FLAG=(-r="$REQUIREMENT")
+codesign --force --sign "$SIGN_ID" "${TIMESTAMP_FLAG[@]}" "${REQUIREMENT_FLAG[@]}" \
   --entitlements packaging/DropDrive-adhoc.entitlements \
   "$APP_PATH"
+
+echo "==> Verifying nested code survived"
+codesign -v --deep --strict "$APP_PATH" || { echo "Refusing to ship: deep signature verification failed." >&2; exit 1; }
 
 # Captured rather than piped into grep: `grep -q` closes the pipe on its first
 # match, codesign dies of SIGPIPE, and `set -o pipefail` then reports the whole

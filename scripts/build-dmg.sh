@@ -77,9 +77,18 @@ codesign --force --deep --sign "$SIGN_ID" "${TIMESTAMP_FLAG[@]}" \
   --entitlements packaging/DropDrive-adhoc.entitlements \
   "$APP_PATH"
 
+# Captured rather than piped into grep: `grep -q` closes the pipe on its first
+# match, codesign dies of SIGPIPE, and `set -o pipefail` then reports the whole
+# pipeline as failed — so the check fired precisely when it should have passed.
 if [ "$SIGN_ID" != "-" ]; then
-  codesign -dvvv "$APP_PATH" 2>&1 | grep -q "^Timestamp=" \
-    || { echo "Refusing to ship: the signature has no secure timestamp, so it would stop verifying when the certificate expires." >&2; exit 1; }
+  SIGNATURE_INFO=$(codesign -dvvv "$APP_PATH" 2>&1 || true)
+  case "$SIGNATURE_INFO" in
+    *"Timestamp="*) ;;
+    *)
+      echo "Refusing to ship: the signature has no secure timestamp, so it would stop verifying when the certificate expires." >&2
+      exit 1
+      ;;
+  esac
 fi
 
 echo "==> Designated requirement (stable across builds when signed by certificate)"

@@ -35,6 +35,7 @@ struct PreferencesView: View {
     @State private var phoneInbox = PhoneInboxService.shared
     @State private var updates = UpdateService.shared
     @State private var customLimitMBps: Double = 1
+    @State private var showingReleaseNotes = false
     private let folderSelectionService: FolderSelectionServicing = FolderSelectionService()
 
     var body: some View {
@@ -175,15 +176,10 @@ struct PreferencesView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(tr("Version \(release.version) is available", "มีเวอร์ชัน \(release.version)"))
                     .font(.dd(12.5, .medium))
-                if !release.notes.isEmpty {
-                    Text(release.notes)
-                        .font(.dd(11))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
                 Text(Formatters.byteCount(release.sizeBytes))
                     .font(.dd(10.5))
                     .foregroundStyle(.secondary)
+                ReleaseNotesDisclosure(notes: release.fullNotes, isExpanded: $showingReleaseNotes)
                 Button(tr("Update and relaunch", "อัปเดตและเปิดใหม่")) { updates.installUpdate() }
                     .buttonStyle(.borderedProminent)
             }

@@ -8,29 +8,34 @@ import SwiftUI
 /// already are, and disappears entirely when there's nothing to offer.
 struct UpdateBanner: View {
     @State private var updates = UpdateService.shared
+    @State private var showingNotes = false
 
     var body: some View {
         switch updates.state {
         case .available(let release):
             card {
-                HStack(spacing: 10) {
-                    Image(systemName: "arrow.down.circle.fill")
-                        .font(.dd(17))
-                        .foregroundStyle(DDTheme.accent)
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.dd(17))
+                            .foregroundStyle(DDTheme.accent)
 
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(tr("Version \(release.version) is available", "มีเวอร์ชัน \(release.version)"))
-                            .font(.dd(12, .medium))
-                        Text(Formatters.byteCount(release.sizeBytes))
-                            .font(.dd(10.5))
-                            .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(tr("Version \(release.version) is available", "มีเวอร์ชัน \(release.version)"))
+                                .font(.dd(12, .medium))
+                            Text(Formatters.byteCount(release.sizeBytes))
+                                .font(.dd(10.5))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer(minLength: 8)
+
+                        Button(tr("Update", "อัปเดต")) { updates.installUpdate() }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
                     }
 
-                    Spacer(minLength: 8)
-
-                    Button(tr("Update", "อัปเดต")) { updates.installUpdate() }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
+                    ReleaseNotesDisclosure(notes: release.fullNotes, isExpanded: $showingNotes)
                 }
             }
 
@@ -86,5 +91,46 @@ struct UpdateBanner: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .cardBackground()
             .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+}
+
+/// "What's new", collapsed by default. The notes come from the release's
+/// CHANGELOG section and can run long, so the expanded form scrolls inside a
+/// fixed height rather than growing the popover past its limit.
+struct ReleaseNotesDisclosure: View {
+    let notes: String
+    @Binding var isExpanded: Bool
+
+    var body: some View {
+        if !notes.isEmpty {
+            VStack(alignment: .leading, spacing: 5) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) { isExpanded.toggle() }
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "chevron.right")
+                            .font(.dd(9, .semibold))
+                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        Text(tr("What's new", "มีอะไรใหม่"))
+                            .font(.dd(10.5))
+                    }
+                    .foregroundStyle(DDTheme.accent)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(tr("Show what's new in this update", "ดูรายละเอียดอัปเดตนี้"))
+
+                if isExpanded {
+                    ScrollView {
+                        Text(notes)
+                            .font(.dd(10.5))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                    }
+                    .frame(maxHeight: 150)
+                }
+            }
+        }
     }
 }

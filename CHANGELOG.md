@@ -5,6 +5,17 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.12.5] - See what an update actually changes
+
+### Added
+- **"What's new" on the update card.** The card showed the first few
+  lines of the release notes and cut off there, with no way to read the
+  rest. There's now a small expander with the full notes, on the main
+  screen and in Preferences alike.
+- Release notes have their Markdown flattened before display — the notes
+  come from the changelog, and raw `###` and `**` read as noise in a
+  window that doesn't render Markdown.
+
 ## [6.12.4] - The last keychain prompt
 
 ### Fixed

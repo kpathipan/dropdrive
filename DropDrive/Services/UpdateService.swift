@@ -27,7 +27,10 @@ final class UpdateService {
 
     struct Release: Equatable, Sendable {
         let version: String
+        /// The first few lines, for the collapsed card.
         let notes: String
+        /// Everything the release says, for the expanded "what's new" view.
+        let fullNotes: String
         let downloadURL: URL
         let sizeBytes: Int64
         /// From a "sha256: <hex>" line in the release notes. Optional, because a
@@ -132,6 +135,7 @@ final class UpdateService {
         return Release(
             version: payload.tagName.hasPrefix("v") ? String(payload.tagName.dropFirst()) : payload.tagName,
             notes: Self.summarize(body),
+            fullNotes: Self.readable(body),
             downloadURL: asset.browserDownloadURL,
             sizeBytes: asset.size,
             sha256: Self.sha256(fromNotes: body)
@@ -152,11 +156,38 @@ final class UpdateService {
 
     /// The first few meaningful lines of the release notes, for the update card.
     private nonisolated static func summarize(_ body: String) -> String {
-        body.split(separator: "\n")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty && !$0.lowercased().hasPrefix("sha256:") && !$0.hasPrefix("#") }
-            .prefix(4)
+        readable(body)
+            .split(separator: "\n")
+            .filter { !$0.hasSuffix(":") }
+            .prefix(3)
             .joined(separator: "\n")
+    }
+
+    /// The release notes with their Markdown flattened — the notes come from a
+    /// CHANGELOG section, and raw `###` and `**` read as noise in a popover that
+    /// doesn't render Markdown.
+    private nonisolated static func readable(_ body: String) -> String {
+        var lines: [String] = []
+        for rawLine in body.split(separator: "\n", omittingEmptySubsequences: false) {
+            var line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line.lowercased().hasPrefix("sha256:") { continue }
+            // "### Fixed" becomes "Fixed:", which reads as a heading without one.
+            if line.hasPrefix("#") {
+                line = line.drop(while: { $0 == "#" }).trimmingCharacters(in: .whitespaces)
+                if line.isEmpty { continue }
+                lines.append("\(line):")
+                continue
+            }
+            line = line.replacingOccurrences(of: "**", with: "")
+                .replacingOccurrences(of: "`", with: "")
+            if line.hasPrefix("- ") { line = "•  " + line.dropFirst(2) }
+            // Collapse runs of blank lines rather than dropping them entirely;
+            // the spacing is what separates one section from the next.
+            if line.isEmpty, lines.last?.isEmpty ?? true { continue }
+            lines.append(line)
+        }
+        while lines.last?.isEmpty ?? false { lines.removeLast() }
+        return lines.joined(separator: "\n")
     }
 
     // MARK: - Installing

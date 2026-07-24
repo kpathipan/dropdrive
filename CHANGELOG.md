@@ -5,6 +5,41 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.12.7] - The updater, checked properly
+
+Everything here is in the update mechanism itself — the part written in
+a hurry and shipped the same day, and the only part that hadn't had a
+careful read.
+
+### Fixed
+- **An update whose release notes carried no checksum was installed with
+  nothing verified at all.** The checksum is optional so a hand-published
+  release still works, which meant the one case where the notes are wrong
+  or missing was the case with no protection. The downloaded app's
+  developer must now match the running copy's, which doesn't depend on
+  the notes.
+- **The notification's Update button did nothing** when pressing it was
+  what launched the app: no check had run, so there was no release to
+  install, and it returned in silence.
+- **One error removed the Update button for good.** That included "finish
+  your download first" — pause the queue and there was no way back to the
+  offer. There's a Try again button now.
+- **The "don't interrupt a download" guard checked at the wrong moment**,
+  20 seconds before the swap that would actually kill it. It re-checks
+  immediately before.
+- Release notes ending in a colon vanished from the update card.
+
+### Changed
+- **Installing an update no longer freezes the window.** The new bundle
+  was copied into place on the main thread; it's moved now, off the main
+  thread — 92 ms to 0.1 ms on a 201 MB bundle, since the staging folder
+  is on the same volume as Applications.
+
+### Internal
+- The relaunch helper passes paths as arguments instead of splicing them
+  into a shell script containing `rm -rf`. Checked against a bundle
+  deliberately named to break it.
+
 ## [6.12.6] - An installer window that explains itself
 
 ### Changed

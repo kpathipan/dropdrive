@@ -6,15 +6,18 @@ import UserNotifications
 
 /// Checks GitHub Releases for a newer build and, on request, installs it.
 ///
-/// The app is ad-hoc signed, which rules out Sparkle — its own documentation
-/// says an ad-hoc signature keeps the hardened runtime from loading it. This is
-/// the small replacement: fetch the latest release, compare versions, download
-/// the DMG, verify it against the SHA-256 published in the release notes, and
-/// swap the app bundle in place.
+/// Sparkle was ruled out when the app was ad-hoc signed — its own documentation
+/// says an ad-hoc signature keeps the hardened runtime from loading it — and
+/// this small replacement has done the job since: fetch the latest release,
+/// compare versions, download the DMG, verify it against the SHA-256 published
+/// in the release notes, and swap the app bundle in place. Builds are signed
+/// with a certificate now (see `build-dmg.sh`), so Sparkle would work, but
+/// there's no reason left to want it.
 ///
 /// Replacing our own bundle is allowed even with App Management protection
-/// active — verified on macOS 26.5.2: an ad-hoc app in /Applications is blocked
-/// from writing into a *different* signed app, but permitted to replace itself.
+/// active — verified on macOS 26.5.2 with SIP on: the app is blocked from
+/// writing into a *different* Developer-ID-signed app in /Applications
+/// (NSCocoaErrorDomain 513) but permitted to replace itself.
 @MainActor
 @Observable
 final class UpdateService {

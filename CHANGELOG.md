@@ -5,6 +5,23 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.12.8] - Change the folder from the card itself
+
+### Fixed
+- **The download folder looked unchangeable on a video card.** The
+  control existed, but as a small line of text above a card that runs
+  past 300pt on a video — far enough from where you're looking to
+  reasonably conclude it can't be done at that point. The destination and
+  its Change button are now on the card, right above Download.
+- **An MP3 or trim choice made in the first few seconds silently
+  reverted.** A background pass fills in a video's duration and size
+  about twelve seconds after the card appears, and rebuilding the card
+  reset those selections. The card keeps its state across the refresh
+  now.
+- That background pass couldn't be cancelled, so it could land on a card
+  you'd already moved on from, and it no longer rebuilds the card while
+  the folder picker is open on top of it.
+
 ## [6.12.7] - The updater, checked properly
 
 Everything here is in the update mechanism itself — the part written in

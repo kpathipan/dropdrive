@@ -6,6 +6,7 @@ struct RecentDownloadsView: View {
     @Binding var searchText: String
     let onRevealInFinder: (DownloadHistoryItem) -> Void
     let onCopyLink: (DownloadHistoryItem) -> Void
+    let onRemoveItem: (DownloadHistoryItem) -> Void
     let onClearHistory: () -> Void
 
     @AppStorage("recentGalleryMode") private var galleryMode = true
@@ -84,7 +85,8 @@ struct RecentDownloadsView: View {
                     item: item,
                     onOpenFolder: { openedFolder = item },
                     onRevealInFinder: { onRevealInFinder(item) },
-                    onCopyLink: { onCopyLink(item) }
+                    onCopyLink: { onCopyLink(item) },
+                    onRemove: { onRemoveItem(item) }
                 )
             }
         }
@@ -140,6 +142,7 @@ private struct GalleryTile: View {
     let onOpenFolder: () -> Void
     let onRevealInFinder: () -> Void
     let onCopyLink: () -> Void
+    let onRemove: () -> Void
 
     @State private var isHovering = false
     @State private var statusCache = FileStatusCache.shared
@@ -161,6 +164,24 @@ private struct GalleryTile: View {
     }
     private var isAudio: Bool {
         ["mp3", "m4a", "aac", "wav", "flac"].contains(url?.pathExtension.lowercased() ?? "")
+    }
+
+    /// Why a tile can't be opened. A gallery full of identical "?" squares tells
+    /// the user nothing — a download that failed and a file they moved
+    /// themselves are different things, and only one of them is a problem.
+    private var unavailableReason: (icon: String, tint: Color, label: String)? {
+        guard !exists else { return nil }
+        switch item.status {
+        case .failed:
+            return ("exclamationmark.triangle.fill", .orange,
+                    tr("Download failed", "ดาวน์โหลดไม่สำเร็จ"))
+        case .cancelled:
+            return ("slash.circle", .secondary,
+                    tr("Cancelled", "ยกเลิกแล้ว"))
+        case .completed:
+            return ("questionmark.square.dashed", .secondary,
+                    tr("Moved or deleted", "ถูกย้ายหรือลบไปแล้ว"))
+        }
     }
 
     var body: some View {
@@ -194,6 +215,7 @@ private struct GalleryTile: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .opacity(exists ? 1 : 0.55)
+        .help(unavailableReason?.label ?? item.name)
         .onHover { isHovering = $0 }
         .onTapGesture(count: 2, perform: primaryAction)
         .contextMenu {
@@ -203,9 +225,13 @@ private struct GalleryTile: View {
                 Button(tr("Reveal in Finder", "เปิดใน Finder"), action: onRevealInFinder)
             }
             Button(tr("Copy Google Drive Link", "คัดลอกลิงก์ Google Drive"), action: onCopyLink)
+            Divider()
+            // Clearing the whole history was the only way to get rid of a dead
+            // entry, which is far too blunt when the rest is worth keeping.
+            Button(tr("Remove from list", "เอาออกจากรายการ"), action: onRemove)
         }
         .accessibilityElement()
-        .accessibilityLabel(item.name)
+        .accessibilityLabel(unavailableReason.map { "\(item.name) — \($0.label)" } ?? item.name)
     }
 
     private func primaryAction() {
@@ -230,8 +256,8 @@ private struct GalleryTile: View {
 
     @ViewBuilder
     private var cover: some View {
-        if !exists {
-            placeholder(icon: "questionmark.square.dashed", tint: .secondary, bg: DDTheme.rail)
+        if let reason = unavailableReason {
+            placeholder(icon: reason.icon, tint: reason.tint, bg: DDTheme.rail)
         } else if isFolder, let url {
             FolderCover(folderURL: url, fileCount: item.fileCount)
         } else if isAudio {
@@ -283,10 +309,16 @@ private struct FileThumbnail: View {
 private enum FileTypeIcon {
     private static var cache: [String: NSImage] = [:]
 
+    /// Asked for a path that doesn't exist, `icon(forFile:)` returns the blank
+    /// generic document rather than the type's real icon — and caching by
+    /// extension meant one moved-away file could hand that blank page to every
+    /// other file of its type for the rest of the session. Resolved by type
+    /// instead of by path, which can't be poisoned and doesn't touch the disk.
     static func forFile(at url: URL) -> NSImage {
         let key = url.pathExtension.lowercased()
         if let cached = cache[key] { return cached }
-        let icon = NSWorkspace.shared.icon(forFile: url.path)
+        let icon = UTType(filenameExtension: key).map { NSWorkspace.shared.icon(for: $0) }
+            ?? NSWorkspace.shared.icon(for: .data)
         cache[key] = icon
         return icon
     }

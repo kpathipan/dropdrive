@@ -520,6 +520,7 @@ struct MenuBarView: View {
                                 pasteboard.clearContents()
                                 pasteboard.setString(item.driveLink, forType: .string)
                             },
+                            onRemoveItem: { historyStore.remove($0) },
                             onClearHistory: { historyStore.clear() }
                         )
                     }

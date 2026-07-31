@@ -5,6 +5,25 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.12.9] - Recent explains itself
+
+### Fixed
+- **One missing file could blank out the icons of every file like it.**
+  Icons were looked up by path and cached by file type, and macOS answers
+  a path that isn't there with the blank generic document — so a single
+  moved-away video handed that blank page to every other video for the
+  rest of the session. Icons come from the file type directly now, which
+  can't be poisoned and doesn't touch the disk.
+
+### Changed
+- **Recent says why a tile can't be opened.** A failed download, a
+  cancelled one, and a file you moved yourself all drew the same "?"
+  square with no explanation, which reads as the app being broken. Each
+  now has its own mark and says which it is on hover.
+- **Individual entries can be removed** from Recent by right-clicking.
+  Clearing the entire history was the only way to get rid of a dead
+  entry, which is far too blunt when the rest is worth keeping.
+
 ## [6.12.8] - Change the folder from the card itself
 
 ### Fixed

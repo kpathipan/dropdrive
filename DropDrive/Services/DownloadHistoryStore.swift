@@ -46,6 +46,14 @@ final class DownloadHistoryStore {
         save()
     }
 
+    /// Drops one entry. History accumulates items whose files the user has since
+    /// moved or deleted, and wiping the lot was the only way to tidy up.
+    func remove(_ item: DownloadHistoryItem) {
+        items.removeAll { $0.id == item.id }
+        recomputeTotals()
+        save()
+    }
+
     func clear() {
         items = []
         recomputeTotals()

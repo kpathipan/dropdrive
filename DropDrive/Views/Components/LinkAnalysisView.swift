@@ -107,8 +107,16 @@ struct LinkAnalysisErrorView: View {
 
 /// Shown when analysis succeeds: the item's details plus an explicit Download
 /// confirm, so the destination can still be changed before anything is queued.
+///
+/// The destination row is repeated here rather than left to the paste box above.
+/// Changing it was technically possible all along — the control sits above the
+/// card — but on a video the card runs past 300pt, which puts a 10.5pt line of
+/// text far enough from where the eye is that people reasonably conclude the
+/// folder can't be changed at this point. It's shown where the decision is made.
 struct AnalyzedPromptView: View {
     let analysis: DriveLinkAnalysis
+    let destinationURL: URL?
+    let onChooseDestination: () -> Void
     let onDownload: (_ asAudio: Bool, _ clipSection: String?) -> Void
     let onCancel: () -> Void
 
@@ -222,6 +230,29 @@ struct AnalyzedPromptView: View {
                             .foregroundStyle(.orange)
                     }
                 }
+            }
+
+            Divider()
+
+            HStack(spacing: 5) {
+                Image(systemName: destinationURL == nil ? "folder" : "folder.fill")
+                    .font(.dd(10))
+                    .foregroundStyle(destinationURL == nil ? Color.secondary : DDTheme.accent)
+
+                Text(destinationURL?.lastPathComponent ?? tr("Choose a folder", "เลือกโฟลเดอร์"))
+                    .font(.dd(10.5))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                Button(destinationURL == nil ? tr("Choose…", "เลือก…") : tr("Change…", "เปลี่ยน…"),
+                       action: onChooseDestination)
+                    .buttonStyle(.plain)
+                    .font(.dd(10.5, .medium))
+                    .foregroundStyle(DDTheme.accent)
+                    .accessibilityLabel(destinationURL == nil ? "Choose destination folder" : "Change destination folder")
+
+                Spacer(minLength: 0)
             }
 
             HStack(spacing: 10) {

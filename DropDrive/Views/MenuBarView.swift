@@ -475,11 +475,18 @@ struct MenuBarView: View {
         case .analyzed(let analysis):
             AnalyzedPromptView(
                 analysis: analysis,
+                destinationURL: viewModel.selectedDestinationURL,
+                onChooseDestination: viewModel.chooseDestinationFolder,
                 onDownload: { asAudio, clipSection in
                     viewModel.confirmAnalyzedDownload(asAudio: asAudio, clipSection: clipSection)
                 },
                 onCancel: viewModel.cancelAnalysis
             )
+            // Stable identity across the background enrichment that replaces a
+            // video's analysis ~12s in: without it SwiftUI builds a new view and
+            // resets its @State, silently reverting an MP3 or trim choice the
+            // user had already made.
+            .id(analysis.itemID)
         case .failed(let message):
             LinkAnalysisErrorView(message: message, onRetry: viewModel.retryAnalysis)
         case .duplicateActive:

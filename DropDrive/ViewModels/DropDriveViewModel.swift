@@ -49,6 +49,14 @@ final class DropDriveViewModel {
     private let folderSelectionService: FolderSelectionServicing
     private var downloadTask: Task<Void, Never>?
     private var analysisTask: Task<Void, Never>?
+    /// The background yt-dlp pass that fills in a video card's duration and
+    /// size. Held so cancelling an analysis cancels this too — it runs for
+    /// ~12 seconds after the card appears, long enough for the user to have
+    /// moved on, and it was previously fire-and-forget.
+    private var enrichmentTask: Task<Void, Never>?
+    /// True while the folder panel is up. The enrichment finishing mid-panel
+    /// would rebuild the card underneath it.
+    private var isChoosingDestination = false
     private var highlightTask: Task<Void, Never>?
     private var isPausingActiveItem = false
 
@@ -240,6 +248,9 @@ final class DropDriveViewModel {
 
     func chooseDestinationFolder() {
         Task {
+            isChoosingDestination = true
+            defer { isChoosingDestination = false }
+
             guard let folderURL = await folderSelectionService.chooseDestinationFolder() else {
                 return
             }
@@ -327,8 +338,16 @@ final class DropDriveViewModel {
     /// (duration, approximate size). Silently gives up if it fails or if the
     /// user has moved on — the card is already usable without them.
     private func enrichVideoAnalysis(for link: String, itemID: String) {
-        Task { [weak self] in
+        enrichmentTask?.cancel()
+        enrichmentTask = Task { [weak self] in
             guard let self, let full = try? await videoDownloadService.analyze(link) else { return }
+            guard !Task.isCancelled else { return }
+            // Wait out an open folder panel rather than rebuilding the card
+            // while the user is looking at a modal on top of it.
+            while isChoosingDestination {
+                try? await Task.sleep(for: .milliseconds(200))
+                if Task.isCancelled { return }
+            }
             // Only swap in if that same card is still on screen and untouched —
             // both analyses share the "video:<link>" item ID.
             guard case .analyzed(let shown) = linkAnalysisState, shown.itemID == itemID else { return }
@@ -415,6 +434,7 @@ final class DropDriveViewModel {
     /// Used by Escape, every card's Cancel button, and the invalid/duplicate states.
     func cancelAnalysis() {
         analysisTask?.cancel()
+        enrichmentTask?.cancel()
         linkAnalysisState = .idle
         driveLink = ""
     }

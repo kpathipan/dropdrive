@@ -79,6 +79,14 @@ final class StatusItemController: NSObject {
             NSApp.activate(ignoringOtherApps: true)
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
+            // Opening the window is the moment someone is actually looking, so
+            // it's the moment worth having a current answer for. The banner in
+            // here is how updates are meant to be noticed — the Notification
+            // Centre banner needs a permission that may never have been granted
+            // — and it can only appear if a check has run. `checkIfNeeded` keeps
+            // its own 24-hour minimum, so opening the window repeatedly costs
+            // nothing.
+            UpdateService.shared.checkIfNeeded()
         }
     }
 

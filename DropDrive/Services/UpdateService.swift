@@ -65,6 +65,8 @@ final class UpdateService {
     /// check that simply couldn't reach the network.
     var hasOfferedUpdate: Bool { offeredRelease != nil }
 
+    private var periodicTimer: Timer?
+
     private static let lastCheckKey = "updateChecker.lastCheckDate"
     private static let checkInterval: TimeInterval = 24 * 60 * 60
     static let updateAvailableCategoryID = "UPDATE_AVAILABLE"
@@ -82,6 +84,38 @@ final class UpdateService {
     }
 
     // MARK: - Checking
+
+    /// Keeps the daily check happening on a Mac that never restarts.
+    ///
+    /// `checkIfNeeded()` was only ever called from the app's initialiser, which
+    /// reads as "once a day" but is really "once per launch" — and this is a
+    /// menu bar agent that launches at login and then stays up. Someone who
+    /// leaves their Mac running for a fortnight got exactly one check, so a
+    /// release could sit unannounced until they happened to reboot.
+    ///
+    /// Waking from sleep is included because a laptop closed overnight crosses
+    /// the daily boundary while the timer is suspended.
+    func startPeriodicChecks() {
+        guard isConfigured, periodicTimer == nil else { return }
+
+        let timer = Timer(timeInterval: 2 * 60 * 60, repeats: true) { _ in
+            Task { @MainActor in UpdateService.shared.checkIfNeeded() }
+        }
+        // The 24-hour minimum inside checkIfNeeded() is what actually paces
+        // this, so the timer only has to land somewhere near the boundary —
+        // no reason to make the machine wake up for it.
+        timer.tolerance = 30 * 60
+        RunLoop.main.add(timer, forMode: .common)
+        periodicTimer = timer
+
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            MainActor.assumeIsolated { UpdateService.shared.checkIfNeeded() }
+        }
+    }
 
     /// Silent, once a day, at launch.
     func checkIfNeeded() {

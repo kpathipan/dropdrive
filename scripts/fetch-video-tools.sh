@@ -34,8 +34,29 @@ lipo -create "$SCRATCH/arm64/ffmpeg" "$SCRATCH/amd64/ffmpeg" -output "$TOOLS_DIR
 chmod +x "$TOOLS_DIR/ffmpeg"
 
 echo "==> Verifying"
+
+# Both tools have to stay universal, and this is where that can quietly stop
+# being true: they're fetched from upstream, not built here. macOS 27 is Apple
+# Silicon only and Rosetta goes away entirely in macOS 28, so upstream projects
+# will start shipping arm64-only builds — at which point a fetch would succeed,
+# the app would build, build-dmg.sh's universal check would pass (it only looks
+# at our own binary), and video downloads would simply fail on any friend still
+# on an Intel Mac. Fail here instead, while there's something to be done about it.
+for TOOL in yt-dlp ffmpeg; do
+  TOOL_ARCHS=$(lipo -archs "$TOOLS_DIR/$TOOL" 2>/dev/null || echo "unreadable")
+  echo "    $TOOL: $TOOL_ARCHS"
+  case "$TOOL_ARCHS" in
+    *arm64*x86_64*|*x86_64*arm64*) ;;
+    *)
+      echo "Refusing to continue: $TOOL is '$TOOL_ARCHS', not universal." >&2
+      echo "Upstream has likely dropped Intel builds. Video downloads would fail" >&2
+      echo "on Intel Macs, which cannot run macOS 27 and are staying on macOS 26." >&2
+      exit 1
+      ;;
+  esac
+done
+
 "$TOOLS_DIR/yt-dlp" --version
-lipo -archs "$TOOLS_DIR/ffmpeg"
 "$TOOLS_DIR/ffmpeg" -version | head -1
 ls -lh "$TOOLS_DIR"
 echo "==> Done"

@@ -144,6 +144,25 @@ case "$ARCHS_BUILT" in
     ;;
 esac
 
+# The check above only covers our own binary. The bundled tools come from
+# upstream and can lose Intel support without anything here changing, which
+# would leave video downloads broken for Intel Macs — the machines that can't
+# move to macOS 27 and are therefore staying put.
+for TOOL in yt-dlp ffmpeg; do
+  TOOL_PATH="$APP_PATH/Contents/Resources/$TOOL"
+  [ -f "$TOOL_PATH" ] || continue
+  TOOL_ARCHS=$(lipo -archs "$TOOL_PATH" 2>/dev/null || echo "unreadable")
+  echo "    $TOOL: $TOOL_ARCHS"
+  case "$TOOL_ARCHS" in
+    *arm64*x86_64*|*x86_64*arm64*) ;;
+    *)
+      echo "Refusing to package: bundled $TOOL is '$TOOL_ARCHS', not universal." >&2
+      echo "Re-run scripts/fetch-video-tools.sh." >&2
+      exit 1
+      ;;
+  esac
+done
+
 echo "==> Staging DMG contents"
 cp -R "$APP_PATH" "$STAGING_DIR/DropDrive.app"
 ln -s /Applications "$STAGING_DIR/Applications"

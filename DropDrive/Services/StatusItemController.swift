@@ -127,6 +127,11 @@ final class StatusItemController: NSObject {
 
     private enum IconState: Equatable {
         case idle
+        /// Idle, but an update is waiting to be installed. Distinct from `idle`
+        /// so the resting icon can carry a hint that clicking is worth it —
+        /// otherwise the update banner only rewards someone who happened to
+        /// open the window for another reason.
+        case updateAvailable
         case progress(Double)
         case done
         case failed
@@ -140,6 +145,9 @@ final class StatusItemController: NSObject {
             return .progress((raw * 50).rounded() / 50) // 2% steps
         }
         if viewModel.queue.contains(where: { $0.status == .failed }) { return .failed }
+        // Ranked below anything to do with a download: an update can wait, and
+        // a failed download is what the user needs to see first.
+        if case .available = UpdateService.shared.state { return .updateAvailable }
         return .idle
     }
 
@@ -148,6 +156,7 @@ final class StatusItemController: NSObject {
         let key: String
         switch state {
         case .idle: key = "idle"
+        case .updateAvailable: key = "update"
         case .done: key = "done"
         case .failed: key = "failed"
         case .progress(let f): key = "p\(f)"
@@ -161,6 +170,8 @@ final class StatusItemController: NSObject {
         switch state {
         case .idle:
             return appIcon()
+        case .updateAvailable:
+            return appIcon(withUpdateDot: true)
         case .done:
             return symbol("checkmark.circle")
         case .failed:
@@ -172,13 +183,34 @@ final class StatusItemController: NSObject {
 
     /// The actual app icon, in its original colors, scaled to menu bar size — so
     /// the resting icon reads as DropDrive. Not a template (kept colored).
-    private static func appIcon() -> NSImage {
+    private static func appIcon(withUpdateDot: Bool = false) -> NSImage {
         let side: CGFloat = 18
         guard let logo = NSImage(named: "AppLogo") else {
             return symbol("tray.and.arrow.down.fill")
         }
         let scaled = NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
             logo.draw(in: rect)
+            guard withUpdateDot else { return true }
+
+            // A small badge on the top-right corner. Sized and coloured by
+            // rendering the candidates and looking at them at true menu bar
+            // scale: 7pt read as a defect rather than a badge, and the accent
+            // blue disappeared into the icon, which is blue. Orange separates
+            // from it and still says "worth a look" rather than "something is
+            // wrong" — the failed-download state owns the alarming end. The
+            // white ring is what keeps it legible on both a light and a dark
+            // menu bar, where a background-coloured one resolved to black.
+            let diameter: CGFloat = 4.5
+            let dot = NSRect(
+                x: rect.maxX - diameter - 0.5,
+                y: rect.maxY - diameter - 0.5,
+                width: diameter,
+                height: diameter
+            )
+            NSColor.white.setFill()
+            NSBezierPath(ovalIn: dot.insetBy(dx: -1, dy: -1)).fill()
+            NSColor.systemOrange.setFill()
+            NSBezierPath(ovalIn: dot).fill()
             return true
         }
         scaled.isTemplate = false

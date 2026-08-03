@@ -5,6 +5,31 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.13.0] - Apple Silicon only, and updates that can't strand you
+
+macOS 27 dropped Intel Macs, so the Intel half of every build served
+machines that are frozen on macOS 26 — and nobody using this is on one.
+Removing it halves the download. The rest of this release is about making
+sure an update can never leave someone with an app that won't open.
+
+### Changed
+- **Apple Silicon only.** The download goes from 112 MB to 68 MB; ffmpeg
+  alone drops from 152 MB to 62 MB. Requires an M1 Mac or newer.
+
+### Fixed
+- **An update that can't run on your Mac is now refused instead of
+  installed.** Nothing checked architecture or minimum macOS: the
+  checksum matched, the signature verified, so the app would replace
+  itself with a build that couldn't launch — and the old copy was already
+  deleted by then. Both are checked now, and the version you have keeps
+  working.
+- **A broken update rolls itself back.** Those checks only catch failures
+  that can be anticipated. A build that is perfectly valid and simply
+  crashes on launch would take out every copy at once, with the fix
+  reachable only through the app that no longer starts. The previous
+  version is now kept until the new one has started and stayed running,
+  and restored automatically if it doesn't.
+
 ## [6.12.9] - Recent explains itself
 
 ### Fixed

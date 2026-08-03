@@ -331,6 +331,7 @@ final class UpdateService {
         try run("/usr/bin/codesign", ["--verify", "--deep", staged.path])
         try requireSameSigner(as: Bundle.main.bundleURL, staged: staged)
         try requireRunnableArchitecture(staged: staged)
+        try requireSupportedOSVersion(staged: staged)
         return staged
     }
 
@@ -378,6 +379,27 @@ final class UpdateService {
         }
     }
 
+    /// Refuses an update that declares a higher minimum macOS than this Mac
+    /// runs. Same failure as the architecture case — it would install cleanly
+    /// and then refuse to launch — and it becomes reachable the moment the
+    /// deployment target is ever raised.
+    private nonisolated static func requireSupportedOSVersion(staged: URL) throws {
+        let plistURL = staged.appendingPathComponent("Contents/Info.plist")
+        guard let data = try? Data(contentsOf: plistURL),
+              let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+              let minimum = plist["LSMinimumSystemVersion"] as? String else { return }
+
+        let required = minimum.split(separator: ".").compactMap { Int($0) }
+        guard !required.isEmpty else { return }
+        let current = ProcessInfo.processInfo.operatingSystemVersion
+        let running = [current.majorVersion, current.minorVersion, current.patchVersion]
+
+        for (needed, have) in zip(required, running) where needed != have {
+            if needed > have { throw UpdateError.unsupportedOSVersion(minimum) }
+            return
+        }
+    }
+
     private nonisolated static func teamIdentifier(of bundle: URL) -> String? {
         guard let output = try? run("/usr/bin/codesign", ["-dvvv", bundle.path]) else { return nil }
         for line in output.split(separator: "\n") where line.hasPrefix("TeamIdentifier=") {
@@ -422,10 +444,35 @@ final class UpdateService {
         // Paths arrive as arguments, not spliced into the script text: this
         // script runs `rm -rf`, and a bundle the user had renamed to something
         // containing a quote would otherwise change what that line means.
+        //
+        // The retired bundle is kept until the new version proves it can run.
+        // Every check before this point tests a specific, anticipated failure —
+        // a bad checksum, a wrong signer, an architecture this Mac can't
+        // execute — and none of them would catch a build that is perfectly
+        // valid and simply crashes on launch. That failure is the one that
+        // matters most: every friend's copy updates to it, every copy dies, and
+        // the fix can only reach them through the app that no longer starts.
+        // So the old version is restored automatically if the new one doesn't
+        // come up and stay up.
         let script = """
         while kill -0 "$1" 2>/dev/null; do sleep 0.2; done
-        rm -rf "$2"
-        open "$3"
+        open "$3" 2>/dev/null
+        ALIVE=0
+        for _ in $(seq 1 20); do
+          sleep 0.5
+          if pgrep -f "$3/Contents/MacOS/" >/dev/null 2>&1; then ALIVE=1; break; fi
+        done
+        if [ "$ALIVE" = 1 ]; then
+          sleep 3
+          pgrep -f "$3/Contents/MacOS/" >/dev/null 2>&1 || ALIVE=0
+        fi
+        if [ "$ALIVE" = 1 ]; then
+          rm -rf "$2"
+        else
+          rm -rf "$3"
+          mv "$2" "$3"
+          open "$3"
+        fi
         """
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
@@ -508,12 +555,18 @@ enum UpdateError: Error {
     case wrongSigner
     case queueBusy
     case unsupportedArchitecture
+    case unsupportedOSVersion(String)
     case noAppInDMG
     case swapFailed
     case commandFailed(String)
 
     var message: String {
         switch self {
+        case .unsupportedOSVersion(let minimum):
+            tr(
+                "This update needs macOS \(minimum) or later, so it wasn't installed. The version you have keeps working.",
+                "อัปเดตนี้ต้องใช้ macOS \(minimum) ขึ้นไป จึงไม่ได้ติดตั้ง เวอร์ชันที่ใช้อยู่ยังใช้งานได้ตามปกติ"
+            )
         case .unsupportedArchitecture:
             tr(
                 "This update doesn't support this Mac, so it wasn't installed. The version you have keeps working.",

@@ -19,38 +19,30 @@ curl -fL --progress-bar -o "$TOOLS_DIR/yt-dlp" \
   "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
 chmod +x "$TOOLS_DIR/yt-dlp"
 
+# Apple Silicon only — see the note in build-dmg.sh. The Intel slice was 90 MB
+# of ffmpeg on its own. To go back to universal, fetch the amd64 zip as well
+# and `lipo -create` the two together.
 echo "==> ffmpeg arm64"
 curl -fL --progress-bar -o "$SCRATCH/ffmpeg-arm64.zip" \
   "https://ffmpeg.martin-riedl.de/redirect/latest/macos/arm64/release/ffmpeg.zip"
 unzip -q -o "$SCRATCH/ffmpeg-arm64.zip" -d "$SCRATCH/arm64"
-
-echo "==> ffmpeg x86_64"
-curl -fL --progress-bar -o "$SCRATCH/ffmpeg-amd64.zip" \
-  "https://ffmpeg.martin-riedl.de/redirect/latest/macos/amd64/release/ffmpeg.zip"
-unzip -q -o "$SCRATCH/ffmpeg-amd64.zip" -d "$SCRATCH/amd64"
-
-echo "==> lipo universal ffmpeg"
-lipo -create "$SCRATCH/arm64/ffmpeg" "$SCRATCH/amd64/ffmpeg" -output "$TOOLS_DIR/ffmpeg"
+cp "$SCRATCH/arm64/ffmpeg" "$TOOLS_DIR/ffmpeg"
 chmod +x "$TOOLS_DIR/ffmpeg"
 
 echo "==> Verifying"
 
-# Both tools have to stay universal, and this is where that can quietly stop
-# being true: they're fetched from upstream, not built here. macOS 27 is Apple
-# Silicon only and Rosetta goes away entirely in macOS 28, so upstream projects
-# will start shipping arm64-only builds — at which point a fetch would succeed,
-# the app would build, build-dmg.sh's universal check would pass (it only looks
-# at our own binary), and video downloads would simply fail on any friend still
-# on an Intel Mac. Fail here instead, while there's something to be done about it.
+# Both tools have to cover the architectures the app ships for. They're fetched
+# from upstream, not built here, so this is where a silent change would land —
+# and a tool that can't run is a broken feature rather than a broken launch,
+# which is harder to notice.
+REQUIRED_ARCH="arm64"
 for TOOL in yt-dlp ffmpeg; do
   TOOL_ARCHS=$(lipo -archs "$TOOLS_DIR/$TOOL" 2>/dev/null || echo "unreadable")
   echo "    $TOOL: $TOOL_ARCHS"
-  case "$TOOL_ARCHS" in
-    *arm64*x86_64*|*x86_64*arm64*) ;;
+  case " $TOOL_ARCHS " in
+    *" $REQUIRED_ARCH "*) ;;
     *)
-      echo "Refusing to continue: $TOOL is '$TOOL_ARCHS', not universal." >&2
-      echo "Upstream has likely dropped Intel builds. Video downloads would fail" >&2
-      echo "on Intel Macs, which cannot run macOS 27 and are staying on macOS 26." >&2
+      echo "Refusing to continue: $TOOL is '$TOOL_ARCHS', missing '$REQUIRED_ARCH'." >&2
       exit 1
       ;;
   esac

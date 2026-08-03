@@ -4,6 +4,18 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 VERSION=$(grep -m1 'MARKETING_VERSION' DropDrive.xcodeproj/project.pbxproj | sed -E 's/.*= ([0-9.]+);/\1/')
+
+# Apple Silicon only from 6.13.0. macOS 27 dropped Intel Macs entirely and
+# Rosetta goes in macOS 28, so an Intel build serves machines that are already
+# frozen on macOS 26 — and nobody using this app is on one. Dropping the slice
+# halves the download: 201 MB to 106 MB, ffmpeg alone 152 MB to 62 MB.
+#
+# Anyone who does end up on an Intel Mac is protected rather than broken:
+# UpdateService refuses to install a build this machine can't execute, so an
+# older universal copy keeps running instead of being replaced by one that
+# won't launch. Put x86_64 back here and re-run fetch-video-tools.sh to reverse
+# this.
+TARGET_ARCHS="arm64"
 BUILD_DIR="build-adhoc"
 STAGING_DIR="$BUILD_DIR/staging"
 RW_DMG="$BUILD_DIR/DropDrive-rw.dmg"
@@ -26,7 +38,7 @@ mkdir -p "$BUILD_DIR" "$STAGING_DIR" dist
 xcodebuild -scheme DropDrive -configuration Release \
   -derivedDataPath "$BUILD_DIR/DerivedData" \
   -destination 'generic/platform=macOS' \
-  ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \
+  ARCHS="$TARGET_ARCHS" ONLY_ACTIVE_ARCH=NO \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
   build | tail -20
 
@@ -132,35 +144,29 @@ echo "==> Verifying signature and entitlements"
 codesign -dv "$APP_PATH" 2>&1 | grep -E "Signature|Authority"
 codesign -d --entitlements - --xml "$APP_PATH"
 
-echo "==> Verifying the binary is universal (Intel + Apple Silicon)"
-ARCHS_BUILT=$(lipo -archs "$APP_PATH/Contents/MacOS/DropDrive")
-echo "    architectures: $ARCHS_BUILT"
-case "$ARCHS_BUILT" in
-  *arm64*x86_64*|*x86_64*arm64*) ;;
-  *)
-    echo "Refusing to package: expected a universal binary, got '$ARCHS_BUILT'." >&2
-    echo "An Apple-Silicon-only build cannot launch on an Intel Mac." >&2
-    exit 1
-    ;;
-esac
-
-# The check above only covers our own binary. The bundled tools come from
-# upstream and can lose Intel support without anything here changing, which
-# would leave video downloads broken for Intel Macs — the machines that can't
-# move to macOS 27 and are therefore staying put.
-for TOOL in yt-dlp ffmpeg; do
-  TOOL_PATH="$APP_PATH/Contents/Resources/$TOOL"
-  [ -f "$TOOL_PATH" ] || continue
-  TOOL_ARCHS=$(lipo -archs "$TOOL_PATH" 2>/dev/null || echo "unreadable")
-  echo "    $TOOL: $TOOL_ARCHS"
-  case "$TOOL_ARCHS" in
-    *arm64*x86_64*|*x86_64*arm64*) ;;
-    *)
-      echo "Refusing to package: bundled $TOOL is '$TOOL_ARCHS', not universal." >&2
-      echo "Re-run scripts/fetch-video-tools.sh." >&2
-      exit 1
-      ;;
-  esac
+echo "==> Verifying every shipped binary covers $TARGET_ARCHS"
+# Every shipped binary has to cover what TARGET_ARCHS claims. The app's own
+# slice comes from xcodebuild, but yt-dlp and ffmpeg are fetched rather than
+# built, so a stale DropDrive/Tools from before an architecture change would
+# otherwise be packaged without complaint.
+for REQUIRED in $TARGET_ARCHS; do
+  for BINARY in "$APP_PATH/Contents/MacOS/DropDrive" \
+                "$APP_PATH/Contents/Resources/yt-dlp" \
+                "$APP_PATH/Contents/Resources/ffmpeg"; do
+    [ -f "$BINARY" ] || continue
+    BINARY_ARCHS=$(lipo -archs "$BINARY" 2>/dev/null || echo "unreadable")
+    case " $BINARY_ARCHS " in
+      *" $REQUIRED "*) ;;
+      *)
+        echo "Refusing to package: $(basename "$BINARY") is '$BINARY_ARCHS', missing '$REQUIRED'." >&2
+        echo "Re-run scripts/fetch-video-tools.sh if a bundled tool is stale." >&2
+        exit 1
+        ;;
+    esac
+  done
+done
+for BINARY in "$APP_PATH/Contents/MacOS/DropDrive" "$APP_PATH/Contents/Resources/yt-dlp" "$APP_PATH/Contents/Resources/ffmpeg"; do
+  [ -f "$BINARY" ] && printf "    %-12s %s\n" "$(basename "$BINARY")" "$(lipo -archs "$BINARY" 2>/dev/null)"
 done
 
 echo "==> Staging DMG contents"

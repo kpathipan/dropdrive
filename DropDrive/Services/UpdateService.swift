@@ -330,6 +330,7 @@ final class UpdateService {
         // replaces a working app.
         try run("/usr/bin/codesign", ["--verify", "--deep", staged.path])
         try requireSameSigner(as: Bundle.main.bundleURL, staged: staged)
+        try requireRunnableArchitecture(staged: staged)
         return staged
     }
 
@@ -346,6 +347,34 @@ final class UpdateService {
         guard let mine = teamIdentifier(of: installed), !mine.isEmpty else { return }
         guard teamIdentifier(of: staged) == mine else {
             throw UpdateError.wrongSigner
+        }
+    }
+
+    /// Refuses an update this Mac can't actually execute.
+    ///
+    /// Builds are Apple Silicon only from 6.13.0 on. Nothing else in the
+    /// install path would notice: the checksum matches, the signature verifies,
+    /// the team is right, so an Intel Mac would replace a working app with one
+    /// that cannot launch — and the relaunch helper deletes the old copy on the
+    /// way out, leaving nothing to fall back to and no way to recover from
+    /// inside the app. Cheap insurance against ever shipping a build that
+    /// strands someone.
+    private nonisolated static func requireRunnableArchitecture(staged: URL) throws {
+        let executable = staged
+            .appendingPathComponent("Contents/MacOS")
+            .appendingPathComponent(staged.deletingPathExtension().lastPathComponent)
+        guard let archs = try? run("/usr/bin/lipo", ["-archs", executable.path]) else { return }
+
+        #if arch(arm64)
+        let required = "arm64"
+        #elseif arch(x86_64)
+        let required = "x86_64"
+        #else
+        return
+        #endif
+
+        guard archs.split(separator: " ").contains(where: { $0.trimmingCharacters(in: .whitespacesAndNewlines) == required }) else {
+            throw UpdateError.unsupportedArchitecture
         }
     }
 
@@ -478,12 +507,18 @@ enum UpdateError: Error {
     case checksumMismatch
     case wrongSigner
     case queueBusy
+    case unsupportedArchitecture
     case noAppInDMG
     case swapFailed
     case commandFailed(String)
 
     var message: String {
         switch self {
+        case .unsupportedArchitecture:
+            tr(
+                "This update doesn't support this Mac, so it wasn't installed. The version you have keeps working.",
+                "อัปเดตนี้ไม่รองรับ Mac เครื่องนี้ จึงไม่ได้ติดตั้ง เวอร์ชันที่ใช้อยู่ยังใช้งานได้ตามปกติ"
+            )
         case .queueBusy:
             tr(
                 "A download started while the update was being fetched. Pause it, then try again.",

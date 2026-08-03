@@ -21,7 +21,7 @@ DropDrive is a native macOS app that downloads Google Drive files and folders di
 
 ## Requirements
 
-- macOS 14 or later
+- macOS 14 or later, on an Apple Silicon Mac (M1 or newer)
 - A Google account (only required for private files/folders)
 
 ## Installing

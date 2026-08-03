@@ -30,6 +30,11 @@ sure an update can never leave someone with an app that won't open.
   version is now kept until the new one has started and stayed running,
   and restored automatically if it doesn't.
 
+### Notes
+- The rollback protects updates *after* this one: it's the version being
+  replaced that decides how the swap happens, and 6.12.9 doesn't have it.
+  This release still installs the old way.
+
 ## [6.12.9] - Recent explains itself
 
 ### Fixed

@@ -68,7 +68,17 @@ final class UpdateService {
     private var periodicTimer: Timer?
 
     private static let lastCheckKey = "updateChecker.lastCheckDate"
-    private static let checkInterval: TimeInterval = 24 * 60 * 60
+    /// Pacing for checks nobody asked for — the launch check, the timer, waking
+    /// from sleep. Once a day is plenty for those.
+    private static let backgroundInterval: TimeInterval = 24 * 60 * 60
+    /// Opening the window is a deliberate act, and the answer shown there is the
+    /// whole point of it, so it gets a much shorter leash. Sharing the daily one
+    /// meant a release landing an hour after the last background check stayed
+    /// invisible for twenty-three more — with the Preferences button the only
+    /// way to see it, which is exactly the trip the banner exists to save.
+    /// Fifteen minutes caps this at four requests an hour even if the window is
+    /// opened constantly.
+    private static let openedInterval: TimeInterval = 15 * 60
     static let updateAvailableCategoryID = "UPDATE_AVAILABLE"
     static let installActionID = "INSTALL_UPDATE"
     static let releaseURLKey = "releaseURL"
@@ -117,11 +127,22 @@ final class UpdateService {
         }
     }
 
-    /// Silent, once a day, at launch.
+    /// Silent, once a day: at launch, on the timer, and on waking from sleep.
     func checkIfNeeded() {
-        guard isConfigured else { return }
+        check(ifOlderThan: Self.backgroundInterval)
+    }
+
+    /// The menu bar window was opened, so somebody is looking at the banner now.
+    func checkOnOpen() {
+        check(ifOlderThan: Self.openedInterval)
+    }
+
+    private func check(ifOlderThan interval: TimeInterval) {
+        guard isConfigured, !isBusy else { return }
+        // An offer already on the table doesn't need confirming again.
+        if case .available = state { return }
         let lastCheck = UserDefaults.standard.object(forKey: Self.lastCheckKey) as? Date
-        if let lastCheck, Date().timeIntervalSince(lastCheck) < Self.checkInterval { return }
+        if let lastCheck, Date().timeIntervalSince(lastCheck) < interval { return }
         Task { await check(notifying: true) }
     }
 

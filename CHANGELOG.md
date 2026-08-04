@@ -5,6 +5,39 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.14.0] - Noticing updates, and room for the pictures
+
+### Added
+- **The menu bar icon marks itself when an update is waiting.** The
+  update banner only rewarded someone who already opened the window, and
+  nothing suggested opening it. Now the app can say so without needing a
+  Notification Centre permission it may never have been granted.
+- **Opening the window checks for updates.** The banner can only show
+  what a check has found, and nothing triggered one at the moment
+  somebody was actually looking at the app.
+
+### Fixed
+- **A Mac that never restarts stopped checking for updates.** The check
+  ran from the app's initialiser only — "once a day" in practice meant
+  "once per launch", and this app launches at login and stays up. It's
+  retriggered on a timer and on waking from sleep now.
+- **The paste box and the analysis card were offering the same two
+  choices at once** — a destination row and a download button each. The
+  card owns them while it's on screen, which also gives a row back.
+- **The Change button's label was being clipped** by a long destination
+  path. The row shows the folder's name; hovering it shows the full path.
+- **A profile photo added to your Google account after signing in never
+  appeared.** The profile was captured once at sign-in and read from
+  local storage forever. It's refreshed in the background now.
+
+### Changed
+- **Recent shows two columns instead of three**, at the same window
+  width, so a cover grows from 62pt to 100pt. That pane is full of your
+  own downloads and they were too small to tell apart.
+- **Download progress fills the row** behind the filename rather than
+  sitting in a bar of its own underneath. Every number stays.
+- Softer corners throughout, and tiles lift slightly under the pointer.
+
 ## [6.13.0] - Apple Silicon only, and updates that can't strand you
 
 macOS 27 dropped Intel Macs, so the Intel half of every build served

@@ -290,6 +290,7 @@ struct MenuBarView: View {
                             driveLink: $viewModel.driveLink,
                             destinationURL: viewModel.selectedDestinationURL,
                             isLocked: viewModel.isSigningIn,
+                            hasActiveCard: viewModel.hasActiveAnalysisCard,
                             onChooseDestination: viewModel.chooseDestinationFolder,
                             onSubmit: viewModel.handleSubmit,
                             onEscape: viewModel.cancelAnalysis

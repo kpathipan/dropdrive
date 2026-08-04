@@ -5,6 +5,12 @@ struct DownloadFormView: View {
     @Binding var driveLink: String
     let destinationURL: URL?
     let isLocked: Bool
+    /// True while an analysed card is on screen. That card carries its own
+    /// destination row and its own Download button, so showing them here as
+    /// well means the same two decisions appear twice on one small window —
+    /// which is both confusing and a waste of two rows in a popover that has
+    /// to fit under 480pt.
+    let hasActiveCard: Bool
     let onChooseDestination: () -> Void
     let onSubmit: () -> Void
     let onEscape: () -> Void
@@ -49,44 +55,60 @@ struct DownloadFormView: View {
                 .frame(height: 34)
                 .inputFieldBackground()
 
-                Button(action: onSubmit) {
-                    Image(systemName: "arrow.down")
-                        .font(.dd(14, .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 34, height: 34)
-                        .background(
-                            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                .fill(driveLink.isEmpty || isLocked ? DDTheme.accent.opacity(0.4) : DDTheme.accent)
-                        )
-                }
-                .buttonStyle(.plain)
-                .disabled(driveLink.isEmpty || isLocked)
-                .help(tr("Download", "ดาวน์โหลด"))
-                .accessibilityLabel("Download")
-            }
-
-            HStack(spacing: 5) {
-                Image(systemName: destinationURL == nil ? "folder" : "folder.fill")
-                    .font(.dd(10))
-                    .foregroundStyle(destinationURL == nil ? Color.secondary : DDTheme.accent)
-
-                Text(destinationURL?.path(percentEncoded: false) ?? tr("Choose a folder", "เลือกโฟลเดอร์"))
-                    .font(.dd(10.5))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-
-                Button(destinationURL == nil ? tr("Choose…", "เลือก…") : tr("Change…", "เปลี่ยน…"), action: onChooseDestination)
+                if !hasActiveCard {
+                    Button(action: onSubmit) {
+                        Image(systemName: "arrow.down")
+                            .font(.dd(14, .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 34, height: 34)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(driveLink.isEmpty || isLocked ? DDTheme.accent.opacity(0.4) : DDTheme.accent)
+                            )
+                    }
                     .buttonStyle(.plain)
-                    .font(.dd(10.5))
-                    .foregroundStyle(DDTheme.accent)
-                    .disabled(isLocked)
-                    .accessibilityLabel(destinationURL == nil ? "Choose destination folder" : "Change destination folder")
-
-                Spacer(minLength: 0)
+                    .disabled(driveLink.isEmpty || isLocked)
+                    .help(tr("Download", "ดาวน์โหลด"))
+                    .accessibilityLabel("Download")
+                }
             }
-            .padding(.leading, 2)
+
+            if !hasActiveCard {
+                destinationRow
+            }
         }
+    }
+
+    private var destinationRow: some View {
+        HStack(spacing: 5) {
+            Image(systemName: destinationURL == nil ? "folder" : "folder.fill")
+                .font(.dd(10))
+                .foregroundStyle(destinationURL == nil ? Color.secondary : DDTheme.accent)
+
+            // The folder's own name, not the whole path: at 10.5pt a full path
+            // crowded the button beside it down to "เปลี่ยน…" with the label
+            // clipped, and the leading directories were never the part anyone
+            // was reading.
+            Text(destinationURL?.lastPathComponent ?? tr("Choose a folder", "เลือกโฟลเดอร์"))
+                .font(.dd(10.5))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .layoutPriority(-1)
+                .help(destinationURL?.path(percentEncoded: false) ?? "")
+
+            Button(destinationURL == nil ? tr("Choose…", "เลือก…") : tr("Change…", "เปลี่ยน…"),
+                   action: onChooseDestination)
+                .buttonStyle(.plain)
+                .font(.dd(10.5))
+                .foregroundStyle(DDTheme.accent)
+                .disabled(isLocked)
+                .fixedSize()
+                .accessibilityLabel(destinationURL == nil ? "Choose destination folder" : "Change destination folder")
+
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, 2)
     }
 
     private func pasteFromClipboard() {

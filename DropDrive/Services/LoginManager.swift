@@ -8,6 +8,7 @@ import GTMAppAuth
 /// actor, they're just awaited from off it.
 protocol LoginManaging: Sendable {
     func restoreSavedAccount() async -> GoogleAccount?
+    func refreshSavedAccount() async -> GoogleAccount?
     func signIn() async throws -> GoogleAccount
     func signOut()
     func handleCallbackURL(_ url: URL) -> Bool
@@ -59,6 +60,24 @@ final class LoginManager: LoginManaging {
     }
 
     // MARK: - Session lookup
+
+    /// Re-fetches the signed-in profile and stores it if anything changed.
+    ///
+    /// The profile is captured once at sign-in and then read from UserDefaults
+    /// forever, so a photo added — or changed — on the Google account after that
+    /// never reaches the app, and the picture URL Google hands out is not
+    /// permanent either. Called after the cached copy has already been shown, so
+    /// the avatar appears immediately and quietly corrects itself.
+    func refreshSavedAccount() async -> GoogleAccount? {
+        guard let session = loadSession(), session.authState.isAuthorized,
+              let token = try? await accessToken(for: session),
+              let fresh = try? await Self.fetchProfile(accessToken: token) else {
+            return nil
+        }
+        guard fresh != loadStoredAccount() else { return nil }
+        save(fresh)
+        return fresh
+    }
 
     func restoreSavedAccount() async -> GoogleAccount? {
         guard let session = loadSession(), session.authState.isAuthorized else {

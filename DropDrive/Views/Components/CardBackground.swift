@@ -14,6 +14,7 @@ enum DDTheme {
              : Color(red: 0.965, green: 0.973, blue: 0.984)            // #F6F8FB
     }
 
+
     static var rail: Color {
         dark ? Color(red: 0.106, green: 0.118, blue: 0.141)            // #1B1E24
              : Color(red: 0.929, green: 0.941, blue: 0.961)            // #EDF0F5
@@ -63,7 +64,7 @@ extension Font {
 }
 
 struct CardBackground: ViewModifier {
-    var cornerRadius: CGFloat = 10
+    var cornerRadius: CGFloat = 12
 
     func body(content: Content) -> some View {
         content
@@ -76,7 +77,7 @@ struct CardBackground: ViewModifier {
 }
 
 struct InputFieldBackground: ViewModifier {
-    var cornerRadius: CGFloat = 9
+    var cornerRadius: CGFloat = 10
 
     func body(content: Content) -> some View {
         content
@@ -89,11 +90,11 @@ struct InputFieldBackground: ViewModifier {
 }
 
 extension View {
-    func cardBackground(cornerRadius: CGFloat = 10) -> some View {
+    func cardBackground(cornerRadius: CGFloat = 12) -> some View {
         modifier(CardBackground(cornerRadius: cornerRadius))
     }
 
-    func inputFieldBackground(cornerRadius: CGFloat = 9) -> some View {
+    func inputFieldBackground(cornerRadius: CGFloat = 10) -> some View {
         modifier(InputFieldBackground(cornerRadius: cornerRadius))
     }
 }

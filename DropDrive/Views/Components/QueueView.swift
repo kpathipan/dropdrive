@@ -343,8 +343,16 @@ private struct QueueRow: View {
         .accessibilityLabel("\(count) \(label)")
     }
 
+    /// The download's own row carries the progress, filling left to right behind
+    /// the text, instead of a separate bar underneath it.
+    ///
+    /// The bar was a third row of its own and said nothing the percentage beside
+    /// the filename didn't already say precisely. The fill gives the same
+    /// at-a-glance read in space that was already being used — and every number
+    /// stays, because on a download manager the exact byte count, rate and ETA
+    /// are the product, not decoration.
     private func inlineProgress(_ progress: DownloadProgress) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 5) {
             HStack {
                 Text(progress.currentFileName.isEmpty ? tr("Downloading…", "กำลังดาวน์โหลด…") : progress.currentFileName)
                     .font(.dd(10.5))
@@ -356,14 +364,26 @@ private struct QueueRow: View {
 
                 if let fraction = progress.fractionCompleted {
                     Text(fraction, format: .percent.precision(.fractionLength(0)))
-                        .font(.dd(10.5).monospacedDigit())
-                        .foregroundStyle(.secondary)
+                        .font(.dd(10.5, .medium).monospacedDigit())
+                        .foregroundStyle(DDTheme.accent)
                 }
             }
-
-            ProgressView(value: progress.fractionCompleted)
-                .progressViewStyle(.linear)
-                .tint(Color.accentColor)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(alignment: .leading) {
+                GeometryReader { proxy in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(DDTheme.accent.opacity(0.10))
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(DDTheme.accent.opacity(0.28))
+                            .frame(width: proxy.size.width * (progress.fractionCompleted ?? 0))
+                    }
+                }
+            }
+            // Matches the sampling the engine reports at, so the fill glides
+            // rather than stepping.
+            .animation(.linear(duration: 0.25), value: progress.fractionCompleted)
 
             HStack(spacing: 4) {
                 if progress.totalBytes > 0 {

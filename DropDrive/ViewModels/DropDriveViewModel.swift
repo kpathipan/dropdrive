@@ -110,6 +110,15 @@ final class DropDriveViewModel {
 
     private var hasReadyItems: Bool { queue.contains { $0.status == .ready } }
 
+    /// True when a card is on screen that carries its own destination row and
+    /// its own Download button, so the paste box can stop offering both.
+    var hasActiveAnalysisCard: Bool {
+        switch linkAnalysisState {
+        case .analyzed, .duplicateCompleted: true
+        default: false
+        }
+    }
+
     var canStartQueue: Bool {
         hasReadyItems && selectedDestinationURL != nil && !isQueueProcessing && !isSigningIn
     }
@@ -121,6 +130,11 @@ final class DropDriveViewModel {
     func restoreLogin() {
         Task {
             googleAccount = await loginManager.restoreSavedAccount()
+            // The cached copy is shown first so the chip doesn't sit empty, then
+            // corrected if the profile has moved on since sign-in.
+            if let refreshed = await loginManager.refreshSavedAccount() {
+                googleAccount = refreshed
+            }
         }
     }
 

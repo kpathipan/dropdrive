@@ -7,6 +7,7 @@ struct GoogleAccount: Sendable { let name = ""; let email = "" }
 
 protocol LoginManaging: Sendable {
     func restoreSavedAccount() async -> GoogleAccount?
+    func refreshSavedAccount() async -> GoogleAccount?
     func signIn() async throws -> GoogleAccount
     func signOut()
     func handleCallbackURL(_ url: URL) -> Bool
@@ -16,6 +17,7 @@ protocol LoginManaging: Sendable {
 
 struct StubLogin: LoginManaging {
     func restoreSavedAccount() async -> GoogleAccount? { nil }
+    func refreshSavedAccount() async -> GoogleAccount? { nil }
     func signIn() async throws -> GoogleAccount { GoogleAccount() }
     func signOut() {}
     func handleCallbackURL(_ url: URL) -> Bool { false }

@@ -76,7 +76,12 @@ struct RecentDownloadsView: View {
         }
     }
 
-    private let columns = [GridItem(.adaptive(minimum: 92, maximum: 120), spacing: 8)]
+    /// Two columns rather than three, at the same window width. A 62pt cover was
+    /// too small to tell one clip from another, which is most of what this pane
+    /// is for — the pictures are the user's own downloads, and they were being
+    /// wasted. Two columns roughly doubles the cover without touching the
+    /// window's size.
+    private let columns = [GridItem(.adaptive(minimum: 140, maximum: 200), spacing: 9)]
 
     private func gallery(_ visible: [DownloadHistoryItem]) -> some View {
         LazyVGrid(columns: columns, spacing: 8) {
@@ -196,11 +201,11 @@ private struct GalleryTile: View {
                     }
                 }
             }
-            .frame(height: 62)
-            .clipShape(UnevenRoundedRectangle(topLeadingRadius: 8, topTrailingRadius: 8))
+            .frame(height: 100)
+            .clipShape(UnevenRoundedRectangle(topLeadingRadius: 11, topTrailingRadius: 11))
 
             Text(item.name)
-                .font(.dd(9.5))
+                .font(.dd(10.5))
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -210,11 +215,15 @@ private struct GalleryTile: View {
         }
         .background(DDTheme.card)
         .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
                 .strokeBorder(DDTheme.border, lineWidth: 0.5)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
         .opacity(exists ? 1 : 0.55)
+        // A small lift on hover, so the grid responds to the pointer instead of
+        // only revealing buttons.
+        .scaleEffect(isHovering && exists ? 1.02 : 1)
+        .animation(.easeOut(duration: 0.14), value: isHovering)
         .help(unavailableReason?.label ?? item.name)
         .onHover { isHovering = $0 }
         .onTapGesture(count: 2, perform: primaryAction)
@@ -346,10 +355,10 @@ private struct FolderCover: View {
                     ForEach(0..<4, id: \.self) { i in
                         if i < covers.count {
                             FileThumbnail(url: covers[i])
-                                .frame(height: 30)
+                                .frame(height: 49)
                                 .clipped()
                         } else {
-                            DDTheme.rail.frame(height: 30)
+                            DDTheme.rail.frame(height: 49)
                         }
                     }
                 }
@@ -389,7 +398,7 @@ private struct FolderContentsGallery: View {
     let onBack: () -> Void
 
     @State private var files: [URL] = []
-    private let columns = [GridItem(.adaptive(minimum: 92, maximum: 120), spacing: 8)]
+    private let columns = [GridItem(.adaptive(minimum: 140, maximum: 200), spacing: 9)]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -459,11 +468,11 @@ private struct FileTile: View {
                     }
                 }
             }
-            .frame(height: 62)
-            .clipShape(UnevenRoundedRectangle(topLeadingRadius: 8, topTrailingRadius: 8))
+            .frame(height: 100)
+            .clipShape(UnevenRoundedRectangle(topLeadingRadius: 11, topTrailingRadius: 11))
 
             Text(url.lastPathComponent)
-                .font(.dd(9.5))
+                .font(.dd(10.5))
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -472,10 +481,12 @@ private struct FileTile: View {
         }
         .background(DDTheme.card)
         .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
                 .strokeBorder(DDTheme.border, lineWidth: 0.5)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .scaleEffect(isHovering ? 1.02 : 1)
+        .animation(.easeOut(duration: 0.14), value: isHovering)
         .onHover { isHovering = $0 }
         .onTapGesture(count: 2) { NSWorkspace.shared.open(url) }
         .contextMenu {

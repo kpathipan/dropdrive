@@ -5,6 +5,26 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.14.1] - Quieter failures
+
+### Fixed
+- **A mistyped trim start silently downloaded from 0:00 instead.** Trimming
+  a clip only checked the end field for a valid time; a malformed start
+  (a typo like "0;30") parsed as nothing, fell back to the beginning of the
+  video, and downloaded the wrong section with no warning. Both ends of the
+  trim are validated now.
+- **Cancelling a video download could leave `.part`/`.ytdl` fragments behind
+  in your download folder.** Cleanup matched them against the raw video
+  title, but yt-dlp's own filename sanitizing swaps common characters
+  (`:`, `?`, `/`, and others — routine in real titles like "Title: Subtitle")
+  for lookalikes, so the match silently missed and the fragments were never
+  removed. Matched on an alphanumeric skeleton of the name now, unaffected
+  by either side's sanitizing.
+- **A link already downloaded could be queued and fetched again if it
+  arrived from your phone or the right-click "Download with DropDrive"
+  menu.** Pasting the same link yourself was already caught by Recent
+  Downloads; that same check now covers a phone or Services delivery too.
+
 ## [6.14.0] - Noticing updates, and room for the pictures
 
 ### Added

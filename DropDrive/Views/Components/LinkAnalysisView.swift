@@ -283,6 +283,9 @@ struct AnalyzedPromptView: View {
     /// when trimming is off / fields are empty.
     private var clipSection: String? {
         guard trimEnabled else { return nil }
+        // A malformed (non-empty) start used to fall back to 0 silently, so a typo
+        // trimmed from the beginning of the video instead of being rejected.
+        guard trimStart.isEmpty || Self.seconds(from: trimStart) != nil else { return nil }
         let start = Self.seconds(from: trimStart) ?? 0
         guard let end = Self.seconds(from: trimEnd), end > start else { return nil }
         return "\(Int(start))-\(Int(end))"
@@ -290,6 +293,8 @@ struct AnalyzedPromptView: View {
 
     private var trimInvalid: Bool {
         guard trimEnabled else { return false }
+        // A non-empty, unparsable start is a real wrong input, same as the end field.
+        if !trimStart.isEmpty, Self.seconds(from: trimStart) == nil { return true }
         // Empty end = nothing to cut yet; only flag a real, wrong input.
         guard Self.seconds(from: trimEnd) != nil || !trimEnd.isEmpty else { return false }
         return clipSection == nil

@@ -219,14 +219,16 @@ final class DropDriveViewModel {
             for link in links {
                 if VideoDownloadService.isSupportedLink(link) {
                     guard let analysis = try? await videoDownloadService.analyze(link),
-                          !queue.contains(where: { $0.itemID == analysis.itemID }) else { continue }
+                          !queue.contains(where: { $0.itemID == analysis.itemID }),
+                          !hasCompletedDownloadPreviously(itemID: analysis.itemID) else { continue }
                     enqueue(analysis: analysis, driveLink: link)
                     queuedNames.append(analysis.name)
                 } else if let itemID = GoogleDriveLinkParser.itemID(from: link) {
                     let resourceKey = GoogleDriveLinkParser.resourceKey(from: link)
                     guard let result = try? await downloadService.analyzeLink(itemID: itemID, resourceKey: resourceKey),
                           case .success(let analysis) = result,
-                          !queue.contains(where: { $0.itemID == analysis.itemID }) else { continue }
+                          !queue.contains(where: { $0.itemID == analysis.itemID }),
+                          !hasCompletedDownloadPreviously(itemID: analysis.itemID) else { continue }
                     enqueue(analysis: analysis, driveLink: link)
                     queuedNames.append(analysis.name)
                 }

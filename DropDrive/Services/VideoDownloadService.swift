@@ -273,19 +273,34 @@ struct VideoDownloadService {
     /// Removes yt-dlp's partial artifacts (`.part`, `.ytdl`, fragment files) for
     /// this title after a cancel — matched by the title prefix AND a partial
     /// suffix, so finished videos are never touched.
+    ///
+    /// Matched on the alphanumeric skeleton of the name, not a literal prefix:
+    /// yt-dlp's own filename sanitizing swaps `:`, `?`, `/`, `|`, etc. (extremely
+    /// common in real titles, e.g. "Title: Subtitle") for lookalike Unicode
+    /// characters, so the file on disk rarely starts with the raw title text
+    /// verbatim. A literal `hasPrefix` missed those and left `.part`/`.ytdl`
+    /// fragments behind after every cancel — exactly the kind of orphaned scratch
+    /// file that has filled this user's disk before.
     static func cleanupPartials(title: String, in destination: URL) {
         let contents = (try? FileManager.default.contentsOfDirectory(
             at: destination, includingPropertiesForKeys: nil,
             options: [.skipsSubdirectoryDescendants]
         )) ?? []
-        let prefix = String(title.prefix(60))
+        let prefix = Self.alphanumericSkeleton(String(title.prefix(60)))
+        guard !prefix.isEmpty else { return }
         for file in contents {
             let name = file.lastPathComponent
-            guard name.hasPrefix(prefix) else { continue }
+            guard Self.alphanumericSkeleton(name).hasPrefix(prefix) else { continue }
             if name.hasSuffix(".part") || name.hasSuffix(".ytdl") || name.contains(".part-Frag") {
                 try? FileManager.default.removeItem(at: file)
             }
         }
+    }
+
+    /// Strips everything but letters/digits, so filename sanitizing on either
+    /// side (raw title vs. what yt-dlp actually wrote) can't break the match.
+    private static func alphanumericSkeleton(_ s: String) -> String {
+        String(s.unicodeScalars.filter(CharacterSet.alphanumerics.contains))
     }
 
     // MARK: - Process plumbing

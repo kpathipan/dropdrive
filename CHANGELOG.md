@@ -25,7 +25,7 @@ and this project follows [Semantic Versioning](https://semver.org/).
   menu.** Pasting the same link yourself was already caught by Recent
   Downloads; that same check now covers a phone or Services delivery too.
 
-## [Unreleased]
+## [6.15.0] - Name it before you download it
 
 ### Added
 - **Rename before downloading.** The confirm card's name is now editable —

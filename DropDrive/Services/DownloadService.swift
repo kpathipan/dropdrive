@@ -811,7 +811,8 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
             credential: credential,
             resourceKeys: resourceKeys,
             resumeID: request.resumeID,
-            avoidingOverwrite: true
+            avoidingOverwrite: true,
+            overrideBaseName: request.customName
         ) { chunkSize in
             if let update = tracker.addingBytes(chunkSize) {
                 progress(update)
@@ -828,7 +829,11 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
         resourceKeys: [String: String],
         progress: @escaping @Sendable (DownloadProgress) -> Void
     ) async throws -> URL {
-        let rootFolderURL = Self.resolvedRootFolderURL(name: rootMetadata.name, itemID: request.itemID, in: request.destinationURL)
+        let rootFolderURL = Self.resolvedRootFolderURL(
+            name: request.customName ?? rootMetadata.name,
+            itemID: request.itemID,
+            in: request.destinationURL
+        )
         try FileManager.default.createDirectory(at: rootFolderURL, withIntermediateDirectories: true)
         Self.writeResumeMarker(itemID: request.itemID, in: rootFolderURL)
 
@@ -1042,6 +1047,10 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
         resourceKeys: [String: String],
         resumeID: UUID,
         avoidingOverwrite: Bool = false,
+        /// Renames just this file, keeping whatever extension it actually has —
+        /// only ever set for the single-file download the user typed a name for,
+        /// never for a file inside a folder.
+        overrideBaseName: String? = nil,
         onBytes: @escaping @Sendable (Int64) -> Void
     ) async throws -> URL {
         var destinationURL: URL
@@ -1051,7 +1060,7 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
         if let export = Self.exportMimeTypes[file.mimeType] {
             isExport = true
             destinationURL = folderURL.appendingPathComponent(
-                Self.fileName(file.name, withExtension: export.fileExtension)
+                Self.fileName(overrideBaseName ?? file.name, withExtension: export.fileExtension)
             )
             var components = URLComponents(string: "\(Self.apiBase)/\(file.id)/export")!
             components.queryItems = [URLQueryItem(name: "mimeType", value: export.mimeType)]
@@ -1059,7 +1068,9 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
             requestURL = components.url!
         } else {
             isExport = false
-            destinationURL = folderURL.appendingPathComponent(Self.sanitizedName(file.name))
+            destinationURL = folderURL.appendingPathComponent(
+                Self.renamed(file.name, to: overrideBaseName)
+            )
             var components = URLComponents(string: "\(Self.apiBase)/\(file.id)")!
             components.queryItems = [
                 URLQueryItem(name: "alt", value: "media"),
@@ -1276,6 +1287,22 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
     private static func sanitizedName(_ name: String) -> String {
         let invalidCharacters = CharacterSet(charactersIn: "/:")
         return name.components(separatedBy: invalidCharacters).joined(separator: "-")
+    }
+
+    /// `originalName` under a new base name, keeping the extension it already
+    /// had. Typing "holiday" over "IMG_4021.HEIC" gives "holiday.HEIC" — the
+    /// extension is what makes the file openable, so it is never the user's to
+    /// delete by accident. A typed name that already ends in the right extension
+    /// isn't given a second one.
+    static func renamed(_ originalName: String, to newBaseName: String?) -> String {
+        guard let newBaseName, !newBaseName.isEmpty else { return sanitizedName(originalName) }
+        let fileExtension = (originalName as NSString).pathExtension
+        guard !fileExtension.isEmpty else { return sanitizedName(newBaseName) }
+        let sanitized = sanitizedName(newBaseName)
+        // Compared case-insensitively on both sides: ".HEIC" typed over a ".HEIC"
+        // file must not become "name.HEIC.HEIC".
+        if sanitized.lowercased().hasSuffix(".\(fileExtension.lowercased())") { return sanitized }
+        return "\(sanitized).\(fileExtension)"
     }
 
     private static func fileName(_ name: String, withExtension fileExtension: String) -> String {

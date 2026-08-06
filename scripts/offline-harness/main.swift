@@ -305,5 +305,42 @@ check("the existing file is untouched", try Data(contentsOf: collision), preciou
 pass("the new file has the downloaded bytes",
      (try Data(contentsOf: soloURL)) == contents(for: "solo", size: fileSize))
 
+// MARK: - 7. Renaming before the download starts
+
+print("--- rename before download")
+let renameDest = sandbox.appendingPathComponent("renamed")
+try FileManager.default.createDirectory(at: renameDest, withIntermediateDirectories: true)
+
+let renamedFile = try await service.download(
+    DownloadRequest(driveLink: "x", itemID: "solo", destinationURL: renameDest,
+                    resourceKey: nil, resumeID: UUID(), customName: "holiday clip")) { _ in }
+check("file saved under the typed name", renamedFile.lastPathComponent, "holiday clip.jpg")
+pass("renamed file has the downloaded bytes",
+     (try Data(contentsOf: renamedFile)) == contents(for: "solo", size: fileSize))
+
+// Typing the extension in as well must not double it up.
+let withExtension = try await service.download(
+    DownloadRequest(driveLink: "x", itemID: "solo", destinationURL: renameDest,
+                    resourceKey: nil, resumeID: UUID(), customName: "beach.JPG")) { _ in }
+check("a typed extension isn't doubled", withExtension.lastPathComponent, "beach.JPG")
+
+// A "/" would otherwise silently turn the name into a subfolder path.
+let slashed = try await service.download(
+    DownloadRequest(driveLink: "x", itemID: "solo", destinationURL: renameDest,
+                    resourceKey: nil, resumeID: UUID(), customName: "a/b")) { _ in }
+check("a slash can't escape the destination folder", slashed.lastPathComponent, "a-b.jpg")
+check("and nothing was written outside it", slashed.deletingLastPathComponent().path, renameDest.path)
+
+let renamedFolder = try await service.download(
+    DownloadRequest(driveLink: "x", itemID: "root", destinationURL: renameDest,
+                    resourceKey: nil, resumeID: UUID(), customName: "My Folder")) { _ in }
+check("folder created under the typed name", renamedFolder.lastPathComponent, "My Folder")
+var renamedCount = 0
+if let walker = FileManager.default.enumerator(at: renamedFolder, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) {
+    for case let url as URL in walker
+    where (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true { renamedCount += 1 }
+}
+check("renaming a folder doesn't rename what's inside it", renamedCount, expectedFiles)
+
 print(failures == 0 ? "\nALL PASS" : "\n\(failures) FAILURE(S)")
 exit(failures == 0 ? 0 : 1)

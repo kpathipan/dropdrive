@@ -9,4 +9,7 @@ nonisolated struct DownloadRequest: Equatable, Sendable {
     /// QueueItem's id), so resume data and in-progress-folder markers stay scoped
     /// to the right item.
     var resumeID: UUID = UUID()
+    /// Replaces the name the item has on Drive. A file keeps its real extension
+    /// (this is the base name only); a folder is created under this name.
+    var customName: String? = nil
 }

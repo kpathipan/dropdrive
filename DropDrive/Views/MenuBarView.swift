@@ -478,8 +478,8 @@ struct MenuBarView: View {
                 analysis: analysis,
                 destinationURL: viewModel.selectedDestinationURL,
                 onChooseDestination: viewModel.chooseDestinationFolder,
-                onDownload: { asAudio, clipSection in
-                    viewModel.confirmAnalyzedDownload(asAudio: asAudio, clipSection: clipSection)
+                onDownload: { asAudio, clipSection, customName in
+                    viewModel.confirmAnalyzedDownload(asAudio: asAudio, clipSection: clipSection, customName: customName)
                 },
                 onCancel: viewModel.cancelAnalysis
             )

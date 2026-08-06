@@ -35,6 +35,13 @@ struct QueueItem: Identifiable, Equatable, Codable {
     /// trimmed the clip on the confirm card. Nil downloads the whole video.
     var clipSection: String?
 
+    /// A name typed on the confirm card, replacing the one the link came with.
+    /// The extension is never part of this — it's decided by what actually
+    /// downloads — so a file keeps its real type no matter what is typed here.
+    /// Nil (the common case) keeps the original name. Optional also for decode
+    /// compatibility with queues persisted before this existed.
+    var customName: String?
+
     init(
         id: UUID = UUID(),
         driveLink: String,
@@ -44,7 +51,8 @@ struct QueueItem: Identifiable, Equatable, Codable {
         errorMessage: String? = nil,
         destinationURL: URL? = nil,
         asAudio: Bool? = nil,
-        clipSection: String? = nil
+        clipSection: String? = nil,
+        customName: String? = nil
     ) {
         self.id = id
         self.driveLink = driveLink
@@ -55,7 +63,12 @@ struct QueueItem: Identifiable, Equatable, Codable {
         self.destinationURL = destinationURL
         self.asAudio = asAudio
         self.clipSection = clipSection
+        self.customName = customName
     }
 
     var itemID: String { analysis.itemID }
+
+    /// What every list in the app shows for this item: the typed name when there
+    /// is one, so the queue matches what will land on disk.
+    var displayName: String { customName ?? analysis.name }
 }

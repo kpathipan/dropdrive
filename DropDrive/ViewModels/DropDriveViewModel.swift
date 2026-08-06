@@ -414,10 +414,16 @@ final class DropDriveViewModel {
     /// is selected right now, and start immediately unless something is already
     /// downloading (in which case it just lines up behind it). `asAudio` is the
     /// MP3 choice on video cards.
-    func confirmAnalyzedDownload(asAudio: Bool = false, clipSection: String? = nil) {
+    func confirmAnalyzedDownload(asAudio: Bool = false, clipSection: String? = nil, customName: String? = nil) {
         guard case .analyzed(let analysis) = linkAnalysisState else { return }
         let trimmedLink = driveLink.trimmingCharacters(in: .whitespacesAndNewlines)
-        enqueue(analysis: analysis, driveLink: trimmedLink, asAudio: asAudio, clipSection: clipSection)
+        enqueue(
+            analysis: analysis,
+            driveLink: trimmedLink,
+            asAudio: asAudio,
+            clipSection: clipSection,
+            customName: Self.usableCustomName(customName, original: analysis.name)
+        )
         driveLink = ""
         linkAnalysisState = .idle
         if !isQueueProcessing {
@@ -492,13 +498,32 @@ final class DropDriveViewModel {
 
     // MARK: - Queue
 
-    private func enqueue(analysis: DriveLinkAnalysis, driveLink: String, asAudio: Bool = false, clipSection: String? = nil) {
+    /// A typed name only counts when it is non-empty and actually different from
+    /// the name the link already has — otherwise the item carries a "rename" that
+    /// renames nothing, which then has to be reasoned about everywhere else.
+    private static func usableCustomName(_ typed: String?, original: String) -> String? {
+        guard let trimmed = typed?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty,
+              trimmed != original,
+              trimmed != (original as NSString).deletingPathExtension
+        else { return nil }
+        return trimmed
+    }
+
+    private func enqueue(
+        analysis: DriveLinkAnalysis,
+        driveLink: String,
+        asAudio: Bool = false,
+        clipSection: String? = nil,
+        customName: String? = nil
+    ) {
         queue.append(QueueItem(
             driveLink: driveLink,
             analysis: analysis,
             destinationURL: selectedDestinationURL,
             asAudio: asAudio ? true : nil,
-            clipSection: clipSection
+            clipSection: clipSection,
+            customName: customName
         ))
         QueueStore.save(queue)
     }
@@ -611,7 +636,8 @@ final class DropDriveViewModel {
             itemID: item.itemID,
             destinationURL: destinationURL,
             resourceKey: GoogleDriveLinkParser.resourceKey(from: item.driveLink),
-            resumeID: item.id
+            resumeID: item.id,
+            customName: item.customName
         )
 
         downloadTask = Task {
@@ -652,10 +678,11 @@ final class DropDriveViewModel {
             do {
                 let resultURL = try await videoDownloadService.download(
                     link: item.driveLink,
-                    title: item.analysis.name,
+                    title: item.displayName,
                     destination: destinationURL,
                     asAudio: item.asAudio == true,
-                    clipSection: item.clipSection
+                    clipSection: item.clipSection,
+                    customName: item.customName
                 ) { progress in
                     Task { @MainActor [self] in
                         self.activeProgress = progress
@@ -728,7 +755,7 @@ final class DropDriveViewModel {
                 )
             }
             DownloadHistoryStore.shared.record(DownloadHistoryItem(
-                name: resultURL?.lastPathComponent ?? item.analysis.name,
+                name: resultURL?.lastPathComponent ?? item.displayName,
                 date: .now,
                 status: .completed,
                 itemURL: resultURL,
@@ -739,13 +766,13 @@ final class DropDriveViewModel {
         case .failed:
             ResumeEnvelopeStore.clear(for: item.id)
             DownloadHistoryStore.shared.record(DownloadHistoryItem(
-                name: item.analysis.name, date: .now, status: .failed, driveLink: item.driveLink
+                name: item.displayName, date: .now, status: .failed, driveLink: item.driveLink
             ))
         case .cancelled:
             ResumeEnvelopeStore.clear(for: item.id)
             removePartialArtifacts(of: item)
             DownloadHistoryStore.shared.record(DownloadHistoryItem(
-                name: item.analysis.name, date: .now, status: .cancelled, driveLink: item.driveLink
+                name: item.displayName, date: .now, status: .cancelled, driveLink: item.driveLink
             ))
         case .ready, .downloading, .paused:
             break
@@ -765,7 +792,7 @@ final class DropDriveViewModel {
     private func removePartialArtifacts(of item: QueueItem) {
         guard let destinationURL = item.destinationURL ?? selectedDestinationURL else { return }
         if item.analysis.isVideo == true {
-            VideoDownloadService.cleanupPartials(title: item.analysis.name, in: destinationURL)
+            VideoDownloadService.cleanupPartials(title: item.displayName, in: destinationURL)
         } else if item.analysis.type == .folder {
             GoogleDriveDownloadService.removePartialFolderArtifact(itemID: item.itemID, in: destinationURL)
         } else {
@@ -774,7 +801,12 @@ final class DropDriveViewModel {
             // that behind in the user's own folder. Matched by this item's own
             // name — sweeping every `.dddownload` in the folder would take out
             // a different download still running into the same place.
-            GoogleDriveDownloadService.removePartialFile(named: item.analysis.name, in: destinationURL)
+            // The staged file carries the name the download actually wrote under,
+            // which is the typed one when the item was renamed.
+            GoogleDriveDownloadService.removePartialFile(
+                named: GoogleDriveDownloadService.renamed(item.analysis.name, to: item.customName),
+                in: destinationURL
+            )
         }
     }
 

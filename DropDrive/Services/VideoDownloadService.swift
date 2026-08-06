@@ -140,13 +140,17 @@ struct VideoDownloadService {
         destination: URL,
         asAudio: Bool = false,
         clipSection: String? = nil,
+        customName: String? = nil,
         onProgress: @escaping @Sendable (DownloadProgress) -> Void
     ) async throws -> URL {
         // A trimmed clip gets its own suffix so it never collides with (or gets
         // skipped as "already downloaded" because of) the full video.
-        let outputTemplate = clipSection == nil
-            ? "%(title).200B.%(ext)s"
-            : "%(title).200B (clip).%(ext)s"
+        let clipSuffix = clipSection == nil ? "" : " (clip)"
+        // A typed name replaces yt-dlp's %(title)s. It is escaped first: a "%"
+        // in it would otherwise be read as an output-template field and either
+        // fail the download or produce a nonsense filename.
+        let outputTemplate = customName.map { "\(Self.escapedForOutputTemplate($0))\(clipSuffix).%(ext)s" }
+            ?? "%(title).200B\(clipSuffix).%(ext)s"
 
         var arguments = [
             "--no-warnings", "--no-playlist", "--newline",
@@ -398,6 +402,14 @@ struct VideoDownloadService {
             // a speed rather than a flicker.
             bytesPerSecond: smoother.smoothing(speed)
         )
+    }
+
+    /// Makes a user-typed name safe to sit inside a yt-dlp `-o` template: "%"
+    /// starts a field reference, and "/" would turn the name into a subfolder.
+    private nonisolated static func escapedForOutputTemplate(_ name: String) -> String {
+        name.replacingOccurrences(of: "%", with: "%%")
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
     }
 
     private nonisolated static func multiplier(_ unit: String) -> Double {

@@ -214,7 +214,7 @@ private struct QueueRow: View {
                     .frame(width: 20)
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(item.analysis.name)
+                    Text(item.displayName)
                         .font(.dd(12.5, .medium))
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -242,7 +242,7 @@ private struct QueueRow: View {
                         .padding(.vertical, 3)
                         .background(Capsule().fill(DDTheme.accentSoft))
                         .help(tr("Open the downloaded item", "เปิดไฟล์ที่ดาวน์โหลด"))
-                        .accessibilityLabel("Open \(item.analysis.name)")
+                        .accessibilityLabel("Open \(item.displayName)")
 
                     Button(action: onRevealInFinder) {
                         Image(systemName: "folder")

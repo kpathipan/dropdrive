@@ -25,6 +25,16 @@ and this project follows [Semantic Versioning](https://semver.org/).
   menu.** Pasting the same link yourself was already caught by Recent
   Downloads; that same check now covers a phone or Services delivery too.
 
+## [Unreleased]
+
+### Added
+- **Rename before downloading.** The confirm card's name is now editable —
+  click it (or its pencil) and type. The file lands under that name, a
+  folder is created under it, and a video is written to it. The
+  extension is never yours to lose: it's shown beside the field rather
+  than in it, and a file keeps whatever type it really is. Leaving the
+  name alone queues exactly as before.
+
 ## [6.14.0] - Noticing updates, and room for the pictures
 
 ### Added

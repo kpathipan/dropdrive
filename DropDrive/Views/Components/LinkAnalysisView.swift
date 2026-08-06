@@ -117,8 +117,15 @@ struct AnalyzedPromptView: View {
     let analysis: DriveLinkAnalysis
     let destinationURL: URL?
     let onChooseDestination: () -> Void
-    let onDownload: (_ asAudio: Bool, _ clipSection: String?) -> Void
+    let onDownload: (_ asAudio: Bool, _ clipSection: String?, _ customName: String?) -> Void
     let onCancel: () -> Void
+
+    /// The name to save under, editable before anything is queued. Seeded from
+    /// the link's own name (without its extension — the extension is decided by
+    /// what actually downloads, not by what is typed here).
+    @State private var name = ""
+    @State private var isEditingName = false
+    @FocusState private var isNameFocused: Bool
 
     /// Video links can come down as the video itself or extracted MP3.
     @State private var asAudio = false
@@ -163,10 +170,7 @@ struct AnalyzedPromptView: View {
                     .frame(width: 28)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(analysis.name)
-                        .font(.dd(13, .semibold))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                    nameRow
 
                     HStack(spacing: 4) {
                         if let totalBytes = analysis.totalBytes {
@@ -260,7 +264,7 @@ struct AnalyzedPromptView: View {
                     .buttonStyle(.bordered)
 
                 Button {
-                    onDownload(asAudio, clipSection)
+                    onDownload(asAudio, clipSection, customName)
                 } label: {
                     Label(
                         asAudio ? tr("Download MP3", "ดาวน์โหลด MP3") : tr("Download", "ดาวน์โหลด"),
@@ -275,6 +279,95 @@ struct AnalyzedPromptView: View {
         .padding(14)
         .cardBackground()
         .transition(.opacity.combined(with: .move(edge: .top)))
+        // Seeded once, not on every rebuild: the background enrichment replaces
+        // `analysis` ~12s into a video card, and re-seeding there would wipe a
+        // name already typed.
+        .task(id: analysis.itemID) {
+            if name.isEmpty { name = seedName }
+        }
+    }
+
+    // MARK: - Name
+
+    /// The name, as a label with a pencil until it's tapped, then a field. A
+    /// permanently-drawn text box read as "type something here" on a card whose
+    /// whole job is to confirm, and made the common case — download it under the
+    /// name it already has — look like unfinished work.
+    @ViewBuilder
+    private var nameRow: some View {
+        if isEditingName {
+            HStack(spacing: 4) {
+                TextField(seedName, text: $name)
+                    .textFieldStyle(.plain)
+                    .font(.dd(12.5, .medium))
+                    .focused($isNameFocused)
+                    .onSubmit { isEditingName = false }
+                    .accessibilityLabel("File name")
+
+                if !fileExtension.isEmpty {
+                    Text(".\(fileExtension)")
+                        .font(.dd(11))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(DDTheme.rail)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .strokeBorder(DDTheme.accent.opacity(0.5), lineWidth: 1)
+                    }
+            )
+        } else {
+            Button {
+                isEditingName = true
+                isNameFocused = true
+            } label: {
+                HStack(spacing: 5) {
+                    Text(displayName)
+                        .font(.dd(13, .semibold))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    Image(systemName: "pencil")
+                        .font(.dd(10))
+                        .foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(tr("Rename before downloading", "เปลี่ยนชื่อก่อนดาวน์โหลด"))
+            .accessibilityLabel("Rename \(displayName)")
+        }
+    }
+
+    /// Extension of the file as it exists on Drive. Folders have none, and a
+    /// video's container isn't known until yt-dlp has picked a format.
+    private var fileExtension: String {
+        guard analysis.type != .folder, analysis.isVideo != true else { return "" }
+        return (analysis.name as NSString).pathExtension
+    }
+
+    /// What the field starts with: the name minus the extension shown beside it.
+    private var seedName: String {
+        fileExtension.isEmpty ? analysis.name : (analysis.name as NSString).deletingPathExtension
+    }
+
+    private var trimmedName: String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var displayName: String {
+        trimmedName.isEmpty ? analysis.name : (fileExtension.isEmpty ? trimmedName : "\(trimmedName).\(fileExtension)")
+    }
+
+    /// Nil when nothing was actually changed, so an untouched card queues exactly
+    /// as it did before this field existed.
+    private var customName: String? {
+        guard !trimmedName.isEmpty, trimmedName != seedName else { return nil }
+        return trimmedName
     }
 
     // MARK: - Trim parsing

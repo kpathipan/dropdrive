@@ -35,7 +35,10 @@ and this project follows [Semantic Versioning](https://semver.org/).
   by: Finder drew the blank "?" document and a double-click handed the
   raw bytes to TextEdit. The extension its declared type implies is now
   added when the name carries none — renaming it yourself keeps the type
-  too. Files already downloaded just need the extension typed on.
+  too. The same goes for a name ending in something that only looks like
+  an extension, such as the ".549Z" of a timestamp, which macOS treats
+  exactly like having none. A name with a real extension is never
+  touched. Files already downloaded just need the extension typed on.
 
 ## [6.15.0] - Name it before you download it
 

@@ -40,6 +40,8 @@ func contents(for id: String, size: Int) -> Data {
 let bigID = "bigfile"
 // A file whose Drive name carries no extension.
 let bareID = "barename"
+// A file whose Drive name ends in something that only looks like one.
+let timestampID = "timestamped"
 let bigSize = 300 * 1024 * 1024 / 1000 // 300 KB stand-in; size is faked in metadata
 let bigDeclaredSize = 300 * 1024 * 1024
 
@@ -133,6 +135,11 @@ final class DriveStub: URLProtocol, @unchecked Sendable {
                     // A real case from Drive: a clip uploaded under a name with no
                     // extension at all, its type known only from the metadata.
                     body = ["id": id, "name": "Vo", "mimeType": "video/mp4", "size": "\(fileSize)"]
+                } else if id == timestampID {
+                    // The other real shape: a name whose trailing ".549Z" is part
+                    // of a timestamp, which macOS reads as an unknown extension.
+                    body = ["id": id, "name": "ไฟล์ - 2026-08-10T05:03:42.549Z",
+                            "mimeType": "video/quicktime", "size": "\(fileSize)"]
                 } else {
                     body = ["id": id, "name": "\(id).jpg", "mimeType": "image/jpeg", "size": "\(fileSize)"]
                 }
@@ -365,6 +372,21 @@ let bareRenamed = try await service.download(
     DownloadRequest(driveLink: "x", itemID: bareID, destinationURL: bareDest,
                     resourceKey: nil, resumeID: UUID(), customName: "intro shot")) { _ in }
 check("a renamed one keeps the type too", bareRenamed.lastPathComponent, "intro shot.mp4")
+
+// ".549Z" is a timestamp fragment, not a type — macOS shows the same blank
+// "?" document for it as for no extension at all.
+let stampedURL = try await service.download(
+    DownloadRequest(driveLink: "x", itemID: timestampID, destinationURL: bareDest,
+                    resourceKey: nil, resumeID: UUID())) { _ in }
+check("an extension that types nothing gets a real one appended",
+      stampedURL.lastPathComponent, "ไฟล์ - 2026-08-10T05-03-42.549Z.mov")
+
+// A real extension is left alone even where the declared type disagrees:
+// "big.bin" is served as application/octet-stream and must stay as it is.
+let untouched = try await service.download(
+    DownloadRequest(driveLink: "x", itemID: bigID, destinationURL: bareDest,
+                    resourceKey: nil, resumeID: UUID())) { _ in }
+check("a name with a real extension is left alone", untouched.lastPathComponent, "big.bin")
 
 print(failures == 0 ? "\nALL PASS" : "\n\(failures) FAILURE(S)")
 exit(failures == 0 ? 0 : 1)

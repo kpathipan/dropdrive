@@ -1290,26 +1290,41 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
         return name.components(separatedBy: invalidCharacters).joined(separator: "-")
     }
 
-    /// `originalName` under a new base name, keeping the extension it already
-    /// had. Typing "holiday" over "IMG_4021.HEIC" gives "holiday.HEIC" — the
-    /// extension is what makes the file openable, so it is never the user's to
-    /// delete by accident. A typed name that already ends in the right extension
-    /// isn't given a second one.
     /// Drive stores a file's type in its metadata, not necessarily in its name:
     /// a clip uploaded as "Vo" comes back named exactly "Vo", with the type only
     /// in `mimeType`. Written out under that bare name the download is complete
     /// and byte-perfect, but macOS has nothing to identify it by — Finder shows
     /// the blank "?" document and a double-click hands the raw bytes to TextEdit,
-    /// which looks exactly like a corrupted file. So a name that carries no
+    /// which looks exactly like a corrupted file. So a name carrying no *usable*
     /// extension gets the one its declared type implies.
+    ///
+    /// "No usable one" is deliberately wider than "no dot in the name". Drive
+    /// also hands back names like "ไฟล์ - 2026-08-10T05:03:42.549Z", where the
+    /// trailing ".549Z" is part of a timestamp: macOS reads it as an extension,
+    /// finds no type registered for it, and shows the same blank "?" document as
+    /// a name with no dot at all.
+    ///
+    /// An extension that *does* map to a known type is left alone, mismatch with
+    /// the declared type or not. The name is the one part of the file the person
+    /// who uploaded it chose, and second-guessing a real ".mov" against a
+    /// "video/mp4" label would only ever produce "clip.mov.mp4".
     private static func nameWithTypeExtension(_ name: String, mimeType: String) -> String {
         let sanitized = sanitizedName(name)
-        guard (sanitized as NSString).pathExtension.isEmpty,
+        // An extension nothing has registered doesn't come back as nil — the
+        // system invents a dynamic "dyn.a…" type for it, which is exactly the
+        // case being detected here, so nil and dynamic both count as unusable.
+        let existing = UTType(filenameExtension: (sanitized as NSString).pathExtension)
+        guard existing == nil || existing?.isDynamic == true,
               let fileExtension = UTType(mimeType: mimeType)?.preferredFilenameExtension
         else { return sanitized }
         return "\(sanitized).\(fileExtension)"
     }
 
+    /// `originalName` under a new base name, keeping the extension it already
+    /// had. Typing "holiday" over "IMG_4021.HEIC" gives "holiday.HEIC" — the
+    /// extension is what makes the file openable, so it is never the user's to
+    /// delete by accident. A typed name that already ends in the right extension
+    /// isn't given a second one.
     static func renamed(_ originalName: String, to newBaseName: String?) -> String {
         guard let newBaseName, !newBaseName.isEmpty else { return sanitizedName(originalName) }
         let fileExtension = (originalName as NSString).pathExtension

@@ -38,6 +38,8 @@ func contents(for id: String, size: Int) -> Data {
 
 // The one big file used for the multi-part range test.
 let bigID = "bigfile"
+// A file whose Drive name carries no extension.
+let bareID = "barename"
 let bigSize = 300 * 1024 * 1024 / 1000 // 300 KB stand-in; size is faked in metadata
 let bigDeclaredSize = 300 * 1024 * 1024
 
@@ -127,6 +129,10 @@ final class DriveStub: URLProtocol, @unchecked Sendable {
                             "size": "\(bigDeclaredSize)"]
                 } else if tree[id] != nil {
                     body = ["id": id, "name": id, "mimeType": "application/vnd.google-apps.folder"]
+                } else if id == bareID {
+                    // A real case from Drive: a clip uploaded under a name with no
+                    // extension at all, its type known only from the metadata.
+                    body = ["id": id, "name": "Vo", "mimeType": "video/mp4", "size": "\(fileSize)"]
                 } else {
                     body = ["id": id, "name": "\(id).jpg", "mimeType": "image/jpeg", "size": "\(fileSize)"]
                 }
@@ -341,6 +347,24 @@ if let walker = FileManager.default.enumerator(at: renamedFolder, includingPrope
     where (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true { renamedCount += 1 }
 }
 check("renaming a folder doesn't rename what's inside it", renamedCount, expectedFiles)
+
+// MARK: - 8. A file Drive names without an extension
+
+print("--- extension from the file's declared type")
+let bareDest = sandbox.appendingPathComponent("bare")
+try FileManager.default.createDirectory(at: bareDest, withIntermediateDirectories: true)
+
+let bareURL = try await service.download(
+    DownloadRequest(driveLink: "x", itemID: bareID, destinationURL: bareDest,
+                    resourceKey: nil, resumeID: UUID())) { _ in }
+check("extension taken from the mime type", bareURL.lastPathComponent, "Vo.mp4")
+pass("bytes are the file's own", (try Data(contentsOf: bareURL)) == contents(for: bareID, size: fileSize))
+
+// Renaming one of these still can't strip the type back off.
+let bareRenamed = try await service.download(
+    DownloadRequest(driveLink: "x", itemID: bareID, destinationURL: bareDest,
+                    resourceKey: nil, resumeID: UUID(), customName: "intro shot")) { _ in }
+check("a renamed one keeps the type too", bareRenamed.lastPathComponent, "intro shot.mp4")
 
 print(failures == 0 ? "\nALL PASS" : "\n\(failures) FAILURE(S)")
 exit(failures == 0 ? 0 : 1)

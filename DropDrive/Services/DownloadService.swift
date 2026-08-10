@@ -1,4 +1,5 @@
 import Foundation
+import UniformTypeIdentifiers
 
 /// `nonisolated` on the protocol, not just the implementation: the requirement's
 /// own isolation is what the caller adopts, so leaving it at the project's
@@ -1069,7 +1070,7 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
         } else {
             isExport = false
             destinationURL = folderURL.appendingPathComponent(
-                Self.renamed(file.name, to: overrideBaseName)
+                Self.renamed(Self.nameWithTypeExtension(file.name, mimeType: file.mimeType), to: overrideBaseName)
             )
             var components = URLComponents(string: "\(Self.apiBase)/\(file.id)")!
             components.queryItems = [
@@ -1294,6 +1295,21 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
     /// extension is what makes the file openable, so it is never the user's to
     /// delete by accident. A typed name that already ends in the right extension
     /// isn't given a second one.
+    /// Drive stores a file's type in its metadata, not necessarily in its name:
+    /// a clip uploaded as "Vo" comes back named exactly "Vo", with the type only
+    /// in `mimeType`. Written out under that bare name the download is complete
+    /// and byte-perfect, but macOS has nothing to identify it by — Finder shows
+    /// the blank "?" document and a double-click hands the raw bytes to TextEdit,
+    /// which looks exactly like a corrupted file. So a name that carries no
+    /// extension gets the one its declared type implies.
+    private static func nameWithTypeExtension(_ name: String, mimeType: String) -> String {
+        let sanitized = sanitizedName(name)
+        guard (sanitized as NSString).pathExtension.isEmpty,
+              let fileExtension = UTType(mimeType: mimeType)?.preferredFilenameExtension
+        else { return sanitized }
+        return "\(sanitized).\(fileExtension)"
+    }
+
     static func renamed(_ originalName: String, to newBaseName: String?) -> String {
         guard let newBaseName, !newBaseName.isEmpty else { return sanitizedName(originalName) }
         let fileExtension = (originalName as NSString).pathExtension
@@ -1317,7 +1333,9 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
         if let export = exportMimeTypes[file.mimeType] {
             return fileName(file.name, withExtension: export.fileExtension)
         }
-        return sanitizedName(file.name)
+        // Must stay in step with what downloadFile writes: this name is what the
+        // folder plan checks for on disk to decide a file is already done.
+        return nameWithTypeExtension(file.name, mimeType: file.mimeType)
     }
 
     /// Extension for a file still being written. Only the rename at the end
@@ -1367,11 +1385,20 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
     /// staging file of a *different* download that is still running into the
     /// same destination, which drops that download back to a single stream and
     /// throws away everything it had transferred.
+    /// The staging file is "<final name>.dddownload", and the final name isn't
+    /// always the Drive name the caller knows: an extension-less file gains one
+    /// from its type. Matched by prefix for that reason — still scoped to this
+    /// item's own name, so a different download running into the same folder is
+    /// never touched.
     static func removePartialFile(named name: String, in folderURL: URL) {
-        let staging = folderURL
-            .appendingPathComponent(sanitizedName(name))
-            .appendingPathExtension(partialExtension)
-        try? FileManager.default.removeItem(at: staging)
+        let base = sanitizedName(name)
+        let contents = (try? FileManager.default.contentsOfDirectory(
+            at: folderURL, includingPropertiesForKeys: nil, options: [.skipsSubdirectoryDescendants]
+        )) ?? []
+        for url in contents
+        where url.pathExtension == partialExtension && url.deletingPathExtension().lastPathComponent.hasPrefix(base) {
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 
     /// Deletes leftover `.dddownload` staging files anywhere under a folder — a

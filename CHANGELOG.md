@@ -25,6 +25,18 @@ and this project follows [Semantic Versioning](https://semver.org/).
   menu.** Pasting the same link yourself was already caught by Recent
   Downloads; that same check now covers a phone or Services delivery too.
 
+## [Unreleased]
+
+### Fixed
+- **A file Drive names without an extension arrived looking corrupted.**
+  Drive keeps a file's type in its metadata, so a clip uploaded as "Vo"
+  comes back named exactly that. Saved under the bare name the download
+  was complete and byte-perfect, but macOS had nothing to identify it
+  by: Finder drew the blank "?" document and a double-click handed the
+  raw bytes to TextEdit. The extension its declared type implies is now
+  added when the name carries none — renaming it yourself keeps the type
+  too. Files already downloaded just need the extension typed on.
+
 ## [6.15.0] - Name it before you download it
 
 ### Added

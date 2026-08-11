@@ -25,9 +25,15 @@ and this project follows [Semantic Versioning](https://semver.org/).
   menu.** Pasting the same link yourself was already caught by Recent
   Downloads; that same check now covers a phone or Services delivery too.
 
-## [Unreleased]
+## [6.15.1] - TikTok MP3 reliability
 
 ### Fixed
+- **TikTok links can download as MP3 again when the normal post page is
+  challenge-gated.** TikTok may respond to the normal downloader with a WAF
+  challenge before it exposes the clip. DropDrive now retries its public embed
+  page, which supplies the same playable stream, then extracts the MP3 as
+  usual. The fallback keeps the title you confirmed and also works with short
+  `vm.tiktok.com` share links.
 - **A file Drive names without an extension arrived looking corrupted.**
   Drive keeps a file's type in its metadata, so a clip uploaded as "Vo"
   comes back named exactly that. Saved under the bare name the download

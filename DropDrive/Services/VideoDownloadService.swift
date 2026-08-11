@@ -211,6 +211,30 @@ struct VideoDownloadService {
             }
         }
 
+        // TikTok's normal watch page is sometimes replaced by its WAF challenge
+        // before yt-dlp can read the post. The public embed page carries the
+        // same media URL but does not use that challenge. Keep the ordinary
+        // extractor as the first choice (it has richer metadata and formats),
+        // then retry this narrowly-scoped fallback only when that extraction
+        // fails. `--playlist-items 1` is intentional: TikTok's embed markup
+        // lists the same video twice for its player, and yt-dlp sees that as a
+        // two-item HTML5 playlist.
+        func retryTikTokEmbed(after error: Error) async throws -> String {
+            guard let embedURL = await Self.tikTokEmbedURL(for: link) else { throw error }
+
+            var fallbackArguments = arguments.filter { $0 != "--no-playlist" }
+            if customName == nil,
+               let outputIndex = fallbackArguments.firstIndex(of: "-o"),
+               fallbackArguments.indices.contains(outputIndex + 1) {
+                // The generic embed extractor calls every item "TikTok Embed".
+                // Preserve the title the user saw on the confirmation card.
+                fallbackArguments[outputIndex + 1] = "\(Self.escapedForOutputTemplate(title))\(clipSuffix).%(ext)s"
+            }
+            fallbackArguments += ["--playlist-items", "1", embedURL.absoluteString]
+            finalPath.value = nil
+            return try await Self.run(arguments: fallbackArguments, onProgressLine: handleLine)
+        }
+
         var output: String
 
         if let cachedInfo = Self.freshInfoCache(for: link) {
@@ -227,10 +251,22 @@ struct VideoDownloadService {
                 // Cached URLs expire; fall back to a full extraction once.
                 try? FileManager.default.removeItem(at: cachedInfo)
                 finalPath.value = nil
-                output = try await Self.run(arguments: arguments + [link], onProgressLine: handleLine)
+                do {
+                    output = try await Self.run(arguments: arguments + [link], onProgressLine: handleLine)
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    output = try await retryTikTokEmbed(after: error)
+                }
             }
         } else {
-            output = try await Self.run(arguments: arguments + [link], onProgressLine: handleLine)
+            do {
+                output = try await Self.run(arguments: arguments + [link], onProgressLine: handleLine)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                output = try await retryTikTokEmbed(after: error)
+            }
         }
 
         let path = finalPath.value ?? output
@@ -272,6 +308,47 @@ struct VideoDownloadService {
             return nil
         }
         return url
+    }
+
+    /// TikTok exposes every public post through an embed page as well as its
+    /// regular watch page. The embed endpoint is useful only as a fallback:
+    /// unlike the watch page it has little metadata, but it remains available
+    /// when TikTok presents its anti-bot challenge to the normal extractor.
+    private static func tikTokEmbedURL(for link: String) async -> URL? {
+        guard let components = URLComponents(string: link),
+              let host = components.host?.lowercased(),
+              (host == "tiktok.com" || host.hasSuffix(".tiktok.com"))
+        else { return nil }
+
+        let pathVideoID = components.path.components(separatedBy: "/").last(where: {
+            $0.allSatisfy(\.isNumber) && $0.count >= 10
+        })
+        let videoID: String?
+        if let pathVideoID {
+            videoID = pathVideoID
+        } else {
+            videoID = await tikTokVideoIDFromOEmbed(link)
+        }
+        guard let videoID else { return nil }
+        return URL(string: "https://www.tiktok.com/embed/v2/\(videoID)")
+    }
+
+    /// Short `vm.tiktok.com` shares contain no post ID themselves. TikTok's
+    /// oEmbed response does, and it is also less restricted than the watch
+    /// page, so use it to make the fallback work for both URL shapes.
+    private static func tikTokVideoIDFromOEmbed(_ link: String) async -> String? {
+        guard let endpoint = oEmbedEndpoint(for: link) else { return nil }
+        var request = URLRequest(url: endpoint)
+        request.timeoutInterval = 6
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let id = json["embed_product_id"] as? String,
+              id.count >= 10,
+              id.allSatisfy(\.isNumber)
+        else { return nil }
+        return id
     }
 
     /// Removes yt-dlp's partial artifacts (`.part`, `.ytdl`, fragment files) for

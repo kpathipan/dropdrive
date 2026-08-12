@@ -41,12 +41,35 @@ final class UpdateService {
         let sha256: String?
     }
 
+    /// What the update download is doing, in the same terms a file download is
+    /// reported in. A bare percentage was all this used to carry, and on a slow
+    /// connection that is indistinguishable from a frozen one: 68 MB at 50 KB/s
+    /// sits on the same number for a minute at a time, and the only way to find
+    /// out it was still alive was to measure the process from outside.
+    struct Progress: Equatable {
+        let bytesWritten: Int64
+        let totalBytes: Int64
+        /// Smoothed, for the same reason the file downloads smooth theirs: the
+        /// instantaneous rate swings too hard to read as a speed.
+        let bytesPerSecond: Double
+
+        var fraction: Double {
+            guard totalBytes > 0 else { return 0 }
+            return min(1, Double(bytesWritten) / Double(totalBytes))
+        }
+
+        var etaSeconds: Double? {
+            guard bytesPerSecond > 0, totalBytes > bytesWritten else { return nil }
+            return Double(totalBytes - bytesWritten) / bytesPerSecond
+        }
+    }
+
     enum State: Equatable {
         case idle
         case checking
         case upToDate
         case available(Release)
-        case downloading(fraction: Double)
+        case downloading(Progress)
         case installing
         case failed(String)
     }
@@ -314,12 +337,12 @@ final class UpdateService {
             return
         }
 
-        state = .downloading(fraction: 0)
+        state = .downloading(Progress(bytesWritten: 0, totalBytes: release.sizeBytes, bytesPerSecond: 0))
         Task {
             do {
-                let dmg = try await Self.download(release) { fraction in
+                let dmg = try await Self.download(release) { progress in
                     Task { @MainActor in
-                        if case .downloading = self.state { self.state = .downloading(fraction: fraction) }
+                        if case .downloading = self.state { self.state = .downloading(progress) }
                     }
                 }
                 state = .installing
@@ -343,7 +366,7 @@ final class UpdateService {
 
     private nonisolated static func download(
         _ release: Release,
-        onProgress: @escaping @Sendable (Double) -> Void
+        onProgress: @escaping @Sendable (Progress) -> Void
     ) async throws -> URL {
         let coordinator = DownloadProgressCoordinator(total: release.sizeBytes, onProgress: onProgress)
         let session = URLSession(configuration: .ephemeral, delegate: coordinator, delegateQueue: nil)
@@ -686,14 +709,45 @@ private nonisolated struct GitHubRelease: Decodable, Sendable {
 /// somewhere durable inside that callback.
 private final class DownloadProgressCoordinator: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
     private let total: Int64
-    private let onProgress: @Sendable (Double) -> Void
+    private let onProgress: @Sendable (UpdateService.Progress) -> Void
     private let lock = NSLock()
     private var continuation: CheckedContinuation<URL, Error>?
     private var didResume = false
+    /// Rate state, guarded by `rateLock` — the delegate callbacks arrive on the
+    /// session's own queue, not the main thread.
+    private let rateLock = NSLock()
+    private var lastSampleAt: Date?
+    private var lastSampleBytes: Int64 = 0
+    private var smoothedBytesPerSecond: Double = 0
 
-    init(total: Int64, onProgress: @escaping @Sendable (Double) -> Void) {
+    init(total: Int64, onProgress: @escaping @Sendable (UpdateService.Progress) -> Void) {
         self.total = total
         self.onProgress = onProgress
+    }
+
+    /// Bytes per second, averaged over roughly the last few seconds. Sampled on
+    /// a timer of its own rather than per callback: the callbacks arrive in
+    /// bursts, and dividing one burst by the microseconds between two of them
+    /// reports a speed nobody's connection has.
+    private func rate(at now: Date, totalBytesWritten: Int64) -> Double {
+        rateLock.lock()
+        defer { rateLock.unlock() }
+
+        guard let last = lastSampleAt else {
+            lastSampleAt = now
+            lastSampleBytes = totalBytesWritten
+            return 0
+        }
+
+        let elapsed = now.timeIntervalSince(last)
+        guard elapsed >= 0.5 else { return smoothedBytesPerSecond }
+
+        let sample = Double(totalBytesWritten - lastSampleBytes) / elapsed
+        lastSampleAt = now
+        lastSampleBytes = totalBytesWritten
+        // Same weighting the file downloads use, so both read alike.
+        smoothedBytesPerSecond = smoothedBytesPerSecond == 0 ? sample : smoothedBytesPerSecond * 0.7 + sample * 0.3
+        return smoothedBytesPerSecond
     }
 
     func run(session: URLSession, url: URL) async throws -> URL {
@@ -725,7 +779,11 @@ private final class DownloadProgressCoordinator: NSObject, URLSessionDownloadDel
     ) {
         let expected = totalBytesExpectedToWrite > 0 ? totalBytesExpectedToWrite : total
         guard expected > 0 else { return }
-        onProgress(min(1, Double(totalBytesWritten) / Double(expected)))
+        onProgress(UpdateService.Progress(
+            bytesWritten: totalBytesWritten,
+            totalBytes: expected,
+            bytesPerSecond: rate(at: Date(), totalBytesWritten: totalBytesWritten)
+        ))
     }
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {

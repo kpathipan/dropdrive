@@ -39,16 +39,14 @@ struct UpdateBanner: View {
                 }
             }
 
-        case .downloading(let fraction):
+        case .downloading(let progress):
             card {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(tr("Downloading the update…", "กำลังดาวน์โหลดอัปเดต…"))
                         .font(.dd(11.5))
-                    ProgressView(value: fraction)
+                    ProgressView(value: progress.fraction)
                         .progressViewStyle(.linear)
-                    Text(fraction, format: .percent.precision(.fractionLength(0)))
-                        .font(.dd(10).monospacedDigit())
-                        .foregroundStyle(.secondary)
+                    UpdateProgressDetail(progress: progress)
                 }
             }
 
@@ -141,5 +139,40 @@ struct ReleaseNotesDisclosure: View {
                 }
             }
         }
+    }
+}
+
+/// The line under the update's progress bar: how much has arrived, how fast, and
+/// how long is left. Shared by the banner and Preferences so the update reads
+/// the same way in both, and the same way a file download does.
+///
+/// The percentage on its own was not enough. 68 MB over a slow connection can
+/// hold the same number for minutes, and with nothing else on screen there is no
+/// way to tell a slow update from a stalled one — which is exactly the wrong
+/// thing to leave ambiguous about a process that replaces the app.
+struct UpdateProgressDetail: View {
+    let progress: UpdateService.Progress
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(progress.fraction, format: .percent.precision(.fractionLength(0)))
+                .monospacedDigit()
+
+            if progress.totalBytes > 0 {
+                Text("· \(Formatters.byteCount(progress.bytesWritten)) / \(Formatters.byteCount(progress.totalBytes))")
+            }
+
+            if progress.bytesPerSecond > 0 {
+                Text("· \(Formatters.transferSpeed(progress.bytesPerSecond))")
+            }
+
+            if let etaSeconds = progress.etaSeconds, let remaining = Formatters.remainingTime(etaSeconds) {
+                Text("· \(remaining)")
+            }
+        }
+        .font(.dd(10))
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+        .accessibilityElement(children: .combine)
     }
 }

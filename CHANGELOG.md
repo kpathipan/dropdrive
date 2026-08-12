@@ -5,6 +5,22 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- **The update download now says how fast it is going and how long is
+  left**, like every other download in the app. A percentage on its own
+  cannot tell a slow update from a stuck one — 68 MB on a weak
+  connection sits on the same number for minutes — and that is the worst
+  thing to leave ambiguous about the one download that replaces the app.
+
+### Fixed
+- **Scratch files from cancelled update downloads were never cleaned
+  up.** The system writes them next to DropDrive's own temporary files
+  and only removes them when a download completes, so every failed check
+  left one behind — 232 of them had collected, the oldest three weeks
+  old. They are swept with the rest now.
+
 ## [6.15.2] - Nothing quietly lost
 
 ### Fixed

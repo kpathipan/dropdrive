@@ -184,13 +184,11 @@ struct PreferencesView: View {
                     .buttonStyle(.borderedProminent)
             }
             .padding(.vertical, 2)
-        case .downloading(let fraction):
+        case .downloading(let progress):
             VStack(alignment: .leading, spacing: 6) {
                 Text(tr("Downloading the update…", "กำลังดาวน์โหลดอัปเดต…")).font(.dd(12))
-                ProgressView(value: fraction)
-                Text(fraction, format: .percent.precision(.fractionLength(0)))
-                    .font(.dd(10.5).monospacedDigit())
-                    .foregroundStyle(.secondary)
+                ProgressView(value: progress.fraction)
+                UpdateProgressDetail(progress: progress)
             }
         case .installing:
             LabeledContent(tr("Updates", "อัปเดต")) {

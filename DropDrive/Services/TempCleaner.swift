@@ -31,9 +31,18 @@ nonisolated enum TempCleaner {
 
         for entry in entries {
             let name = entry.lastPathComponent
-            // Only our own scratch: the multi-part staging dirs and the cached
-            // yt-dlp extraction info.
-            guard name.hasPrefix("DropDrive-") || name == "DropDrive-info" else { continue }
+            // Only our own scratch: the multi-part staging dirs, the cached
+            // yt-dlp extraction info, and URLSession's own download scratch.
+            //
+            // That last one is written by the system into this same directory
+            // and is only cleaned up when the delegate callback that consumes it
+            // runs — which a cancelled or failed download never reaches. 232 of
+            // them had collected here, the oldest three weeks old. The age
+            // cutoff keeps this off any download still in flight.
+            guard name.hasPrefix("DropDrive-")
+                || name == "DropDrive-info"
+                || name.hasPrefix("CFNetworkDownload_")
+            else { continue }
 
             let values = try? entry.resourceValues(forKeys: [.contentModificationDateKey])
             guard let modified = values?.contentModificationDate, modified < cutoff else { continue }

@@ -5,6 +5,28 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- **Pressing Return on a confirm card threw away the choices made on
+  it.** The paste box answered Return by queueing the item straight
+  away, and it can't see the card's own state — an MP3 choice, a trim,
+  or a typed name were all silently dropped and the download ran as if
+  none had been made. The card's Download button is the default action
+  now, so Return does exactly what clicking it does.
+- **A restored queue of paused downloads couldn't be started at all.**
+  "Paused" belongs to a session, not to an item, and the flag holding
+  the queue paused doesn't survive a relaunch — so the row's Resume
+  button did nothing, "Resume all" never appeared, and neither did
+  "Download All", because nothing was waiting. Paused items come back as
+  ready, still continuing from where they stopped, and Resume works
+  whenever anything is paused.
+- **A video could be saved under the title it had 12 seconds ago.** The
+  card appears on a fast title lookup and is refreshed with the one
+  yt-dlp resolves; where the two differed, the refresh looked like a
+  rename and pinned the file to the older title even though nothing had
+  been typed. The name is only treated as yours once you type in it.
+
 ## [6.14.1] - Quieter failures
 
 ### Fixed

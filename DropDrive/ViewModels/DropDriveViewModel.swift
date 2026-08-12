@@ -482,10 +482,13 @@ final class DropDriveViewModel {
     /// The download button / Return key: confirms an already-analyzed link, or
     /// bypasses the debounce and analyzes immediately otherwise.
     func handleSubmit() {
-        if case .analyzed = linkAnalysisState {
-            confirmAnalyzedDownload()
-            return
-        }
+        // Return does *not* confirm an analysed card from here. The card owns
+        // the MP3/trim/name choices in its own state, and this path can't see
+        // any of them — pressing Return used to queue the item as if none of
+        // them had been made, silently discarding them. The card's own Download
+        // button is the default action instead, so Return still works and
+        // carries what was chosen.
+        guard !hasActiveAnalysisCard else { return }
 
         let trimmed = driveLink.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -840,8 +843,12 @@ final class DropDriveViewModel {
         downloadTask?.cancel()
     }
 
+    /// Also the row-level Resume button, which is why this doesn't require the
+    /// queue-wide flag to be set: a paused item with the flag clear is a state
+    /// the app can reach (a queue restored from a previous session), and the
+    /// button has to work there rather than silently doing nothing.
     func resumeQueue() {
-        guard isQueuePaused else { return }
+        guard isQueuePaused || queue.contains(where: { $0.status == .paused }) else { return }
         isQueuePaused = false
         processQueueIfNeeded()
     }
@@ -915,9 +922,19 @@ final class DropDriveViewModel {
 
     /// A queue item that was mid-download when the app last quit never finished;
     /// it's restored as ready so the engine can pick it back up from scratch.
+    ///
+    /// A *paused* one is restored as ready too, and has to be: "paused" is a
+    /// state of this session's queue, not of the item, and the flag holding the
+    /// queue paused doesn't survive a relaunch. Left as paused, the row's Resume
+    /// button ran into `resumeQueue`'s "only when the queue is paused" guard and
+    /// did nothing, "Resume all" never appeared because that reads the same
+    /// flag, and "Download All" never appeared either because nothing was
+    /// `.ready` — a restored queue of paused items could not be started at all.
+    /// Resume data is keyed by the item's id and is untouched by this, so each
+    /// one still continues from where it stopped rather than restarting.
     func restoreSavedQueue() {
         guard var saved = pendingRestoreQueue else { return }
-        for index in saved.indices where saved[index].status == .downloading {
+        for index in saved.indices where saved[index].status == .downloading || saved[index].status == .paused {
             saved[index].status = .ready
         }
         queue = saved

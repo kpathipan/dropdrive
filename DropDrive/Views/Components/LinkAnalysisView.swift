@@ -124,6 +124,12 @@ struct AnalyzedPromptView: View {
     /// the link's own name (without its extension — the extension is decided by
     /// what actually downloads, not by what is typed here).
     @State private var name = ""
+    /// Whether the name was actually typed in. Not inferred by comparing the
+    /// field to the analysis: a video card is rebuilt ~12s in with the title
+    /// yt-dlp resolved, which can differ from the one oEmbed gave the field. The
+    /// comparison then reads as "the user renamed it", and an untouched card
+    /// would quietly pin the file to the older title.
+    @State private var hasEditedName = false
     @State private var isEditingName = false
     @FocusState private var isNameFocused: Bool
 
@@ -274,17 +280,22 @@ struct AnalyzedPromptView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(trimEnabled && trimInvalid)
+                // Return confirms the card, carrying the format, trim and name
+                // chosen on it. The paste box deliberately no longer answers
+                // Return while this card is up: it can't see any of that.
+                .keyboardShortcut(.defaultAction)
             }
         }
         .padding(14)
         .cardBackground()
         .transition(.opacity.combined(with: .move(edge: .top)))
-        // Seeded once, not on every rebuild: the background enrichment replaces
-        // `analysis` ~12s into a video card, and re-seeding there would wipe a
-        // name already typed.
-        .task(id: analysis.itemID) {
-            if name.isEmpty { name = seedName }
-        }
+        // The field follows the analysis until it is typed in, and stops the
+        // moment it is: the background enrichment replaces `analysis` ~12s into
+        // a video card, and re-seeding unconditionally there would wipe a name
+        // already typed. `seedName` writes to `name`, which trips the field's
+        // own onChange, so the flag is put back afterwards.
+        .task(id: analysis.itemID) { seedNameIfUntouched() }
+        .onChange(of: analysis.name) { _, _ in seedNameIfUntouched() }
     }
 
     // MARK: - Name
@@ -301,6 +312,7 @@ struct AnalyzedPromptView: View {
                     .textFieldStyle(.plain)
                     .font(.dd(12.5, .medium))
                     .focused($isNameFocused)
+                    .onChange(of: name) { _, _ in hasEditedName = true }
                     .onSubmit { isEditingName = false }
                     .accessibilityLabel("File name")
 
@@ -343,6 +355,12 @@ struct AnalyzedPromptView: View {
         }
     }
 
+    private func seedNameIfUntouched() {
+        guard !hasEditedName else { return }
+        name = seedName
+        hasEditedName = false
+    }
+
     /// Extension of the file as it exists on Drive. Folders have none, and a
     /// video's container isn't known until yt-dlp has picked a format.
     private var fileExtension: String {
@@ -360,13 +378,14 @@ struct AnalyzedPromptView: View {
     }
 
     private var displayName: String {
-        trimmedName.isEmpty ? analysis.name : (fileExtension.isEmpty ? trimmedName : "\(trimmedName).\(fileExtension)")
+        guard hasEditedName, !trimmedName.isEmpty else { return analysis.name }
+        return fileExtension.isEmpty ? trimmedName : "\(trimmedName).\(fileExtension)"
     }
 
-    /// Nil when nothing was actually changed, so an untouched card queues exactly
+    /// Nil when nothing was actually typed, so an untouched card queues exactly
     /// as it did before this field existed.
     private var customName: String? {
-        guard !trimmedName.isEmpty, trimmedName != seedName else { return nil }
+        guard hasEditedName, !trimmedName.isEmpty, trimmedName != seedName else { return nil }
         return trimmedName
     }
 

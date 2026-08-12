@@ -60,7 +60,9 @@ struct PreferencesView: View {
             }
 
             Section {
-                Toggle(tr("Receive links from your phone (iCloud)", "รับลิงก์จากมือถือ (iCloud)"), isOn: $phoneInbox.isEnabled)
+                Toggle(isOn: $phoneInbox.isEnabled) {
+                    Label(tr("Receive links from your phone (iCloud)", "รับลิงก์จากมือถือ (iCloud)"), systemImage: "iphone")
+                }
             } footer: {
                 Text(tr(
                     "An iOS Shortcut saves shared links into the DropDrive folder in iCloud Drive; the Mac queues them automatically.",
@@ -70,16 +72,21 @@ struct PreferencesView: View {
             }
 
             Section {
-                Toggle(tr("Open Finder when a download completes", "เปิด Finder เมื่อดาวน์โหลดเสร็จ"), isOn: $preferences.openFinderWhenComplete)
-                Toggle(tr("Play a sound when a download completes", "เล่นเสียงเมื่อดาวน์โหลดเสร็จ"), isOn: $preferences.playNotificationSound)
-                Toggle(tr("Launch DropDrive at login", "เปิด DropDrive อัตโนมัติตอนเข้าเครื่อง"), isOn: $preferences.launchAtLogin)
+                Toggle(isOn: $preferences.openFinderWhenComplete) {
+                    Label(tr("Open Finder when a download completes", "เปิด Finder เมื่อดาวน์โหลดเสร็จ"), systemImage: "folder")
+                }
+                Toggle(isOn: $preferences.playNotificationSound) {
+                    Label(tr("Play a sound when a download completes", "เล่นเสียงเมื่อดาวน์โหลดเสร็จ"), systemImage: "speaker.wave.2")
+                }
+                Toggle(isOn: $preferences.launchAtLogin) {
+                    Label(tr("Launch DropDrive at login", "เปิด DropDrive อัตโนมัติตอนเข้าเครื่อง"), systemImage: "power")
+                }
             }
 
             Section {
-                Toggle(
-                    tr("Keep videos playable on Mac (H.264/MP4)", "ให้วิดีโอเปิดได้บน Mac (H.264/MP4)"),
-                    isOn: $preferences.preferCompatibleVideo
-                )
+                Toggle(isOn: $preferences.preferCompatibleVideo) {
+                    Label(tr("Keep videos playable on Mac (H.264/MP4)", "ให้วิดีโอเปิดได้บน Mac (H.264/MP4)"), systemImage: "play.rectangle")
+                }
             } header: {
                 Text(tr("Video", "วิดีโอ"))
             } footer: {
@@ -91,10 +98,12 @@ struct PreferencesView: View {
             }
 
             Section {
-                Picker(tr("Limit download speed", "จำกัดความเร็วดาวน์โหลด"), selection: bandwidthPresetBinding) {
+                Picker(selection: bandwidthPresetBinding) {
                     ForEach(BandwidthPreset.presets, id: \.self) { preset in
                         Text(preset.label).tag(preset)
                     }
+                } label: {
+                    Label(tr("Limit download speed", "จำกัดความเร็วดาวน์โหลด"), systemImage: "speedometer")
                 }
 
                 if bandwidthPresetBinding.wrappedValue == .custom {
@@ -175,9 +184,9 @@ struct PreferencesView: View {
         case .available(let release):
             VStack(alignment: .leading, spacing: 8) {
                 Text(tr("Version \(release.version) is available", "มีเวอร์ชัน \(release.version)"))
-                    .font(.dd(12.5, .medium))
+                    .font(.dd(13, .medium))
                 Text(Formatters.byteCount(release.sizeBytes))
-                    .font(.dd(10.5))
+                    .font(.dd(11))
                     .foregroundStyle(.secondary)
                 ReleaseNotesDisclosure(notes: release.fullNotes, isExpanded: $showingReleaseNotes)
                 Button(tr("Update and relaunch", "อัปเดตและเปิดใหม่")) { updates.installUpdate() }
@@ -186,7 +195,7 @@ struct PreferencesView: View {
             .padding(.vertical, 2)
         case .downloading(let progress):
             VStack(alignment: .leading, spacing: 6) {
-                Text(tr("Downloading the update…", "กำลังดาวน์โหลดอัปเดต…")).font(.dd(12))
+                Text(tr("Downloading the update…", "กำลังดาวน์โหลดอัปเดต…")).font(.dd(13))
                 ProgressView(value: progress.fraction)
                 UpdateProgressDetail(progress: progress)
             }

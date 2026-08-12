@@ -49,8 +49,8 @@ struct MenuBarView: View {
     private static let springMotion = Animation.spring(response: 0.38, dampingFraction: 0.86)
     /// Fixed chrome above and below the scrolling content: the top logo bar plus
     /// its divider, and the bottom tab bar plus its divider.
-    private static let chromeAllowance: CGFloat = 29 + 33
-    private static let maxWindowHeight: CGFloat = 480
+    private static let chromeAllowance: CGFloat = 33 + 37
+    private static let maxWindowHeight: CGFloat = 520
     private static let minWindowHeight: CGFloat = 130
 
     private var windowHeight: CGFloat {
@@ -59,7 +59,7 @@ struct MenuBarView: View {
         case .queue, .recent:
             raw = measuredHeight + Self.chromeAllowance
         case .stats:
-            raw = 250
+            raw = 330
         case .prefs:
             raw = 420
         }
@@ -85,9 +85,19 @@ struct MenuBarView: View {
                 welcomeView
             }
         }
-        .frame(width: 340, height: hasSeenWelcome ? windowHeight : 320)
+        .frame(width: 380, height: hasSeenWelcome ? windowHeight : 340)
         .font(.dd(13))
-        .background(DDTheme.canvas)
+        // Frosted, not painted. Every menu bar panel macOS ships — Control
+        // Centre, Wi-Fi, Sound — sits on a translucent material, and a flat
+        // opaque fill is most of why this window read as pasted onto the screen
+        // rather than floating above it. The canvas tint stays on top at low
+        // opacity so the palette still holds in both themes; the material alone
+        // would take its colour from whatever happens to be behind the window.
+        .background {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .overlay(DDTheme.canvas.opacity(0.72))
+        }
         .tint(DDTheme.accent)
         // Pin the scheme to the in-app theme (system/light/dark) rather than the
         // window's inherited appearance, so `.primary`/`.secondary` text always
@@ -131,7 +141,7 @@ struct MenuBarView: View {
                 Text("Drop").foregroundStyle(.primary)
                 Text("Drive").foregroundStyle(DDTheme.accent)
             }
-            .font(.dd(16, .bold))
+            .font(.dd(17, .bold))
 
             VStack(alignment: .leading, spacing: 12) {
                 welcomeStep(1, tr("The app lives up here in the menu bar — there's no Dock icon.", "แอพอยู่บนเมนูบาร์ตรงนี้ ↑ ไม่มีไอคอนใน Dock"))
@@ -165,7 +175,7 @@ struct MenuBarView: View {
                 .background(Circle().fill(DDTheme.accent))
 
             Text(text)
-                .font(.dd(12))
+                .font(.dd(13))
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -193,7 +203,7 @@ struct MenuBarView: View {
             .accessibilityLabel("DropDrive")
 
             Text(headerStatus)
-                .font(.dd(10))
+                .font(.dd(11))
                 .foregroundStyle(.secondary)
 
             Spacer()
@@ -206,8 +216,8 @@ struct MenuBarView: View {
                 onSignOut: viewModel.signOut
             )
         }
-        .padding(.horizontal, 11)
-        .padding(.vertical, 5)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 
     // MARK: - Bottom tab bar
@@ -218,8 +228,8 @@ struct MenuBarView: View {
                 tabButton(pane)
             }
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 3)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
         .background(DDTheme.rail)
     }
 
@@ -240,7 +250,7 @@ struct MenuBarView: View {
                     }
                 if selectedPane == pane {
                     Text(pane.title)
-                        .font(.dd(9.5, .medium))
+                        .font(.dd(11, .medium))
                         .lineLimit(1)
                 }
             }
@@ -333,6 +343,8 @@ struct MenuBarView: View {
                             )
                             .transition(.opacity.combined(with: .move(edge: .top)))
                         } else if viewModel.linkAnalysisState == .idle {
+                            dropZone
+
                             // Resolved once per redraw and handed down, rather
                             // than recomputed for the emptiness check and again
                             // for the rows.
@@ -342,9 +354,7 @@ struct MenuBarView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.top, 12)
-                    .padding(.bottom, 12)
+                    .padding(16)
                     .background(
                         GeometryReader { proxy in
                             Color.clear.preference(key: ContentHeightKey.self, value: proxy.size.height)
@@ -365,8 +375,51 @@ struct MenuBarView: View {
         .animation(Self.springMotion, value: viewModel.queue)
     }
 
+    /// The empty queue, which used to be simply nothing. The window already
+    /// accepts a dragged link anywhere on it, but nothing on screen ever said
+    /// so — this both fills the space and is the only place that ability is
+    /// mentioned. It lights up while a link is over the window.
+    private var dropZone: some View {
+        VStack(spacing: 8) {
+            Image(systemName: isDropTargeted ? "arrow.down.circle.fill" : "link.badge.plus")
+                .font(.dd(22))
+                .foregroundStyle(isDropTargeted ? AnyShapeStyle(DDTheme.accent) : AnyShapeStyle(.tertiary))
+
+            Text(isDropTargeted
+                 ? tr("Drop it anywhere", "ปล่อยตรงไหนก็ได้")
+                 : tr("Paste a link above, or drag one here", "วางลิงก์ในช่องด้านบน หรือลากลิงก์มาวางตรงนี้"))
+                .font(.dd(11))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 20)
+        .background {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(isDropTargeted ? DDTheme.accentSoft : Color.clear)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(
+                            isDropTargeted ? DDTheme.accent : DDTheme.border,
+                            style: StrokeStyle(lineWidth: 1, dash: [5, 4])
+                        )
+                }
+        }
+        .animation(.easeOut(duration: 0.15), value: isDropTargeted)
+        .accessibilityElement(children: .combine)
+    }
+
     private var headerStatus: String {
-        if viewModel.isQueueProcessing { return tr("Downloading…", "กำลังดาวน์โหลด…") }
+        // Live numbers while something is moving: the header is on screen in
+        // every pane, so it is the one place that can say the app is working
+        // without the user going back to the queue to check.
+        if viewModel.isQueueProcessing {
+            let speed = viewModel.activeProgress?.bytesPerSecond ?? 0
+            if speed > 0 {
+                return "\(Formatters.transferSpeed(speed))"
+            }
+            return tr("Downloading…", "กำลังดาวน์โหลด…")
+        }
         let today = historyStore.totals.completedToday
         if today > 0 { return tr("\(today) today", "วันนี้ \(today) รายการ") }
         return tr("Ready", "พร้อมใช้งาน")
@@ -396,7 +449,7 @@ struct MenuBarView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(tr("Recent", "ล่าสุด"))
-                    .font(.dd(10.5, .semibold))
+                    .font(.dd(11, .semibold))
                     .foregroundStyle(.secondary)
                     .tracking(0.3)
 
@@ -406,7 +459,7 @@ struct MenuBarView: View {
                     withAnimation(Self.springMotion) { selectedPane = .recent }
                 }
                     .buttonStyle(.plain)
-                    .font(.dd(10.5))
+                    .font(.dd(11))
                     .foregroundStyle(DDTheme.accent)
                     .accessibilityLabel("Show all downloads")
             }
@@ -427,11 +480,11 @@ struct MenuBarView: View {
     private func recentPreviewRow(_ item: DownloadHistoryItem) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "checkmark.circle.fill")
-                .font(.dd(12))
+                .font(.dd(13))
                 .foregroundStyle(.green)
 
             Text(item.name)
-                .font(.dd(11.5))
+                .font(.dd(11))
                 .lineLimit(1)
                 .truncationMode(.middle)
 
@@ -442,7 +495,7 @@ struct MenuBarView: View {
                 NSWorkspace.shared.open(url)
             }
             .buttonStyle(.plain)
-            .font(.dd(10.5, .medium))
+            .font(.dd(11, .medium))
             .foregroundStyle(DDTheme.accent)
             .accessibilityLabel("Open \(item.name)")
 
@@ -451,15 +504,15 @@ struct MenuBarView: View {
                 NSWorkspace.shared.activateFileViewerSelecting([url])
             } label: {
                 Image(systemName: "folder")
-                    .font(.dd(10))
+                    .font(.dd(11))
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
             .help(tr("Reveal in Finder", "เปิดใน Finder"))
             .accessibilityLabel("Reveal \(item.name) in Finder")
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 
     @ViewBuilder
@@ -665,7 +718,7 @@ private struct HeaderAccountButton: View {
             .overlay { Circle().strokeBorder(DDTheme.border, lineWidth: 0.5) }
         } else {
             Image(systemName: "person.crop.circle")
-                .font(.dd(16))
+                .font(.dd(17))
                 .foregroundStyle(.secondary)
                 .frame(width: 22, height: 22)
         }
@@ -689,7 +742,7 @@ private struct HeaderAccountButton: View {
                     avatar
                     VStack(alignment: .leading, spacing: 1) {
                         Text(account.name)
-                            .font(.dd(12, .semibold))
+                            .font(.dd(13, .semibold))
                         Text(account.email)
                             .font(.dd(11))
                             .foregroundStyle(.secondary)
@@ -723,7 +776,7 @@ private struct HeaderAccountButton: View {
         } else {
             VStack(spacing: 10) {
                 Text(tr("Connect your Google account to download private files and folders.", "เชื่อมต่อบัญชี Google เพื่อดาวน์โหลดไฟล์และโฟลเดอร์ส่วนตัว"))
-                    .font(.dd(11.5))
+                    .font(.dd(11))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
 

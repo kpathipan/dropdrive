@@ -20,12 +20,12 @@ struct DownloadFormView: View {
             HStack(spacing: 7) {
                 HStack(spacing: 7) {
                     Image(systemName: "link")
-                        .font(.dd(12))
+                        .font(.dd(13))
                         .foregroundStyle(.secondary)
 
                     TextField(tr("Drive / TikTok / YouTube / IG link…", "วางลิงก์ Drive / TikTok / YouTube / IG…"), text: $driveLink)
                         .textFieldStyle(.plain)
-                        .font(.dd(12.5))
+                        .font(.dd(13))
                         .disabled(isLocked)
                         .onSubmit(onSubmit)
                         .onExitCommand(perform: onEscape)
@@ -82,7 +82,7 @@ struct DownloadFormView: View {
     private var destinationRow: some View {
         HStack(spacing: 5) {
             Image(systemName: destinationURL == nil ? "folder" : "folder.fill")
-                .font(.dd(10))
+                .font(.dd(11))
                 .foregroundStyle(destinationURL == nil ? Color.secondary : DDTheme.accent)
 
             // The folder's own name, not the whole path: at 10.5pt a full path
@@ -90,7 +90,7 @@ struct DownloadFormView: View {
             // clipped, and the leading directories were never the part anyone
             // was reading.
             Text(destinationURL?.lastPathComponent ?? tr("Choose a folder", "เลือกโฟลเดอร์"))
-                .font(.dd(10.5))
+                .font(.dd(11))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -100,7 +100,7 @@ struct DownloadFormView: View {
             Button(destinationURL == nil ? tr("Choose…", "เลือก…") : tr("Change…", "เปลี่ยน…"),
                    action: onChooseDestination)
                 .buttonStyle(.plain)
-                .font(.dd(10.5))
+                .font(.dd(11))
                 .foregroundStyle(DDTheme.accent)
                 .disabled(isLocked)
                 .fixedSize()

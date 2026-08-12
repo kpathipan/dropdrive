@@ -1,7 +1,13 @@
 import SwiftUI
 
-/// The popover's palette: white cards on a cool light-gray canvas, or their
-/// warm-dark counterparts, with one blue accent. Every color reads
+/// The popover's palette: white cards on a neutral grey canvas, or their dark
+/// counterparts, with one blue accent.
+///
+/// The greys are deliberately neutral rather than blue-cast. They used to carry
+/// a blue tint of their own, which put the whole window a half-step toward the
+/// accent — so the accent stopped reading as a colour and started reading as a
+/// tint over everything. One saturated colour only looks chosen when what
+/// surrounds it is not competing with it. Every color reads
 /// `AppTheme.shared.isDark` through Observation, so a theme change (in
 /// Preferences or, in system mode, macOS itself) re-renders everything live.
 /// MenuBarView pins the matching `.colorScheme` so `.primary`/`.secondary`
@@ -10,24 +16,24 @@ enum DDTheme {
     private static var dark: Bool { AppTheme.shared.isDark }
 
     static var canvas: Color {
-        dark ? Color(red: 0.086, green: 0.094, blue: 0.114)            // #16181D
-             : Color(red: 0.965, green: 0.973, blue: 0.984)            // #F6F8FB
+        dark ? Color(red: 0.106, green: 0.106, blue: 0.114)            // #1B1B1D
+             : Color(red: 0.961, green: 0.961, blue: 0.969)            // #F5F5F7
     }
 
 
     static var rail: Color {
-        dark ? Color(red: 0.106, green: 0.118, blue: 0.141)            // #1B1E24
-             : Color(red: 0.929, green: 0.941, blue: 0.961)            // #EDF0F5
+        dark ? Color(red: 0.125, green: 0.125, blue: 0.133)            // #202022
+             : Color(red: 0.929, green: 0.929, blue: 0.937)            // #EDEDEF
     }
 
     static var card: Color {
-        dark ? Color(red: 0.137, green: 0.149, blue: 0.176)            // #23262D
+        dark ? Color(red: 0.149, green: 0.149, blue: 0.157)            // #262628
              : .white
     }
 
     static var border: Color {
-        dark ? Color(red: 0.220, green: 0.235, blue: 0.267)            // #383C44
-             : Color(red: 0.835, green: 0.855, blue: 0.890)            // #D5DAE3
+        dark ? Color(red: 0.227, green: 0.227, blue: 0.239)            // #3A3A3D
+             : Color(red: 0.890, green: 0.890, blue: 0.902)            // #E3E3E6
     }
 
     /// Brighter in dark mode — #2563EB reads muddy on near-black.
@@ -44,8 +50,12 @@ enum DDTheme {
 
 extension Font {
     /// App-wide typeface: Sukhumvit Set, the loopless Thai family bundled with
-    /// macOS (its Latin glyphs read cleanly too). Sizes are passed at the old
-    /// system-font values and rendered one point smaller across the board.
+    /// macOS (its Latin glyphs read cleanly too).
+    ///
+    /// The size asked for is the size drawn. It used to render a point smaller
+    /// than every call site declared, which put most of the app's secondary text
+    /// at 8.5–9pt — below anything macOS itself uses, and the reason the window
+    /// read as cramped no matter how the spacing was adjusted.
     static func dd(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
         let name: String
         if weight == .bold || weight == .heavy || weight == .black {
@@ -59,7 +69,7 @@ extension Font {
         } else {
             name = "SukhumvitSet-Text"
         }
-        return .custom(name, size: size - 1)
+        return .custom(name, size: size)
     }
 }
 

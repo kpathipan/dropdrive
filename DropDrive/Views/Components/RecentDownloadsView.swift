@@ -32,7 +32,7 @@ struct RecentDownloadsView: View {
                 let visible = filteredItems
                 if visible.isEmpty {
                     Text(tr("No matching downloads", "ไม่พบรายการที่ค้นหา"))
-                        .font(.dd(11.5))
+                        .font(.dd(11))
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.vertical, 14)
@@ -60,7 +60,7 @@ struct RecentDownloadsView: View {
                     galleryMode.toggle()
                 } label: {
                     Image(systemName: galleryMode ? "list.bullet" : "square.grid.2x2")
-                        .font(.dd(12))
+                        .font(.dd(13))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
@@ -81,20 +81,65 @@ struct RecentDownloadsView: View {
     /// is for — the pictures are the user's own downloads, and they were being
     /// wasted. Two columns roughly doubles the cover without touching the
     /// window's size.
-    private let columns = [GridItem(.adaptive(minimum: 140, maximum: 200), spacing: 9)]
+    private let columns = [GridItem(.adaptive(minimum: 160, maximum: 220), spacing: 12)]
 
+    /// Grouped by the day it was downloaded. An unbroken grid of covers reads as
+    /// one undifferentiated pile the moment there are more than a screenful —
+    /// and "the one I pulled down this morning" is how anyone actually looks for
+    /// something here.
     private func gallery(_ visible: [DownloadHistoryItem]) -> some View {
-        LazyVGrid(columns: columns, spacing: 8) {
-            ForEach(visible) { item in
-                GalleryTile(
-                    item: item,
-                    onOpenFolder: { openedFolder = item },
-                    onRevealInFinder: { onRevealInFinder(item) },
-                    onCopyLink: { onCopyLink(item) },
-                    onRemove: { onRemoveItem(item) }
-                )
+        VStack(alignment: .leading, spacing: 14) {
+            ForEach(Self.groupedByDay(visible), id: \.title) { group in
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(group.title)
+                        .font(.dd(11, .semibold))
+                        .foregroundStyle(.secondary)
+                        .tracking(0.3)
+
+                    LazyVGrid(columns: columns, spacing: 12) {
+                        ForEach(group.items) { item in
+                            GalleryTile(
+                                item: item,
+                                onOpenFolder: { openedFolder = item },
+                                onRevealInFinder: { onRevealInFinder(item) },
+                                onCopyLink: { onCopyLink(item) },
+                                onRemove: { onRemoveItem(item) }
+                            )
+                        }
+                    }
+                }
             }
         }
+    }
+
+    struct DayGroup {
+        let title: String
+        let items: [DownloadHistoryItem]
+    }
+
+    /// Today, yesterday, then one bucket for everything older — dated headings
+    /// per day would out-number the covers on a long history.
+    static func groupedByDay(_ items: [DownloadHistoryItem]) -> [DayGroup] {
+        let calendar = Calendar.current
+        var today: [DownloadHistoryItem] = []
+        var yesterday: [DownloadHistoryItem] = []
+        var earlier: [DownloadHistoryItem] = []
+
+        for item in items {
+            if calendar.isDateInToday(item.date) {
+                today.append(item)
+            } else if calendar.isDateInYesterday(item.date) {
+                yesterday.append(item)
+            } else {
+                earlier.append(item)
+            }
+        }
+
+        var groups: [DayGroup] = []
+        if !today.isEmpty { groups.append(DayGroup(title: tr("Today", "วันนี้"), items: today)) }
+        if !yesterday.isEmpty { groups.append(DayGroup(title: tr("Yesterday", "เมื่อวาน"), items: yesterday)) }
+        if !earlier.isEmpty { groups.append(DayGroup(title: tr("Earlier", "ก่อนหน้านี้"), items: earlier)) }
+        return groups
     }
 
     private func list(_ visible: [DownloadHistoryItem]) -> some View {
@@ -117,7 +162,7 @@ struct RecentDownloadsView: View {
 
             TextField(tr("Search downloads", "ค้นหาดาวน์โหลด"), text: $searchText)
                 .textFieldStyle(.plain)
-                .font(.dd(12))
+                .font(.dd(13))
 
             if !searchText.isEmpty {
                 Button {
@@ -131,8 +176,8 @@ struct RecentDownloadsView: View {
                 .accessibilityLabel("Clear search")
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
         .cardBackground()
     }
 }
@@ -205,12 +250,12 @@ private struct GalleryTile: View {
             .clipShape(UnevenRoundedRectangle(topLeadingRadius: 11, topTrailingRadius: 11))
 
             Text(item.name)
-                .font(.dd(10.5))
+                .font(.dd(11))
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 5)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
                 .foregroundStyle(exists ? .primary : .secondary)
         }
         .background(DDTheme.card)
@@ -288,7 +333,9 @@ private struct GalleryTile: View {
 
 /// A single file's Quick Look thumbnail, filling the tile. Falls back to the
 /// system file-type icon until (or if) the thumbnail resolves.
-private struct FileThumbnail: View {
+/// Shared with the queue: a row there shows the same picture this gallery does
+/// once the file exists, which is what stops a queue of identical glyphs.
+struct FileThumbnail: View {
     let url: URL
     @State private var model = ThumbnailModel()
 
@@ -315,7 +362,7 @@ private struct FileThumbnail: View {
 /// tile on every redraw until its thumbnail arrived. The icon only depends on
 /// the file's type, so one lookup per extension covers the whole gallery.
 @MainActor
-private enum FileTypeIcon {
+enum FileTypeIcon {
     private static var cache: [String: NSImage] = [:]
 
     /// Asked for a path that doesn't exist, `icon(forFile:)` returns the blank
@@ -345,10 +392,10 @@ private struct FolderCover: View {
         ZStack {
             if covers.isEmpty {
                 ZStack {
-                    Color(red: 0.996, green: 0.953, blue: 0.780)
+                    DDTheme.rail
                     Image(systemName: "folder.fill")
                         .font(.system(size: 22))
-                        .foregroundStyle(Color(red: 0.96, green: 0.62, blue: 0.09))
+                        .foregroundStyle(.secondary)
                 }
             } else {
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 1), GridItem(.flexible(), spacing: 1)], spacing: 1) {
@@ -367,7 +414,7 @@ private struct FolderCover: View {
         .overlay(alignment: .bottomTrailing) {
             if let fileCount, fileCount > 0 {
                 Text("\(fileCount)")
-                    .font(.dd(9, .semibold).monospacedDigit())
+                    .font(.dd(11, .semibold).monospacedDigit())
                     .foregroundStyle(.white)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 1)
@@ -377,7 +424,7 @@ private struct FolderCover: View {
         }
         .overlay(alignment: .topLeading) {
             Image(systemName: "folder.fill")
-                .font(.dd(9))
+                .font(.dd(11))
                 .foregroundStyle(.white)
                 .padding(3)
                 .background(Circle().fill(.black.opacity(0.5)))
@@ -398,7 +445,7 @@ private struct FolderContentsGallery: View {
     let onBack: () -> Void
 
     @State private var files: [URL] = []
-    private let columns = [GridItem(.adaptive(minimum: 140, maximum: 200), spacing: 9)]
+    private let columns = [GridItem(.adaptive(minimum: 160, maximum: 220), spacing: 12)]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -412,14 +459,14 @@ private struct FolderContentsGallery: View {
                 .accessibilityLabel("Back to recent downloads")
 
                 Text(item.name)
-                    .font(.dd(11.5, .medium))
+                    .font(.dd(11, .medium))
                     .lineLimit(1)
                     .truncationMode(.middle)
 
                 Spacer()
 
                 Text(tr("\(files.count) files", "\(files.count) ไฟล์"))
-                    .font(.dd(10.5))
+                    .font(.dd(11))
                     .foregroundStyle(.secondary)
             }
 
@@ -431,7 +478,7 @@ private struct FolderContentsGallery: View {
                     .padding(.vertical, 16)
                     .cardBackground()
             } else {
-                LazyVGrid(columns: columns, spacing: 8) {
+                LazyVGrid(columns: columns, spacing: 12) {
                     ForEach(Array(files.enumerated()), id: \.element) { index, url in
                         FileTile(url: url, allFiles: files, index: index)
                     }
@@ -472,12 +519,12 @@ private struct FileTile: View {
             .clipShape(UnevenRoundedRectangle(topLeadingRadius: 11, topTrailingRadius: 11))
 
             Text(url.lastPathComponent)
-                .font(.dd(10.5))
+                .font(.dd(11))
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 5)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
         }
         .background(DDTheme.card)
         .overlay {
@@ -525,7 +572,7 @@ private struct RecentDownloadRow: View {
                 .accessibilityLabel(statusLabel)
 
             Text(item.name)
-                .font(.dd(12.5))
+                .font(.dd(13))
                 .lineLimit(1)
                 .truncationMode(.middle)
 
@@ -536,7 +583,7 @@ private struct RecentDownloadRow: View {
                     onRevealInFinder(item)
                 } label: {
                     Image(systemName: "folder")
-                        .font(.dd(12))
+                        .font(.dd(13))
                 }
                 .buttonStyle(.borderless)
                 .foregroundStyle(isHovering ? Color.accentColor : .secondary)
@@ -548,8 +595,7 @@ private struct RecentDownloadRow: View {
                 .font(.dd(11).monospacedDigit())
                 .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
+        .padding(12)
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
         .contextMenu {
@@ -594,7 +640,7 @@ struct EmptyStateView: View {
                 .foregroundStyle(.tertiary)
 
             Text(tr("Download Google Drive files and folders effortlessly.", "ดาวน์โหลดไฟล์และโฟลเดอร์จาก Google Drive ได้ง่ายๆ"))
-                .font(.dd(12))
+                .font(.dd(13))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 260)

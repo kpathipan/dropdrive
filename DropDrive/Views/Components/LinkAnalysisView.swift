@@ -7,11 +7,11 @@ struct LinkAnalyzingView: View {
                 .controlSize(.small)
 
             Text(tr("Analyzing link…", "กำลังวิเคราะห์ลิงก์…"))
-                .font(.dd(12.5))
+                .font(.dd(13))
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
+        .padding(16)
         .cardBackground()
         .transition(.opacity)
         .accessibilityElement(children: .combine)
@@ -25,11 +25,11 @@ struct LinkInvalidView: View {
                 .foregroundStyle(.orange)
 
             Text(tr("That doesn't look like a Google Drive link.", "ลิงก์นี้ดูไม่ใช่ลิงก์ Google Drive"))
-                .font(.dd(12.5))
+                .font(.dd(13))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(14)
+        .padding(16)
         .cardBackground()
         .transition(.opacity)
         .accessibilityElement(children: .combine)
@@ -46,7 +46,7 @@ struct LinkNeedsConnectionView: View {
                 .foregroundStyle(.secondary)
 
             Text(tr("Sign in to Google Drive to access this item.", "ลงชื่อเข้า Google Drive เพื่อเข้าถึงรายการนี้"))
-                .font(.dd(12.5))
+                .font(.dd(13))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -56,7 +56,7 @@ struct LinkNeedsConnectionView: View {
                 .disabled(isSigningIn)
                 .accessibilityLabel("Connect Google Drive")
         }
-        .padding(14)
+        .padding(16)
         .cardBackground()
         .transition(.opacity)
     }
@@ -69,11 +69,11 @@ struct LinkDuplicateActiveView: View {
                 .foregroundStyle(.secondary)
 
             Text(tr("Already in queue.", "อยู่ในคิวแล้ว"))
-                .font(.dd(12.5))
+                .font(.dd(13))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(14)
+        .padding(16)
         .cardBackground()
         .transition(.opacity)
         .accessibilityElement(children: .combine)
@@ -90,7 +90,7 @@ struct LinkAnalysisErrorView: View {
                 .foregroundStyle(.orange)
 
             Text(message)
-                .font(.dd(12.5))
+                .font(.dd(13))
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -99,7 +99,7 @@ struct LinkAnalysisErrorView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
         }
-        .padding(14)
+        .padding(16)
         .cardBackground()
         .transition(.opacity)
     }
@@ -150,13 +150,18 @@ struct AnalyzedPromptView: View {
                         Rectangle().fill(.quaternary)
                     }
                 }
+                // Taller than it was: this is the one picture on the screen the
+                // user is deciding from, and at 110pt it read as a strip of
+                // decoration beside the text rather than the thing being
+                // confirmed. 150 still leaves the Download button on screen at
+                // the 520pt cap, which a full-bleed poster would not.
                 .frame(maxWidth: .infinity)
-                .frame(height: 110)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .frame(height: 150)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay(alignment: .bottomTrailing) {
                     if let duration = analysis.durationSeconds {
                         Text(Self.timestamp(from: duration))
-                            .font(.dd(10, .medium).monospacedDigit())
+                            .font(.dd(11, .medium).monospacedDigit())
                             .foregroundStyle(.white)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
@@ -207,7 +212,7 @@ struct AnalyzedPromptView: View {
 
                 Toggle(isOn: $trimEnabled.animation(.easeInOut(duration: 0.15))) {
                     Text(tr("Trim to a section", "ตัดเฉพาะช่วง"))
-                        .font(.dd(11.5))
+                        .font(.dd(11))
                 }
                 .toggleStyle(.checkbox)
 
@@ -215,7 +220,7 @@ struct AnalyzedPromptView: View {
                     HStack(spacing: 8) {
                         TextField("0:00", text: $trimStart)
                             .textFieldStyle(.roundedBorder)
-                            .font(.dd(11.5).monospacedDigit())
+                            .font(.dd(11).monospacedDigit())
                             .frame(width: 64)
                             .accessibilityLabel("Trim start time")
 
@@ -223,12 +228,12 @@ struct AnalyzedPromptView: View {
 
                         TextField(analysis.durationSeconds.map(Self.timestamp(from:)) ?? "0:30", text: $trimEnd)
                             .textFieldStyle(.roundedBorder)
-                            .font(.dd(11.5).monospacedDigit())
+                            .font(.dd(11).monospacedDigit())
                             .frame(width: 64)
                             .accessibilityLabel("Trim end time")
 
                         Text(tr("min:sec", "นาที:วิ"))
-                            .font(.dd(10.5))
+                            .font(.dd(11))
                             .foregroundStyle(.secondary)
 
                         Spacer(minLength: 0)
@@ -236,7 +241,7 @@ struct AnalyzedPromptView: View {
 
                     if trimInvalid {
                         Text(tr("End must be after start (e.g. 0:10 – 1:30).", "เวลาจบต้องมากกว่าเวลาเริ่ม (เช่น 0:10 – 1:30)"))
-                            .font(.dd(10.5))
+                            .font(.dd(11))
                             .foregroundStyle(.orange)
                     }
                 }
@@ -246,11 +251,11 @@ struct AnalyzedPromptView: View {
 
             HStack(spacing: 5) {
                 Image(systemName: destinationURL == nil ? "folder" : "folder.fill")
-                    .font(.dd(10))
+                    .font(.dd(11))
                     .foregroundStyle(destinationURL == nil ? Color.secondary : DDTheme.accent)
 
                 Text(destinationURL?.lastPathComponent ?? tr("Choose a folder", "เลือกโฟลเดอร์"))
-                    .font(.dd(10.5))
+                    .font(.dd(11))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -258,7 +263,7 @@ struct AnalyzedPromptView: View {
                 Button(destinationURL == nil ? tr("Choose…", "เลือก…") : tr("Change…", "เปลี่ยน…"),
                        action: onChooseDestination)
                     .buttonStyle(.plain)
-                    .font(.dd(10.5, .medium))
+                    .font(.dd(11, .medium))
                     .foregroundStyle(DDTheme.accent)
                     .accessibilityLabel(destinationURL == nil ? "Choose destination folder" : "Change destination folder")
 
@@ -291,7 +296,7 @@ struct AnalyzedPromptView: View {
                 .keyboardShortcut(isEditingName ? nil : .defaultAction)
             }
         }
-        .padding(14)
+        .padding(16)
         .cardBackground()
         .transition(.opacity.combined(with: .move(edge: .top)))
         // The field follows the analysis until it is typed in, and stops the
@@ -326,7 +331,7 @@ struct AnalyzedPromptView: View {
                     }
                 ))
                     .textFieldStyle(.plain)
-                    .font(.dd(12.5, .medium))
+                    .font(.dd(13, .medium))
                     .focused($isNameFocused)
                     .onSubmit { isEditingName = false }
                     .accessibilityLabel("File name")
@@ -359,7 +364,7 @@ struct AnalyzedPromptView: View {
                         .truncationMode(.middle)
 
                     Image(systemName: "pencil")
-                        .font(.dd(10))
+                        .font(.dd(11))
                         .foregroundStyle(.secondary)
                 }
                 .contentShape(Rectangle())
@@ -499,7 +504,7 @@ struct DuplicateCompletedPromptView: View {
             .foregroundStyle(.secondary)
 
             Text(tr("Download again?", "ดาวน์โหลดอีกครั้ง?"))
-                .font(.dd(12.5, .medium))
+                .font(.dd(13, .medium))
 
             HStack(spacing: 10) {
                 Button(tr("Cancel", "ยกเลิก"), role: .cancel, action: onCancel)

@@ -26,7 +26,7 @@ struct QueueView: View {
     let onReorder: (UUID, UUID) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 8) {
             if showLargeDownloadWarning {
                 largeDownloadWarningCard
             } else if canStartQueue {
@@ -66,7 +66,7 @@ struct QueueView: View {
     private var footer: some View {
         HStack(spacing: 8) {
             Text(footerSummary)
-                .font(.dd(10.5))
+                .font(.dd(11))
                 .foregroundStyle(.secondary)
 
             Spacer()
@@ -74,7 +74,7 @@ struct QueueView: View {
             if queue.contains(where: { $0.status == .completed }) {
                 Button(tr("Clear done", "ล้างที่เสร็จ"), action: onClearCompleted)
                     .buttonStyle(.plain)
-                    .font(.dd(10.5))
+                    .font(.dd(11))
                     .foregroundStyle(DDTheme.accent)
                     .accessibilityLabel("Clear completed downloads from queue")
             }
@@ -82,13 +82,13 @@ struct QueueView: View {
             if canPauseQueue {
                 Button(tr("Pause all", "หยุดทั้งหมด"), action: onPauseQueue)
                     .buttonStyle(.plain)
-                    .font(.dd(10.5))
+                    .font(.dd(11))
                     .foregroundStyle(DDTheme.accent)
                     .accessibilityLabel("Pause the download queue")
             } else if canResumeQueue {
                 Button(tr("Resume all", "ทำต่อทั้งหมด"), action: onResumeQueue)
                     .buttonStyle(.plain)
-                    .font(.dd(10.5))
+                    .font(.dd(11))
                     .foregroundStyle(DDTheme.accent)
                     .accessibilityLabel("Resume the download queue")
             }
@@ -140,7 +140,7 @@ struct QueueView: View {
             .buttonStyle(.borderedProminent)
             .disabled(!canStartQueue)
         }
-        .padding(14)
+        .padding(16)
         .cardBackground()
     }
 
@@ -175,7 +175,7 @@ struct QueueView: View {
                     .frame(maxWidth: .infinity)
             }
         }
-        .padding(14)
+        .padding(16)
         .cardBackground()
         .accessibilityElement(children: .contain)
     }
@@ -194,6 +194,7 @@ private struct QueueRow: View {
     let onOpen: () -> Void
 
     @State private var isHovering = false
+    @State private var showCompletionSweep = false
     @State private var statusCache = FileStatusCache.shared
 
     /// Whether the finished item is still where it was put. Read through the
@@ -207,15 +208,12 @@ private struct QueueRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
-                Image(systemName: leadingIconName)
-                    .font(.dd(15))
-                    .foregroundStyle(item.status == .completed ? Color.green : DDTheme.accent)
-                    .frame(width: 20)
+            HStack(spacing: 12) {
+                thumbnail
 
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(item.displayName)
-                        .font(.dd(12.5, .medium))
+                        .font(.dd(13, .medium))
                         .lineLimit(1)
                         .truncationMode(.middle)
 
@@ -227,7 +225,7 @@ private struct QueueRow: View {
                             Text("· \(fileCount) \(fileCount == 1 ? "file" : "files")")
                         }
                     }
-                    .font(.dd(10.5))
+                    .font(.dd(11))
                     .foregroundStyle(.secondary)
                 }
 
@@ -263,7 +261,7 @@ private struct QueueRow: View {
                 if item.status != .downloading {
                     Button(action: onRemove) {
                         Image(systemName: "xmark")
-                            .font(.dd(9, .bold))
+                            .font(.dd(11, .bold))
                     }
                     .buttonStyle(.borderless)
                     .foregroundStyle(isHovering ? Color.primary : Color.secondary)
@@ -285,7 +283,7 @@ private struct QueueRow: View {
                 HStack(alignment: .top, spacing: 8) {
                     if let errorMessage = item.errorMessage {
                         Text(errorMessage)
-                            .font(.dd(10.5))
+                            .font(.dd(11))
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -299,9 +297,33 @@ private struct QueueRow: View {
                 }
             }
         }
-        .padding(.horizontal, 11)
-        .padding(.vertical, 9)
+        .padding(12)
         .cardBackground()
+        // The gallery lifts under the pointer and the queue did not, which made
+        // the two panes feel like different apps. Same easing, less travel — a
+        // row is wide, and lifting it as far as a tile would look like a card
+        // being dragged.
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.primary.opacity(isHovering ? 0.04 : 0))
+                .allowsHitTesting(false)
+        }
+        // A finished row says so for a moment, rather than only changing its
+        // badge: the sweep is what the eye catches when the window is open in
+        // the corner of the screen and the tick is 13pt.
+        .overlay {
+            if showCompletionSweep {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(LinearGradient(
+                        colors: [.green.opacity(0), .green.opacity(0.22), .green.opacity(0)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    ))
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.14), value: isHovering)
         .overlay {
             if isHighlighted {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -311,6 +333,14 @@ private struct QueueRow: View {
         .animation(.easeInOut(duration: 0.3), value: isHighlighted)
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
+        .onChange(of: item.status) { _, newStatus in
+            guard newStatus == .completed else { return }
+            withAnimation(.easeIn(duration: 0.2)) { showCompletionSweep = true }
+            Task {
+                try? await Task.sleep(for: .milliseconds(450))
+                withAnimation(.easeOut(duration: 0.35)) { showCompletionSweep = false }
+            }
+        }
         .contextMenu {
             if item.status == .completed {
                 Button(tr("Reveal in Finder", "เปิดใน Finder"), action: onRevealInFinder)
@@ -329,9 +359,9 @@ private struct QueueRow: View {
             if breakdown.archives > 0 { categoryChip("archivebox", breakdown.archives, label: "archives") }
             if breakdown.other > 0 { categoryChip("questionmark.folder", breakdown.other, label: "other files") }
         }
-        .font(.dd(10))
+        .font(.dd(11))
         .foregroundStyle(.secondary)
-        .padding(.leading, 30)
+        .padding(.leading, 32)
     }
 
     private func categoryChip(_ icon: String, _ count: Int, label: String) -> some View {
@@ -355,7 +385,7 @@ private struct QueueRow: View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
                 Text(progress.currentFileName.isEmpty ? tr("Downloading…", "กำลังดาวน์โหลด…") : progress.currentFileName)
-                    .font(.dd(10.5))
+                    .font(.dd(11))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -364,7 +394,7 @@ private struct QueueRow: View {
 
                 if let fraction = progress.fractionCompleted {
                     Text(fraction, format: .percent.precision(.fractionLength(0)))
-                        .font(.dd(10.5, .medium).monospacedDigit())
+                        .font(.dd(11, .medium).monospacedDigit())
                         .foregroundStyle(DDTheme.accent)
                 }
             }
@@ -410,17 +440,73 @@ private struct QueueRow: View {
                     .buttonStyle(.bordered)
                     .controlSize(.mini)
             }
-            .font(.dd(10))
+            .font(.dd(11))
             .foregroundStyle(.secondary)
         }
-        .padding(.leading, 30)
+        .padding(.leading, 32)
     }
 
-    private var leadingIconName: String {
-        if item.status == .completed { return "checkmark.circle.fill" }
-        if item.asAudio == true { return "music.note" }
-        if item.analysis.isVideo == true { return "play.rectangle.fill" }
-        return item.analysis.type == .folder ? "folder.fill" : "doc.fill"
+    /// The picture the row leads with, in descending order of how much it tells
+    /// you: the clip's own poster frame, the finished file's Quick Look preview,
+    /// then the icon macOS uses for that file type, and only then a glyph.
+    ///
+    /// A column of identical blue play-triangles was the single least informative
+    /// thing in the app — the queue is a list of the user's own footage, and it
+    /// looked like a list of nothing in particular. A Drive file has no picture
+    /// until it has finished downloading, so it gets its real type icon rather
+    /// than a grey rectangle pretending a thumbnail is coming.
+    @ViewBuilder
+    private var thumbnail: some View {
+        Group {
+            if let poster = item.analysis.thumbnailURL, let url = URL(string: poster) {
+                AsyncImage(url: url) { phase in
+                    if case .success(let image) = phase {
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    } else {
+                        placeholder
+                    }
+                }
+            } else if item.status == .completed, resultStillOnDisk, let url = item.resultURL {
+                FileThumbnail(url: url)
+            } else {
+                placeholder
+            }
+        }
+        .frame(width: 44, height: 44)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(DDTheme.border, lineWidth: 0.5)
+        }
+        // The green tick stays — it was the leading glyph before the picture
+        // took that place, and it is how "this one is done" is read without
+        // reading anything. It moves onto the corner of the thumbnail rather
+        // than being dropped.
+        .overlay(alignment: .bottomTrailing) {
+            if item.status == .completed {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.dd(13))
+                    .foregroundStyle(.white, .green)
+                    .padding(2)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var placeholder: some View {
+        ZStack {
+            DDTheme.rail
+            if item.analysis.type == .folder {
+                Image(systemName: "folder.fill")
+                    .font(.dd(17))
+                    .foregroundStyle(.secondary)
+            } else {
+                Image(nsImage: FileTypeIcon.forFile(at: URL(fileURLWithPath: item.displayName)))
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 26, height: 26)
+            }
+        }
     }
 
     private var statusIndicator: some View {
@@ -428,7 +514,7 @@ private struct QueueRow: View {
             switch item.status {
             case .ready:
                 Text(tr("queued", "รอคิว"))
-                    .font(.dd(10.5))
+                    .font(.dd(11))
                     .foregroundStyle(.tertiary)
             case .downloading:
                 ProgressView()

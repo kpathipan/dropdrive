@@ -22,9 +22,9 @@ struct UpdateBanner: View {
 
                         VStack(alignment: .leading, spacing: 1) {
                             Text(tr("Version \(release.version) is available", "มีเวอร์ชัน \(release.version)"))
-                                .font(.dd(12, .medium))
+                                .font(.dd(13, .medium))
                             Text(Formatters.byteCount(release.sizeBytes))
-                                .font(.dd(10.5))
+                                .font(.dd(11))
                                 .foregroundStyle(.secondary)
                         }
 
@@ -43,7 +43,7 @@ struct UpdateBanner: View {
             card {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(tr("Downloading the update…", "กำลังดาวน์โหลดอัปเดต…"))
-                        .font(.dd(11.5))
+                        .font(.dd(11))
                     ProgressView(value: progress.fraction)
                         .progressViewStyle(.linear)
                     UpdateProgressDetail(progress: progress)
@@ -55,7 +55,7 @@ struct UpdateBanner: View {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
                     Text(tr("Installing — DropDrive will reopen…", "กำลังติดตั้ง — แอพจะเปิดใหม่เอง…"))
-                        .font(.dd(11.5))
+                        .font(.dd(11))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -67,10 +67,10 @@ struct UpdateBanner: View {
                 card {
                     HStack(alignment: .top, spacing: 8) {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.dd(12))
+                            .font(.dd(13))
                             .foregroundStyle(.orange)
                         Text(message)
-                            .font(.dd(10.5))
+                            .font(.dd(11))
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
 
@@ -116,10 +116,10 @@ struct ReleaseNotesDisclosure: View {
                 } label: {
                     HStack(spacing: 3) {
                         Image(systemName: "chevron.right")
-                            .font(.dd(9, .semibold))
+                            .font(.dd(11, .semibold))
                             .rotationEffect(.degrees(isExpanded ? 90 : 0))
                         Text(tr("What's new", "มีอะไรใหม่"))
-                            .font(.dd(10.5))
+                            .font(.dd(11))
                     }
                     .foregroundStyle(DDTheme.accent)
                     .contentShape(Rectangle())
@@ -130,7 +130,7 @@ struct ReleaseNotesDisclosure: View {
                 if isExpanded {
                     ScrollView {
                         Text(notes)
-                            .font(.dd(10.5))
+                            .font(.dd(11))
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .textSelection(.enabled)
@@ -170,7 +170,7 @@ struct UpdateProgressDetail: View {
                 Text("· \(remaining)")
             }
         }
-        .font(.dd(10))
+        .font(.dd(11))
         .foregroundStyle(.secondary)
         .lineLimit(1)
         .accessibilityElement(children: .combine)

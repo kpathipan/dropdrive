@@ -34,7 +34,14 @@ final class ShareViewController: NSViewController {
     }
 
     private func openInDropDrive(_ link: String) async {
-        let encoded = link.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? link
+        // NOT `.urlQueryAllowed`: that set permits `&`, `=` and `?`, which are
+        // exactly the characters that have to be escaped to survive being a
+        // query *value*. A Drive link carrying `&resourcekey=…` was split into
+        // separate query items by the app's own URLComponents parse, and only
+        // the part before the first `&` was kept — so the resource key was
+        // dropped and Drive answered 404 for a link that works.
+        let unreserved = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+        let encoded = link.addingPercentEncoding(withAllowedCharacters: unreserved) ?? link
         guard let target = URL(string: "dropdrive://download?url=\(encoded)") else {
             extensionContext?.cancelRequest(withError: ShareExtensionError.noDriveLink)
             return

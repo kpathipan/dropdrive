@@ -216,22 +216,44 @@ final class DropDriveViewModel {
     func receiveExternalLinks(_ links: [String], sourceLabel: String) {
         Task {
             var queuedNames: [String] = []
+            /// A link that was neither queued nor a known duplicate — it could
+            /// not be read at all. Counted so the failure can be reported: the
+            /// phone inbox deletes each file as it consumes it (so a crash
+            /// mid-queue can't loop on it forever), which makes the app's
+            /// notification the only trace the link ever existed. Saying
+            /// nothing meant sharing from a phone with the Mac offline, or
+            /// sharing a private file while signed out, looked identical to the
+            /// feature not working.
+            var unusable = 0
             for link in links {
                 if VideoDownloadService.isSupportedLink(link) {
-                    guard let analysis = try? await videoDownloadService.analyze(link),
-                          !queue.contains(where: { $0.itemID == analysis.itemID }),
+                    guard let analysis = try? await videoDownloadService.analyze(link) else { unusable += 1; continue }
+                    guard !queue.contains(where: { $0.itemID == analysis.itemID }),
                           !hasCompletedDownloadPreviously(itemID: analysis.itemID) else { continue }
                     enqueue(analysis: analysis, driveLink: link)
                     queuedNames.append(analysis.name)
                 } else if let itemID = GoogleDriveLinkParser.itemID(from: link) {
                     let resourceKey = GoogleDriveLinkParser.resourceKey(from: link)
                     guard let result = try? await downloadService.analyzeLink(itemID: itemID, resourceKey: resourceKey),
-                          case .success(let analysis) = result,
-                          !queue.contains(where: { $0.itemID == analysis.itemID }),
+                          case .success(let analysis) = result else { unusable += 1; continue }
+                    guard !queue.contains(where: { $0.itemID == analysis.itemID }),
                           !hasCompletedDownloadPreviously(itemID: analysis.itemID) else { continue }
                     enqueue(analysis: analysis, driveLink: link)
                     queuedNames.append(analysis.name)
+                } else {
+                    unusable += 1
                 }
+            }
+
+            if queuedNames.isEmpty, unusable > 0 {
+                NotificationService.notify(
+                    title: tr("Couldn't use the link \(sourceLabel)", "ใช้ลิงก์\(sourceLabel)ไม่ได้"),
+                    body: tr(
+                        "It may need a Google sign-in, or not be a link DropDrive can download.",
+                        "อาจต้องลงชื่อเข้า Google หรือไม่ใช่ลิงก์ที่ DropDrive ดาวน์โหลดได้"
+                    )
+                )
+                return
             }
 
             guard !queuedNames.isEmpty else { return }
@@ -743,7 +765,22 @@ final class DropDriveViewModel {
     }
 
     private func finishActiveItem(_ id: UUID, status: QueueItem.Status, resultURL: URL?, errorMessage: String?) {
-        guard let index = queue.firstIndex(where: { $0.id == id }) else { return }
+        guard let index = queue.firstIndex(where: { $0.id == id }) else {
+            // The row is gone — removed, or dropped by something rewriting the
+            // queue while this was in flight. There is nothing to record, but
+            // the active slot still has to be released: leaving it set is what
+            // made the app believe a download was running forever, which hides
+            // Download All, makes Pause/Resume no-ops, and holds the menu bar
+            // icon on a progress ring that can never finish.
+            if activeQueueItemID == id {
+                activeQueueItemID = nil
+                activeProgress = nil
+                isPausingActiveItem = false
+                autoRetryAttempts[id] = nil
+                processQueueIfNeeded()
+            }
+            return
+        }
         queue[index].status = status
         queue[index].resultURL = resultURL
         queue[index].errorMessage = errorMessage
@@ -778,7 +815,11 @@ final class DropDriveViewModel {
                 sizeBytes: item.analysis.totalBytes
             ))
         case .failed:
-            ResumeEnvelopeStore.clear(for: item.id)
+            // The resume data is deliberately kept: a failure is exactly when
+            // it earns its keep, and Retry reuses the same item id, so the next
+            // attempt continues from where the connection died instead of
+            // starting the file over. It is cleared on success, on cancel, and
+            // when the item is removed.
             DownloadHistoryStore.shared.record(DownloadHistoryItem(
                 name: item.displayName, date: .now, status: .failed, driveLink: item.driveLink
             ))
@@ -943,12 +984,21 @@ final class DropDriveViewModel {
     /// `.ready` — a restored queue of paused items could not be started at all.
     /// Resume data is keyed by the item's id and is untouched by this, so each
     /// one still continues from where it stopped rather than restarting.
+    /// Merged into the live queue, never assigned over it. The prompt this
+    /// answers is raised the first time the window is opened, not at launch, and
+    /// a download can already be running by then: a link from the phone inbox or
+    /// the right-click Service starts one without the window ever being opened.
+    /// Replacing the array dropped that item while `activeQueueItemID` still
+    /// pointed at it, and when it finished `finishActiveItem` found no matching
+    /// row and returned before clearing the active state — leaving the app
+    /// permanently "downloading", with no control able to start anything else.
     func restoreSavedQueue() {
         guard var saved = pendingRestoreQueue else { return }
         for index in saved.indices where saved[index].status == .downloading || saved[index].status == .paused {
             saved[index].status = .ready
         }
-        queue = saved
+        let liveIDs = Set(queue.map(\.id))
+        queue.append(contentsOf: saved.filter { !liveIDs.contains($0.id) })
         pendingRestoreQueue = nil
         QueueStore.save(queue)
     }

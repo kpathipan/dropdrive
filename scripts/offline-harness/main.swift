@@ -24,7 +24,11 @@ tree["root"] = Node(id: "root", children: rootKids, files: 1)
 // A shortcut cycle: the last leaf claims the root as a child.
 tree["b3_2"] = Node(id: "b3_2", children: ["root"], files: 5)
 
-let expectedFiles = 1 + 4 * 2 + 12 * 5
+// Three files sharing one name inside the root folder. Declared before it is
+// used: top level runs in order, and reading it above its own line is a
+// use-before-initialisation that segfaults rather than failing to compile.
+let duplicateNameIDs = ["dup_c", "dup_a", "dup_b"]
+let expectedFiles = 1 + 4 * 2 + 12 * 5 + duplicateNameIDs.count
 let fileSize = 1000
 let expectedBytes = Int64(expectedFiles * fileSize)
 
@@ -122,6 +126,16 @@ final class DriveStub: URLProtocol, @unchecked Sendable {
                     files.append(["id": "\(folderID)_f\(f)", "name": "\(folderID)_f\(f).jpg",
                                   "mimeType": "image/jpeg", "size": "\(fileSize)"])
                 }
+                // Drive identifies files by id, so one folder really can hold
+                // several files with identical names. Only the root carries
+                // them, to keep the counts elsewhere unchanged.
+                if folderID == "root" {
+                    for (index, id) in duplicateNameIDs.enumerated() {
+                        files.append(["id": id, "name": "invoice.pdf",
+                                      "mimeType": "application/pdf", "size": "\(fileSize)"])
+                        _ = index
+                    }
+                }
                 body = ["files": files]
             } else {
                 counter.hit("metadata")
@@ -187,7 +201,8 @@ guard case .success(let analysis) = result else {
 }
 check("fileCount", analysis.fileCount ?? -1, expectedFiles)
 check("totalBytes", analysis.totalBytes ?? -1, expectedBytes)
-check("images in breakdown", analysis.categoryBreakdown?.images ?? -1, expectedFiles)
+check("images in breakdown", analysis.categoryBreakdown?.images ?? -1, expectedFiles - duplicateNameIDs.count)
+check("documents in breakdown", analysis.categoryBreakdown?.documents ?? -1, duplicateNameIDs.count)
 check("folder listings", counter.count("list"), 17)
 let sequentialFloor = 18 * 0.12
 pass("parallel scan", elapsed < sequentialFloor * 0.6,
@@ -237,6 +252,9 @@ if let walker = FileManager.default.enumerator(at: folderURL, includingPropertie
     for case let url as URL in walker {
         guard (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true else { continue }
         downloaded += 1
+        // The same-name files are checked on their own below: their id can't be
+        // recovered from a filename they had to be renamed out of.
+        guard !url.lastPathComponent.hasPrefix("invoice") else { continue }
         let id = url.deletingPathExtension().lastPathComponent
         let onDisk = try Data(contentsOf: url)
         if onDisk != contents(for: id, size: fileSize) { corrupt.append(url.lastPathComponent) }
@@ -249,6 +267,26 @@ if let sweep = FileManager.default.enumerator(at: folderURL, includingProperties
     for case let url as URL in sweep where url.pathExtension == "dddownload" { leftovers += 1 }
 }
 check("no .dddownload left behind", leftovers, 0)
+
+// Drive lets one folder hold several files with the same name; downloaded
+// as-is they all take the same path and silently overwrite each other.
+let sameName = ((try? FileManager.default.contentsOfDirectory(at: folderURL, includingPropertiesForKeys: nil))  ?? [])
+    .filter { $0.lastPathComponent.hasPrefix("invoice") }
+    .sorted { $0.lastPathComponent < $1.lastPathComponent }
+check("every same-named file kept", sameName.count, duplicateNameIDs.count)
+// The lowest file id keeps the unsuffixed name — that is what makes the
+// assignment reproducible on a resume, and it is not the order Drive listed
+// them in (the stub lists dup_c first).
+let plainName = sameName.first { $0.lastPathComponent == "invoice.pdf" }
+pass("the plain name went to the lowest file id",
+     plainName.flatMap { try? Data(contentsOf: $0) } == contents(for: duplicateNameIDs.sorted()[0], size: fileSize),
+     "expected \(duplicateNameIDs.sorted()[0])'s bytes in invoice.pdf")
+let sameNameBytes = Set(sameName.compactMap { try? Data(contentsOf: $0) })
+check("each holds its own file's bytes, none overwritten", sameNameBytes.count, duplicateNameIDs.count)
+// Suffixes are assigned in file-id order so a resume finds the same names.
+check("suffixes assigned deterministically by id",
+      sameName.map(\.lastPathComponent).joined(separator: ","),
+      "invoice (2).pdf,invoice (3).pdf,invoice.pdf")
 
 // MARK: - 3. Resume: an interrupted folder only re-fetches what's missing
 //

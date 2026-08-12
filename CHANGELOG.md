@@ -8,6 +8,39 @@ and this project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- **A dropped connection was treated as though you had pressed Cancel.**
+  Resume data comes back attached to network failures too, not only to
+  cancellations, and the engine read its presence alone as "the user
+  stopped this". A wifi blip therefore marked the download cancelled,
+  threw away the resume data it had just saved, and deleted the
+  part-downloaded folder as unwanted — after 38 GB of a 40 GB folder,
+  all of it. The automatic retry never ran, because a cancellation is
+  not something to retry. Network failures are now told apart from
+  cancellations: the partial data stays, the retry runs, and if it
+  finally gives up the resume data is kept so Retry continues instead of
+  starting over.
+- **Restoring the previous session's queue could wedge the app.** The
+  restore prompt appears the first time you open the window, and by then
+  a link from your phone or the right-click menu may already be
+  downloading. Restoring replaced the queue outright, dropping that
+  download while the app still believed it was running — after which
+  Download All never appeared, Pause and Resume only toggled each other,
+  and the menu bar icon span forever. The saved queue is merged in now,
+  and a download whose row disappears releases the app either way.
+- **Files sharing one name inside a Drive folder overwrote each other.**
+  Drive identifies files by id, so one folder can hold three files
+  called "invoice.pdf". All three were written to the same path: you got
+  one file, the count said three, and nothing reported a problem. Each
+  now gets its own name, numbered in a fixed order so a resumed folder
+  still recognises what it already has.
+- **Sharing a link with a resource key from the Share menu failed.** The
+  link was encoded in a way that left its `&` intact, so everything
+  after the first one was parsed as a separate parameter and dropped —
+  taking `resourcekey` with it, which Drive answers with a 404.
+- **A link sent from your phone could vanish without a word.** The inbox
+  deletes each file as it consumes it, so when the link could not be
+  read — the Mac offline, or a private file while signed out — nothing
+  was left and nothing was said. It now tells you it could not use it.
 - **Pressing Return on a confirm card threw away the choices made on
   it.** The paste box answered Return by queueing the item straight
   away, and it can't see the card's own state — an MP3 choice, a trim,

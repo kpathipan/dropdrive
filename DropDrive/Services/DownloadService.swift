@@ -79,11 +79,21 @@ enum DriveDownloadError: LocalizedError {
     }
 }
 
-/// Thrown instead of a bare CancellationError when a download is interrupted (user
-/// cancel/pause, or a network drop) with resume data available, so the caller can
-/// persist it before the cancellation propagates upward as normal.
+/// Thrown when a download stops early with resume data worth keeping, so the
+/// caller can persist it before deciding what the stop actually meant.
+///
+/// `cause` is what separates the two, and the separation matters: a stop the
+/// user asked for is a cancellation, while a stop the network caused is a
+/// failure that should retry. URLSession hands back resume data for both — it
+/// attaches it to any error a range-supporting server allows resuming from, and
+/// Drive supports ranges — so resume data alone cannot tell them apart. Reading
+/// it as "cancelled" meant a dropped connection was recorded as though the user
+/// had pressed Cancel: the resume data was cleared again, a partly-downloaded
+/// folder was deleted as unwanted, and the auto-retry never ran.
 private struct DownloadInterruption: Error {
     let resumeData: Data?
+    /// Nil for a real cancellation or pause; the network error otherwise.
+    let cause: Error?
 }
 
 /// Either an OAuth bearer token (private, user-authorized access) or a project API key
@@ -514,10 +524,13 @@ private final class DownloadTaskCoordinator: NSObject, URLSessionDownloadDelegat
         let nsError = error as NSError
         let resumeData = nsError.userInfo[NSURLSessionDownloadTaskResumeData] as? Data
 
-        if resumeData != nil {
-            complete(.failure(DownloadInterruption(resumeData: resumeData)))
-        } else if nsError.code == NSURLErrorCancelled {
-            complete(.failure(DownloadInterruption(resumeData: nil)))
+        if nsError.code == NSURLErrorCancelled {
+            complete(.failure(DownloadInterruption(resumeData: resumeData, cause: nil)))
+        } else if resumeData != nil {
+            // A network failure the server will let us pick back up: keep the
+            // resume data, but report it as the failure it is so the retry
+            // logic — not the cancellation path — handles it.
+            complete(.failure(DownloadInterruption(resumeData: resumeData, cause: error)))
         } else {
             complete(.failure(error))
         }
@@ -858,7 +871,7 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
         for item in plan {
             let size = item.file.size ?? 0
             totalBytes += size
-            let path = item.destinationFolderURL.appendingPathComponent(Self.fileName(for: item.file)).path
+            let path = item.destinationFolderURL.appendingPathComponent(item.localName).path
             if FileManager.default.fileExists(atPath: path) {
                 // already downloaded in a prior attempt at this same item — resume, don't redo it
                 completedFiles += 1
@@ -887,7 +900,8 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
                         into: item.destinationFolderURL,
                         credential: credential,
                         resourceKeys: resourceKeys,
-                        resumeID: request.resumeID
+                        resumeID: request.resumeID,
+                        overrideBaseName: item.localName
                     ) { chunkSize in
                         if let update = tracker.addingBytes(chunkSize) {
                             progress(update)
@@ -932,6 +946,55 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
     private struct PlanItem: Sendable {
         let file: DriveFile
         let destinationFolderURL: URL
+        /// The name this file will actually be written under, decided once for
+        /// the whole plan so that the "is it already on disk?" check and the
+        /// download itself can never disagree about it.
+        var localName: String = ""
+    }
+
+    /// Gives every planned file a name unique within its own folder.
+    ///
+    /// Drive identifies files by id, not by name, so one folder can genuinely
+    /// hold several files called "invoice.pdf". Downloaded as-is they all landed
+    /// on the same path and silently overwrote each other — the folder finished
+    /// "successfully" with files missing and a count that said otherwise.
+    ///
+    /// Suffixes are assigned in file-id order rather than in the order Drive
+    /// happened to list them, because the result has to be identical on a later
+    /// resume: the plan's existence check is what decides a file is already
+    /// done, and names that shuffled between runs would re-download some files
+    /// and skip others.
+    private static func withUniqueLocalNames(_ items: [PlanItem]) -> [PlanItem] {
+        var takenPerFolder: [String: Set<String>] = [:]
+        var namesByFileID: [String: String] = [:]
+
+        for item in items.sorted(by: { $0.file.id < $1.file.id }) {
+            let folder = item.destinationFolderURL.path
+            var taken = takenPerFolder[folder] ?? []
+            var candidate = fileName(for: item.file)
+
+            if taken.contains(candidate.lowercased()) {
+                let fileExtension = (candidate as NSString).pathExtension
+                let base = fileExtension.isEmpty ? candidate : String(candidate.dropLast(fileExtension.count + 1))
+                var attempt = 2
+                repeat {
+                    candidate = fileExtension.isEmpty ? "\(base) (\(attempt))" : "\(base) (\(attempt)).\(fileExtension)"
+                    attempt += 1
+                } while taken.contains(candidate.lowercased())
+            }
+
+            taken.insert(candidate.lowercased())
+            takenPerFolder[folder] = taken
+            namesByFileID[item.file.id] = candidate
+        }
+
+        return items.map { item in
+            PlanItem(
+                file: item.file,
+                destinationFolderURL: item.destinationFolderURL,
+                localName: namesByFileID[item.file.id] ?? fileName(for: item.file)
+            )
+        }
     }
 
     /// Breadth-first for the same reason `estimateFolderContents` is: sibling
@@ -970,7 +1033,7 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
             frontier = next
         }
 
-        return items
+        return Self.withUniqueLocalNames(items)
     }
 
     private func fetchMetadata(fileID: String, credential: DriveCredential, resourceKeys: [String: String]) async throws -> DriveFile {
@@ -1152,6 +1215,11 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
             } else {
                 ResumeEnvelopeStore.clear(for: resumeID)
             }
+            // The network stopped this, not the user: hand the real error up so
+            // it retries and is reported as a failure. Deliberately not deleting
+            // the staged bytes here — they are what the saved resume data
+            // continues from.
+            if let cause = interruption.cause { throw cause }
             throw CancellationError()
         } catch {
             try? FileManager.default.removeItem(at: destinationURL)

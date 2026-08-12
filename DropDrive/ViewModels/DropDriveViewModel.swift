@@ -435,7 +435,18 @@ final class DropDriveViewModel {
     /// session's in-memory queue.
     private func hasCompletedDownloadPreviously(itemID: String) -> Bool {
         DownloadHistoryStore.shared.items.contains { historyItem in
-            historyItem.status == .completed && GoogleDriveLinkParser.itemID(from: historyItem.driveLink) == itemID
+            guard historyItem.status == .completed else { return false }
+            if let driveID = GoogleDriveLinkParser.itemID(from: historyItem.driveLink) {
+                return driveID == itemID
+            }
+            // A video link has no Drive ID at all, so reading history through the
+            // Drive parser alone answered "never downloaded" for every video ever
+            // downloaded: the duplicate prompt never appeared for one, and the
+            // phone/Services dedupe silently passed them straight through — which
+            // is precisely where a video is most likely to arrive twice. Their
+            // analysis identifies them by the link itself, so history has to be
+            // read the same way.
+            return "video:\(historyItem.driveLink)" == itemID
         }
     }
 

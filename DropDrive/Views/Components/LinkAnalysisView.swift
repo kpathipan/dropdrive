@@ -283,7 +283,12 @@ struct AnalyzedPromptView: View {
                 // Return confirms the card, carrying the format, trim and name
                 // chosen on it. The paste box deliberately no longer answers
                 // Return while this card is up: it can't see any of that.
-                .keyboardShortcut(.defaultAction)
+                //
+                // Except while the name is being typed, where Return means
+                // "done with this field" — the field's own onSubmit and the
+                // default button would otherwise both fire on one keypress and
+                // the download would start before the folder could be checked.
+                .keyboardShortcut(isEditingName ? nil : .defaultAction)
             }
         }
         .padding(14)
@@ -292,8 +297,7 @@ struct AnalyzedPromptView: View {
         // The field follows the analysis until it is typed in, and stops the
         // moment it is: the background enrichment replaces `analysis` ~12s into
         // a video card, and re-seeding unconditionally there would wipe a name
-        // already typed. `seedName` writes to `name`, which trips the field's
-        // own onChange, so the flag is put back afterwards.
+        // already typed.
         .task(id: analysis.itemID) { seedNameIfUntouched() }
         .onChange(of: analysis.name) { _, _ in seedNameIfUntouched() }
     }
@@ -308,11 +312,22 @@ struct AnalyzedPromptView: View {
     private var nameRow: some View {
         if isEditingName {
             HStack(spacing: 4) {
-                TextField(seedName, text: $name)
+                // Typing goes through this setter; the seeding below writes
+                // `name` directly and so can't mark the field as edited. An
+                // .onChange here could not tell the two apart — it fires on the
+                // next view update rather than inline, so a flag cleared right
+                // after seeding is set back to true by the change that seeding
+                // itself caused.
+                TextField(seedName, text: Binding(
+                    get: { name },
+                    set: { typed in
+                        name = typed
+                        hasEditedName = true
+                    }
+                ))
                     .textFieldStyle(.plain)
                     .font(.dd(12.5, .medium))
                     .focused($isNameFocused)
-                    .onChange(of: name) { _, _ in hasEditedName = true }
                     .onSubmit { isEditingName = false }
                     .accessibilityLabel("File name")
 
@@ -358,7 +373,6 @@ struct AnalyzedPromptView: View {
     private func seedNameIfUntouched() {
         guard !hasEditedName else { return }
         name = seedName
-        hasEditedName = false
     }
 
     /// Extension of the file as it exists on Drive. Folders have none, and a

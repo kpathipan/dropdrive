@@ -21,6 +21,14 @@ and this project follows [Semantic Versioning](https://semver.org/).
   "Download All", because nothing was waiting. Paused items come back as
   ready, still continuing from where they stopped, and Resume works
   whenever anything is paused.
+- **A video you had already downloaded was never recognised as one.**
+  The "you've downloaded this before" check read every history entry
+  through the Drive link parser, which returns nothing for a TikTok or
+  YouTube link — so no video ever matched. Pasting one a second time
+  skipped the "Download again?" prompt entirely, and the duplicate guard
+  on links arriving from your phone or the right-click menu passed them
+  straight through, which is exactly where the same clip is most likely
+  to be sent twice. Video links are matched on the link itself now.
 - **A video could be saved under the title it had 12 seconds ago.** The
   card appears on a fast title lookup and is refreshed with the one
   yt-dlp resolves; where the two differed, the refresh looked like a

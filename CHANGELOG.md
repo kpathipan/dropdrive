@@ -8,6 +8,12 @@ and this project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- **A TikTok link shared from your phone (or the right-click menu)
+  failed when TikTok was blocking.** The way around that block was only
+  built into the download step, and these two paths read the link
+  first — so they gave up before the download ever got a chance. Now
+  both take the same detour, and the clip keeps its real caption instead
+  of being named "TikTok Embed".
 - **A dropped connection was treated as though you had pressed Cancel.**
   Resume data comes back attached to network failures too, not only to
   cancellations, and the engine read its presence alone as "the user

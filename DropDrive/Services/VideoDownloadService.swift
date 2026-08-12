@@ -89,14 +89,30 @@ struct VideoDownloadService {
     // MARK: - Full analysis (yt-dlp)
 
     func analyze(_ link: String) async throws -> DriveLinkAnalysis {
-        let output = try await Self.run(
-            arguments: ["-J", "--no-warnings", "--no-playlist", link],
-            onProgressLine: nil
-        )
+        // The same TikTok challenge the download path works around can block
+        // this read too, and this one runs first — so the embed fallback has to
+        // live here as well or the link never gets far enough to download.
+        //
+        // It matters most where there is no confirmation card to fall back on:
+        // a link shared from the phone or sent through the right-click Service
+        // is analysed here and nowhere else, and a failure there simply dropped
+        // it. Pasting a link into the window survived without this only because
+        // the card is built from the fast oEmbed lookup instead.
+        var output: String
+        var usedEmbed = false
+        do {
+            output = try await Self.analyzeOutput(for: link)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            guard let embedURL = await Self.tikTokEmbedURL(for: link) else { throw error }
+            output = try await Self.analyzeOutput(for: embedURL.absoluteString, isEmbed: true)
+            usedEmbed = true
+        }
 
         guard let data = output.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let title = json["title"] as? String else {
+              let extractedTitle = json["title"] as? String else {
             throw VideoError(message: tr(
                 "Couldn't read this video's details.",
                 "อ่านข้อมูลวิดีโอนี้ไม่ได้"
@@ -106,7 +122,21 @@ struct VideoDownloadService {
         // Keep the extracted info so the download doesn't have to redo it —
         // resolving formats is the slow half of a video download (measured
         // ~2x faster end to end when reused).
-        try? data.write(to: Self.infoCacheURL(for: link))
+        //
+        // Not for an embed-page read, though. Handing that json to the download
+        // would name the file from its "TikTok Embed" title, and skipping the
+        // cache costs only the extraction it would have saved: the download
+        // then runs its own attempt and falls back to the embed page itself,
+        // where it already restores the title the user confirmed.
+        if !usedEmbed {
+            try? data.write(to: Self.infoCacheURL(for: link))
+        }
+
+        // The embed page's own extractor titles every post "TikTok Embed",
+        // which would then be the name on the card and on the file. oEmbed
+        // still answers for these links, so prefer the real caption and keep
+        // the embed title only if that fails too.
+        let title = await Self.preferredTitle(rawTitle: extractedTitle, link: link)
 
         let size = (json["filesize_approx"] as? Int64) ?? (json["filesize"] as? Int64)
         let uploader = (json["uploader"] as? String) ?? (json["channel"] as? String)
@@ -308,6 +338,28 @@ struct VideoDownloadService {
             return nil
         }
         return url
+    }
+
+    /// One `-J` metadata read. `--playlist-items 1` is only for the embed page:
+    /// its markup lists the same video twice for the player, which yt-dlp reads
+    /// as a two-item playlist, and `--no-playlist` does not apply to it.
+    private static func analyzeOutput(for target: String, isEmbed: Bool = false) async throws -> String {
+        var arguments = ["-J", "--no-warnings"]
+        arguments += isEmbed ? ["--playlist-items", "1"] : ["--no-playlist"]
+        return try await run(arguments: arguments + [target], onProgressLine: nil)
+    }
+
+    /// The caption a person would recognise, for a post whose extracted title is
+    /// the embed page's placeholder.
+    private static func preferredTitle(rawTitle: String, link: String) async -> String {
+        guard rawTitle.localizedCaseInsensitiveContains("tiktok embed") else { return rawTitle }
+        guard let endpoint = oEmbedEndpoint(for: link),
+              let (data, response) = try? await URLSession.shared.data(from: endpoint),
+              let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let title = json["title"] as? String, !title.isEmpty
+        else { return rawTitle }
+        return title
     }
 
     /// TikTok exposes every public post through an embed page as well as its

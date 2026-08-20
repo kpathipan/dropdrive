@@ -3,6 +3,7 @@
 #   - yt-dlp   (official standalone macOS build, universal2)
 #   - ffmpeg   (static builds per-arch from martin-riedl.de, lipo'd universal;
 #               needed by yt-dlp to merge YouTube's separate video+audio tracks)
+#   - deno     (the JavaScript runtime yt-dlp needs for YouTube challenges)
 # Output goes to DropDrive/Tools/, which the Xcode project bundles as resources.
 # Binaries are gitignored — run this once per checkout (and re-run to update).
 set -euo pipefail
@@ -29,14 +30,24 @@ unzip -q -o "$SCRATCH/ffmpeg-arm64.zip" -d "$SCRATCH/arm64"
 cp "$SCRATCH/arm64/ffmpeg" "$TOOLS_DIR/ffmpeg"
 chmod +x "$TOOLS_DIR/ffmpeg"
 
+# YouTube's current challenge flow requires yt-dlp to run the bundled EJS
+# solver with an external JavaScript runtime. Deno is the runtime yt-dlp
+# recommends; ship it so a normal Finder launch does not need Homebrew/Node.
+echo "==> deno arm64"
+curl -fL --progress-bar -o "$SCRATCH/deno-arm64.zip" \
+  "https://github.com/denoland/deno/releases/latest/download/deno-aarch64-apple-darwin.zip"
+unzip -q -o "$SCRATCH/deno-arm64.zip" -d "$SCRATCH/deno-arm64"
+cp "$SCRATCH/deno-arm64/deno" "$TOOLS_DIR/deno"
+chmod +x "$TOOLS_DIR/deno"
+
 echo "==> Verifying"
 
-# Both tools have to cover the architectures the app ships for. They're fetched
+# Every tool has to cover the architectures the app ships for. They're fetched
 # from upstream, not built here, so this is where a silent change would land —
 # and a tool that can't run is a broken feature rather than a broken launch,
 # which is harder to notice.
 REQUIRED_ARCH="arm64"
-for TOOL in yt-dlp ffmpeg; do
+for TOOL in yt-dlp ffmpeg deno; do
   TOOL_ARCHS=$(lipo -archs "$TOOLS_DIR/$TOOL" 2>/dev/null || echo "unreadable")
   echo "    $TOOL: $TOOL_ARCHS"
   case " $TOOL_ARCHS " in
@@ -50,5 +61,6 @@ done
 
 "$TOOLS_DIR/yt-dlp" --version
 "$TOOLS_DIR/ffmpeg" -version | head -1
+"$TOOLS_DIR/deno" --version | head -1
 ls -lh "$TOOLS_DIR"
 echo "==> Done"

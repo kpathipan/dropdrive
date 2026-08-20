@@ -32,6 +32,14 @@ struct VideoDownloadService {
         Bundle.main.url(forResource: "yt-dlp", withExtension: nil)
     }
 
+    /// YouTube now presents JavaScript challenges before it releases many
+    /// formats. yt-dlp delegates those to Deno; keeping it inside the app
+    /// bundle means a Finder-launched build does not depend on Homebrew, Node,
+    /// or a user's shell PATH.
+    private static var denoURL: URL? {
+        Bundle.main.url(forResource: "deno", withExtension: nil)
+    }
+
     /// yt-dlp takes the DIRECTORY that contains ffmpeg, not the binary itself.
     private static var ffmpegDirectory: String? {
         Bundle.main.url(forResource: "ffmpeg", withExtension: nil)?
@@ -184,11 +192,18 @@ struct VideoDownloadService {
 
         var arguments = [
             "--no-warnings", "--no-playlist", "--newline",
+            // Some networks advertise IPv6 but never complete the TLS route to
+            // the video CDN. yt-dlp then waits/retries on that dead route while
+            // URLSession (used by the rest of the app) succeeds over IPv4.
+            "--force-ipv4", "--socket-timeout", "30",
             "-P", destination.path,
             "-o", outputTemplate,
             "--no-simulate", "--print", "after_move:filepath",
             "--progress"
         ]
+        if let denoURL = Self.denoURL {
+            arguments += ["--js-runtimes", "deno:\(denoURL.path)"]
+        }
         if let clipSection {
             // "start-end" in seconds; keyframe cuts keep the trim accurate.
             arguments += ["--download-sections", "*\(clipSection)", "--force-keyframes-at-cuts"]
@@ -344,7 +359,10 @@ struct VideoDownloadService {
     /// its markup lists the same video twice for the player, which yt-dlp reads
     /// as a two-item playlist, and `--no-playlist` does not apply to it.
     private static func analyzeOutput(for target: String, isEmbed: Bool = false) async throws -> String {
-        var arguments = ["-J", "--no-warnings"]
+        var arguments = ["-J", "--no-warnings", "--force-ipv4", "--socket-timeout", "30"]
+        if let denoURL = Self.denoURL {
+            arguments += ["--js-runtimes", "deno:\(denoURL.path)"]
+        }
         arguments += isEmbed ? ["--playlist-items", "1"] : ["--no-playlist"]
         return try await run(arguments: arguments + [target], onProgressLine: nil)
     }

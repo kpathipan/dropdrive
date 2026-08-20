@@ -5,7 +5,7 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [6.15.3] - Video downloads back online
 
 ### Changed
 - **The update download now says how fast it is going and how long is
@@ -15,6 +15,12 @@ and this project follows [Semantic Versioning](https://semver.org/).
   thing to leave ambiguous about the one download that replaces the app.
 
 ### Fixed
+- **YouTube video and MP3 downloads work again.** DropDrive now bundles the
+  Deno JavaScript runtime required by current versions of yt-dlp to solve
+  YouTube's playback challenges. It runs automatically, so it does not rely
+  on Homebrew, Node, or a Terminal configuration.
+- **Failed video connections no longer wait indefinitely.** The video engine
+  now gives an unresponsive video host 30 seconds before returning its error.
 - **Scratch files from cancelled update downloads were never cleaned
   up.** The system writes them next to DropDrive's own temporary files
   and only removes them when a download completes, so every failed check

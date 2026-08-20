@@ -104,7 +104,7 @@ if [ "$SIGN_ID" != "-" ]; then
   fi
 fi
 
-for TOOL in "$APP_PATH/Contents/Resources/ffmpeg" "$APP_PATH/Contents/Resources/yt-dlp"; do
+for TOOL in "$APP_PATH/Contents/Resources/ffmpeg" "$APP_PATH/Contents/Resources/yt-dlp" "$APP_PATH/Contents/Resources/deno"; do
   [ -f "$TOOL" ] && codesign --force --sign "$SIGN_ID" "${TIMESTAMP_FLAG[@]}" "$TOOL"
 done
 
@@ -152,7 +152,8 @@ echo "==> Verifying every shipped binary covers $TARGET_ARCHS"
 for REQUIRED in $TARGET_ARCHS; do
   for BINARY in "$APP_PATH/Contents/MacOS/DropDrive" \
                 "$APP_PATH/Contents/Resources/yt-dlp" \
-                "$APP_PATH/Contents/Resources/ffmpeg"; do
+                "$APP_PATH/Contents/Resources/ffmpeg" \
+                "$APP_PATH/Contents/Resources/deno"; do
     [ -f "$BINARY" ] || continue
     BINARY_ARCHS=$(lipo -archs "$BINARY" 2>/dev/null || echo "unreadable")
     case " $BINARY_ARCHS " in
@@ -165,7 +166,7 @@ for REQUIRED in $TARGET_ARCHS; do
     esac
   done
 done
-for BINARY in "$APP_PATH/Contents/MacOS/DropDrive" "$APP_PATH/Contents/Resources/yt-dlp" "$APP_PATH/Contents/Resources/ffmpeg"; do
+for BINARY in "$APP_PATH/Contents/MacOS/DropDrive" "$APP_PATH/Contents/Resources/yt-dlp" "$APP_PATH/Contents/Resources/ffmpeg" "$APP_PATH/Contents/Resources/deno"; do
   [ -f "$BINARY" ] && printf "    %-12s %s\n" "$(basename "$BINARY")" "$(lipo -archs "$BINARY" 2>/dev/null)"
 done
 

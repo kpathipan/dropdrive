@@ -5,6 +5,18 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.15.4] - Clearer download results
+
+### Fixed
+- **Completed multi-file downloads now look like folders.** A folder result was
+  mistakenly handed to the file thumbnail generator, which showed a blank
+  document icon and made a successful download look broken or extensionless.
+
+### Removed
+- **Drag-and-drop links from the empty queue.** The unused drop zone and its
+  associated drag handling have been removed; paste links into the link field
+  instead.
+
 ## [6.15.3] - Video downloads back online
 
 ### Changed

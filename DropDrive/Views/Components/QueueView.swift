@@ -458,7 +458,13 @@ private struct QueueRow: View {
     @ViewBuilder
     private var thumbnail: some View {
         Group {
-            if let poster = item.analysis.thumbnailURL, let url = URL(string: poster) {
+            // A completed folder has a URL too, but asking Quick Look for its
+            // "file" thumbnail falls back to the generic blank-document icon.
+            // Folders are the download result here, so keep their visual
+            // identity explicit before considering file posters/thumbnails.
+            if item.analysis.type == .folder {
+                placeholder
+            } else if let poster = item.analysis.thumbnailURL, let url = URL(string: poster) {
                 AsyncImage(url: url) { phase in
                     if case .success(let image) = phase {
                         image.resizable().aspectRatio(contentMode: .fill)

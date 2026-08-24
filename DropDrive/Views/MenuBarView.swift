@@ -1,5 +1,4 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 /// The whole app UI, shown as the menu bar extra's window. A narrow icon rail
 /// on the left switches the detail pane between the download queue, recent
@@ -35,7 +34,6 @@ struct MenuBarView: View {
     @State private var viewModel = DropDriveViewModel.shared
     @State private var historyStore = DownloadHistoryStore.shared
     @State private var selectedPane: Pane = .queue
-    @State private var isDropTargeted = false
     @State private var historySearchText = ""
     /// Live height of the active pane's content, reported by ContentHeightKey.
     /// The window hugs this (capped), so it grows and shrinks with the queue.
@@ -107,17 +105,6 @@ struct MenuBarView: View {
         .onPreferenceChange(ContentHeightKey.self) { height in
             guard height > 0 else { return }
             withAnimation(Self.springMotion) { measuredHeight = height }
-        }
-        .overlay {
-            if isDropTargeted {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(Color.accentColor, lineWidth: 3)
-                    .padding(6)
-                    .allowsHitTesting(false)
-            }
-        }
-        .onDrop(of: [.url, .fileURL, .plainText], isTargeted: $isDropTargeted) { providers in
-            handleDrop(providers: providers)
         }
         .task {
             viewModel.restoreLogin()
@@ -343,8 +330,6 @@ struct MenuBarView: View {
                             )
                             .transition(.opacity.combined(with: .move(edge: .top)))
                         } else if viewModel.linkAnalysisState == .idle {
-                            dropZone
-
                             // Resolved once per redraw and handed down, rather
                             // than recomputed for the emptiness check and again
                             // for the rows.
@@ -373,40 +358,6 @@ struct MenuBarView: View {
         }
         .animation(Self.springMotion, value: viewModel.linkAnalysisState)
         .animation(Self.springMotion, value: viewModel.queue)
-    }
-
-    /// The empty queue, which used to be simply nothing. The window already
-    /// accepts a dragged link anywhere on it, but nothing on screen ever said
-    /// so — this both fills the space and is the only place that ability is
-    /// mentioned. It lights up while a link is over the window.
-    private var dropZone: some View {
-        VStack(spacing: 8) {
-            Image(systemName: isDropTargeted ? "arrow.down.circle.fill" : "link.badge.plus")
-                .font(.dd(22))
-                .foregroundStyle(isDropTargeted ? AnyShapeStyle(DDTheme.accent) : AnyShapeStyle(.tertiary))
-
-            Text(isDropTargeted
-                 ? tr("Drop it anywhere", "ปล่อยตรงไหนก็ได้")
-                 : tr("Paste a link above, or drag one here", "วางลิงก์ในช่องด้านบน หรือลากลิงก์มาวางตรงนี้"))
-                .font(.dd(11))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 20)
-        .background {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(isDropTargeted ? DDTheme.accentSoft : Color.clear)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(
-                            isDropTargeted ? DDTheme.accent : DDTheme.border,
-                            style: StrokeStyle(lineWidth: 1, dash: [5, 4])
-                        )
-                }
-        }
-        .animation(.easeOut(duration: 0.15), value: isDropTargeted)
-        .accessibilityElement(children: .combine)
     }
 
     private var headerStatus: String {
@@ -599,57 +550,6 @@ struct MenuBarView: View {
         .scrollContentBackground(.hidden)
     }
 
-    // MARK: - Drop handling
-
-    /// Accepts a dragged Drive link from a browser tab/address bar (`.url`), a dragged
-    /// `.webloc`/URL file from Finder (`.fileURL`), or dragged selected text (`.plainText`).
-    /// Tries each representation in turn and stops at the first one that parses as a
-    /// Drive link — a provider can offer several, and the first one isn't always the
-    /// useful one (e.g. dragging selected text from a page). If none yield a valid
-    /// link, the field is left untouched.
-    private func handleDrop(providers: [NSItemProvider]) -> Bool {
-        guard !viewModel.isSigningIn else { return false }
-
-        let candidateTypes = [UTType.url, UTType.fileURL, UTType.plainText]
-        guard let provider = providers.first(where: { provider in
-            candidateTypes.contains { provider.hasItemConformingToTypeIdentifier($0.identifier) }
-        }) else {
-            return false
-        }
-
-        Task { @MainActor in
-            for type in candidateTypes where provider.hasItemConformingToTypeIdentifier(type.identifier) {
-                if let candidate = await Self.loadedString(from: provider, typeIdentifier: type.identifier),
-                   GoogleDriveLinkParser.itemID(from: candidate) != nil {
-                    selectedPane = .queue
-                    viewModel.driveLink = candidate
-                    return
-                }
-            }
-        }
-        return true
-    }
-
-    private static func loadedString(from provider: NSItemProvider, typeIdentifier: String) async -> String? {
-        await withCheckedContinuation { continuation in
-            provider.loadItem(forTypeIdentifier: typeIdentifier) { item, _ in
-                switch item {
-                case let url as URL:
-                    continuation.resume(returning: url.absoluteString)
-                case let string as String:
-                    continuation.resume(returning: string)
-                case let data as Data:
-                    if typeIdentifier == UTType.url.identifier, let url = URL(dataRepresentation: data, relativeTo: nil) {
-                        continuation.resume(returning: url.absoluteString)
-                    } else {
-                        continuation.resume(returning: String(data: data, encoding: .utf8))
-                    }
-                default:
-                    continuation.resume(returning: nil)
-                }
-            }
-        }
-    }
 }
 
 // MARK: - Content height measurement

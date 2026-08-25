@@ -9,6 +9,11 @@ struct MenuBarView: View {
         case queue
         case recent
         case stats
+        case settings
+
+        /// Persistent bottom navigation. Settings stays a header action so the
+        /// three everyday download destinations remain visually dominant.
+        static let primaryCases: [Pane] = [.queue, .recent, .stats]
 
         var id: String { rawValue }
 
@@ -17,6 +22,7 @@ struct MenuBarView: View {
             case .queue: "arrow.down.circle"
             case .recent: "clock.arrow.circlepath"
             case .stats: "chart.bar"
+            case .settings: "gearshape"
             }
         }
 
@@ -25,6 +31,7 @@ struct MenuBarView: View {
             case .queue: tr("Queue", "คิวดาวน์โหลด")
             case .recent: tr("Recent", "ล่าสุด")
             case .stats: tr("Statistics", "สถิติ")
+            case .settings: tr("Settings", "การตั้งค่า")
             }
         }
     }
@@ -32,6 +39,7 @@ struct MenuBarView: View {
     @State private var viewModel = DropDriveViewModel.shared
     @State private var historyStore = DownloadHistoryStore.shared
     @State private var selectedPane: Pane = .queue
+    @State private var previousPrimaryPane: Pane = .queue
     @State private var historySearchText = ""
     /// Live height of the active pane's content, reported by ContentHeightKey.
     /// The window hugs this (capped), so it grows and shrinks with the queue.
@@ -59,6 +67,8 @@ struct MenuBarView: View {
             // than the metric row; keeping it visible avoids a mystery card
             // that looks clipped in the compact menu-bar window.
             raw = 390
+        case .settings:
+            raw = 500
         }
         return min(max(raw, Self.minWindowHeight), Self.maxWindowHeight)
     }
@@ -200,15 +210,28 @@ struct MenuBarView: View {
                 onSignOut: viewModel.signOut
             )
 
-            Button(action: SettingsWindow.show) {
-                Image(systemName: "gearshape")
+            Button {
+                withAnimation(Self.springMotion) {
+                    if selectedPane == .settings {
+                        selectedPane = previousPrimaryPane
+                    } else {
+                        previousPrimaryPane = selectedPane
+                        selectedPane = .settings
+                    }
+                }
+            } label: {
+                Image(systemName: selectedPane == .settings ? "gearshape.fill" : "gearshape")
                     .font(.dd(13))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(selectedPane == .settings ? DDTheme.accent : Color.secondary)
                     .frame(width: 28, height: 28)
+                    .background(
+                        Circle().fill(selectedPane == .settings ? DDTheme.accentSoft : .clear)
+                    )
             }
             .buttonStyle(.plain)
-            .help(tr("Settings", "การตั้งค่า"))
-            .accessibilityLabel("Settings")
+            .help(selectedPane == .settings ? tr("Close settings", "ปิดการตั้งค่า") : tr("Settings", "การตั้งค่า"))
+            .accessibilityLabel(tr("Settings", "การตั้งค่า"))
+            .accessibilityAddTraits(selectedPane == .settings ? .isSelected : [])
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
@@ -218,7 +241,7 @@ struct MenuBarView: View {
 
     private var bottomTabBar: some View {
         HStack(spacing: 0) {
-            ForEach(Pane.allCases) { pane in
+            ForEach(Pane.primaryCases) { pane in
                 tabButton(pane)
             }
         }
@@ -229,7 +252,10 @@ struct MenuBarView: View {
 
     private func tabButton(_ pane: Pane) -> some View {
         Button {
-            withAnimation(Self.springMotion) { selectedPane = pane }
+            withAnimation(Self.springMotion) {
+                previousPrimaryPane = pane
+                selectedPane = pane
+            }
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: pane.icon)
@@ -278,7 +304,18 @@ struct MenuBarView: View {
             recentPane.transition(.opacity)
         case .stats:
             statsPane.transition(.opacity)
+        case .settings:
+            settingsPane.transition(.opacity)
         }
+    }
+
+    /// Settings is another menu-bar destination, not a second application
+    /// window. The same chrome, size cap, tokens, and bottom navigation remain
+    /// in place so users never leave DropDrive's compact mental model.
+    private var settingsPane: some View {
+        PreferencesView()
+            .padding(.horizontal, 6)
+            .padding(.bottom, 4)
     }
 
     private var queuePane: some View {

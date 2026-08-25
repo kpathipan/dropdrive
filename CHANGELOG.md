@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [6.16.2] - Settings stay in the menu bar
+
+### Fixed
+- **Settings no longer opens a separate app window.** The gear now opens a
+  compact settings pane inside DropDrive's existing menu-bar panel and returns
+  to the previous download pane when pressed again, preserving the app's small,
+  all-in-one menu-bar concept.
+
 ## [6.16.1] - Safer, faster updates
 
 ### Changed

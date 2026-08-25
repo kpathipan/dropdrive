@@ -7,6 +7,34 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [6.16.3] - Reliable links, one compact surface
+
+### Changed
+- **DropDrive stays entirely in the menu bar.** Command-, and reopening the app
+  now reveal the inline Settings pane instead of creating a second window.
+- **External links are analyzed concurrently.** Browser batches, the Share
+  extension, the Services menu, and the phone inbox now share one bounded
+  Google Drive and video pipeline.
+- **Statistics are true lifetime totals.** The visible Recent list remains
+  compact without forgetting older download counts or duplicate identities.
+- **The idle status icon is event-driven.** It no longer wakes the app twice a
+  second while nothing is downloading.
+
+### Fixed
+- **Network volumes that report `0 KB` as an unknown capacity no longer disable
+  Add to Queue.** A real missing destination is still blocked, while unknown
+  free space is checked again during the download.
+- **Phone hand-offs can no longer disappear on a transient failure.** Inputs
+  stay in iCloud Drive for a backoff retry; unsupported inputs move to a
+  recoverable Rejected folder instead of being deleted.
+- **Security-scoped destination access is balanced.** Reopening destination
+  menus no longer acquires the same bookmark scope repeatedly.
+- **Published updates now require Hardened Runtime and strict signature
+  verification** while preserving the existing Team-ID designated requirement
+  and production Keychain namespace across versions.
+- **Swift concurrency and deprecated AppAuth callback warnings were removed,**
+  and small supporting labels are easier to read.
+
 ## [6.16.2] - Settings stay in the menu bar
 
 ### Fixed

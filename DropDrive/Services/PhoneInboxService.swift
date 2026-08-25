@@ -3,7 +3,8 @@ import Observation
 
 /// "Send from phone": an iOS Shortcut saves shared links as small text files
 /// into `iCloud Drive/DropDrive/`; this service watches that folder on the Mac,
-/// queues every link it finds, and deletes the file. Polling (not FSEvents)
+/// queues every link it finds, and consumes the file only after a durable
+/// queue/duplicate result. Polling (not FSEvents)
 /// because iCloud delivers files with odd timing and placeholder states — a
 /// cheap 8-second directory scan is far more dependable.
 @MainActor
@@ -24,6 +25,9 @@ final class PhoneInboxService {
 
     private static let defaultsKey = "phoneInboxEnabled"
     private var timer: Timer?
+    private var isScanning = false
+    private var retryAttempts: [String: Int] = [:]
+    private var retryAfter: [String: Date] = [:]
 
     private init() {
         isEnabled = UserDefaults.standard.object(forKey: Self.defaultsKey) as? Bool ?? true
@@ -53,10 +57,12 @@ final class PhoneInboxService {
     /// read can block on the network, and it was blocking the UI every 8
     /// seconds whether or not anything was ever in there.
     private func scan() {
+        guard !isScanning else { return }
+        isScanning = true
         Task {
             let contents = await Self.inboxContents()
-            guard !contents.isEmpty else { return }
-            consume(contents)
+            await consume(contents)
+            isScanning = false
         }
     }
 
@@ -69,8 +75,10 @@ final class PhoneInboxService {
         }.value
     }
 
-    private func consume(_ contents: [URL]) {
+    private func consume(_ contents: [URL]) async {
         for file in contents {
+            let retryKey = file.standardizedFileURL.path
+            if let date = retryAfter[retryKey], date > .now { continue }
             let ext = file.pathExtension.lowercased()
 
             // iCloud placeholder that hasn't downloaded to this Mac yet — ask
@@ -81,13 +89,61 @@ final class PhoneInboxService {
             }
 
             guard ["txt", "url", "webloc"].contains(ext) else { continue }
-            guard let raw = try? String(contentsOf: file, encoding: .utf8) else { continue }
+            guard let raw = try? String(contentsOf: file, encoding: .utf8) else {
+                scheduleRetry(for: retryKey)
+                continue
+            }
 
             let links = Self.extractLinks(from: raw)
-            // Consume the file first so a crash mid-queue can't loop forever.
-            try? FileManager.default.removeItem(at: file)
-            guard !links.isEmpty else { continue }
-            DropDriveViewModel.shared.receiveExternalLinks(links, sourceLabel: tr("from your phone", "จากมือถือ"))
+            guard !links.isEmpty else {
+                archiveRejected(file)
+                clearRetry(for: retryKey)
+                continue
+            }
+
+            let receipt = await DropDriveViewModel.shared.receiveExternalLinks(
+                links,
+                sourceLabel: tr("from your phone", "จากมือถือ"),
+                notify: retryAttempts[retryKey] == nil
+            )
+            switch receipt.disposition {
+            case .consume:
+                try? FileManager.default.removeItem(at: file)
+                clearRetry(for: retryKey)
+            case .retry:
+                // Keep the original iCloud file. A later scan retries it; any
+                // links already queued in a mixed file are then duplicates.
+                scheduleRetry(for: retryKey)
+            case .archiveRejected:
+                archiveRejected(file)
+                clearRetry(for: retryKey)
+            }
+        }
+    }
+
+    private func scheduleRetry(for key: String) {
+        let attempt = min((retryAttempts[key] ?? 0) + 1, 8)
+        retryAttempts[key] = attempt
+        let delay = min(15 * 60.0, 15.0 * pow(2.0, Double(attempt - 1)))
+        retryAfter[key] = .now.addingTimeInterval(delay)
+    }
+
+    private func clearRetry(for key: String) {
+        retryAttempts.removeValue(forKey: key)
+        retryAfter.removeValue(forKey: key)
+    }
+
+    private func archiveRejected(_ file: URL) {
+        let rejected = Self.inboxURL.appendingPathComponent("Rejected", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: rejected, withIntermediateDirectories: true)
+            let destination = UniqueDestinationNaming.uniqueURL(
+                for: rejected.appendingPathComponent(file.lastPathComponent)
+            )
+            try FileManager.default.moveItem(at: file, to: destination)
+        } catch {
+            // Keeping the original in place is safer than deleting an input we
+            // could not archive. It can be recovered or retried manually.
         }
     }
 

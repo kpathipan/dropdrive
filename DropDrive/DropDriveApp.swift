@@ -3,8 +3,7 @@ import UserNotifications
 
 /// Routes incoming URLs (Google sign-in callbacks and `dropdrive://` deep links
 /// from the Share extension) to the shared view model, owns the menu bar status
-/// item, and opens the fallback window when the app is launched again while
-/// already running.
+/// item, and reopens that same popover when the app is launched again.
 final class DropDriveAppDelegate: NSObject, NSApplicationDelegate {
     private let servicesProvider = ServicesProvider()
     private var statusController: StatusItemController?
@@ -31,11 +30,10 @@ final class DropDriveAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Fires when the user opens the app again from Finder/Launchpad while it's
-    /// running. On a crowded menu bar (especially next to a notch) macOS can hide
-    /// the status icon entirely, which would make a menu-bar-only app unreachable
-    /// — this gives the same UI as a regular window instead.
+    /// running. Keep the product's one-surface contract: reopening reveals the
+    /// same menu-bar popover rather than inventing a separate app window.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        FallbackWindow.show()
+        StatusItemController.current?.showPopover()
         return false
     }
 }
@@ -64,7 +62,7 @@ final class ServicesProvider: NSObject {
         guard !links.isEmpty else { return }
 
         Task { @MainActor in
-            DropDriveViewModel.shared.receiveExternalLinks(
+            _ = await DropDriveViewModel.shared.receiveExternalLinks(
                 links,
                 sourceLabel: tr("from the Services menu", "จากเมนูคลิกขวา")
             )
@@ -72,25 +70,8 @@ final class ServicesProvider: NSObject {
     }
 }
 
-/// A plain window hosting the same view the popover shows. Only exists on
-/// demand; closing it leaves the app running in the menu bar as usual.
-@MainActor
-enum FallbackWindow {
-    private static var window: NSWindow?
-
-    static func show() {
-        if window == nil {
-            let hosting = NSHostingController(rootView: MenuBarView())
-            let newWindow = NSWindow(contentViewController: hosting)
-            newWindow.title = "DropDrive"
-            newWindow.styleMask = [.titled, .closable]
-            newWindow.isReleasedWhenClosed = false
-            newWindow.center()
-            window = newWindow
-        }
-        NSApp.activate(ignoringOtherApps: true)
-        window?.makeKeyAndOrderFront(nil)
-    }
+extension Notification.Name {
+    static let dropDriveShowSettings = Notification.Name("DropDrive.showSettings")
 }
 
 @main
@@ -111,6 +92,12 @@ struct DropDriveApp: App {
         // text field or a review card.
         Settings { EmptyView() }
             .commands {
+                CommandGroup(replacing: .appSettings) {
+                    Button(tr("Settings…", "การตั้งค่า…")) {
+                        StatusItemController.current?.showSettings()
+                    }
+                    .keyboardShortcut(",", modifiers: .command)
+                }
                 CommandMenu("DropDrive") {
                     Button(tr("Choose destination…", "เลือกโฟลเดอร์ปลายทาง…")) {
                         DropDriveViewModel.shared.chooseDestinationFolder()

@@ -606,7 +606,7 @@ struct AnalyzedPromptView: View {
         return total
     }
 
-    private static func timestamp(from seconds: Double) -> String {
+    private nonisolated static func timestamp(from seconds: Double) -> String {
         let total = Int(seconds.rounded())
         if total >= 3600 {
             return String(format: "%d:%02d:%02d", total / 3600, (total % 3600) / 60, total % 60)

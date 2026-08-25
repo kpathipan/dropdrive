@@ -1,5 +1,15 @@
 import Foundation
 
+nonisolated func descendants(of folder: URL, skipsHidden: Bool = false) -> [URL] {
+    let options: FileManager.DirectoryEnumerationOptions = skipsHidden ? [.skipsHiddenFiles] : []
+    guard let walker = FileManager.default.enumerator(
+        at: folder,
+        includingPropertiesForKeys: nil,
+        options: options
+    ) else { return [] }
+    return walker.compactMap { $0 as? URL }
+}
+
 // A synthetic Drive served through URLProtocol: a folder tree for the scan
 // tests, and real file bytes (range requests included) for the download tests.
 
@@ -248,24 +258,19 @@ pass("main actor stayed responsive during the download",
 
 var downloaded = 0
 var corrupt: [String] = []
-if let walker = FileManager.default.enumerator(at: folderURL, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) {
-    for case let url as URL in walker {
-        guard (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true else { continue }
-        downloaded += 1
-        // The same-name files are checked on their own below: their id can't be
-        // recovered from a filename they had to be renamed out of.
-        guard !url.lastPathComponent.hasPrefix("invoice") else { continue }
-        let id = url.deletingPathExtension().lastPathComponent
-        let onDisk = try Data(contentsOf: url)
-        if onDisk != contents(for: id, size: fileSize) { corrupt.append(url.lastPathComponent) }
-    }
+for url in descendants(of: folderURL, skipsHidden: true) {
+    guard (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true else { continue }
+    downloaded += 1
+    // The same-name files are checked on their own below: their id can't be
+    // recovered from a filename they had to be renamed out of.
+    guard !url.lastPathComponent.hasPrefix("invoice") else { continue }
+    let id = url.deletingPathExtension().lastPathComponent
+    let onDisk = try Data(contentsOf: url)
+    if onDisk != contents(for: id, size: fileSize) { corrupt.append(url.lastPathComponent) }
 }
 check("files written", downloaded, expectedFiles)
 pass("every file byte-identical", corrupt.isEmpty, corrupt.isEmpty ? "" : "\(corrupt.count) wrong: \(corrupt.prefix(3))")
-var leftovers = 0
-if let sweep = FileManager.default.enumerator(at: folderURL, includingPropertiesForKeys: nil) {
-    for case let url as URL in sweep where url.pathExtension == "dddownload" { leftovers += 1 }
-}
+let leftovers = descendants(of: folderURL).filter { $0.pathExtension == "dddownload" }.count
 check("no .dddownload left behind", leftovers, 0)
 
 // Drive lets one folder hold several files with the same name; downloaded
@@ -298,12 +303,7 @@ check("suffixes assigned deterministically by id",
 print("--- folder resume")
 try "root".write(to: folderURL.appendingPathComponent(".dropdrive-inprogress"),
                  atomically: true, encoding: .utf8)
-var deleted: [URL] = []
-if let walker = FileManager.default.enumerator(at: folderURL, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) {
-    var found: [URL] = []
-    for case let url as URL in walker where url.pathExtension == "jpg" { found.append(url) }
-    deleted = Array(found.prefix(3))
-}
+let deleted = Array(descendants(of: folderURL, skipsHidden: true).filter { $0.pathExtension == "jpg" }.prefix(3))
 for url in deleted { try FileManager.default.removeItem(at: url) }
 
 let mediaBefore = counter.count("media")
@@ -386,11 +386,9 @@ let renamedFolder = try await service.download(
     DownloadRequest(driveLink: "x", itemID: "root", destinationURL: renameDest,
                     resourceKey: nil, resumeID: UUID(), customName: "My Folder")) { _ in }
 check("folder created under the typed name", renamedFolder.lastPathComponent, "My Folder")
-var renamedCount = 0
-if let walker = FileManager.default.enumerator(at: renamedFolder, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) {
-    for case let url as URL in walker
-    where (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true { renamedCount += 1 }
-}
+let renamedCount = descendants(of: renamedFolder, skipsHidden: true).filter {
+    (try? $0.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true
+}.count
 check("renaming a folder doesn't rename what's inside it", renamedCount, expectedFiles)
 
 // MARK: - 8. A file Drive names without an extension

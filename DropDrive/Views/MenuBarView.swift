@@ -2,8 +2,7 @@ import SwiftUI
 
 /// The whole app UI, shown as the menu bar extra's window. A narrow icon rail
 /// on the left switches the detail pane between the download queue, recent
-/// downloads, and statistics. Longer-lived preferences open in their own
-/// settings window so the popover stays a fast-action surface.
+/// downloads, statistics, and settings without leaving the menu-bar surface.
 struct MenuBarView: View {
     enum Pane: String, CaseIterable, Identifiable {
         case queue
@@ -118,6 +117,10 @@ struct MenuBarView: View {
         .task {
             viewModel.restoreLogin()
             viewModel.promptForSavedQueueIfNeeded()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .dropDriveShowSettings)) { _ in
+            previousPrimaryPane = selectedPane == .settings ? previousPrimaryPane : selectedPane
+            selectedPane = .settings
         }
     }
 
@@ -429,7 +432,7 @@ struct MenuBarView: View {
             Image(systemName: viewModel.isQueueProcessing ? "arrow.down.circle.fill" : "checkmark.circle.fill")
                 .font(.dd(9, .semibold))
             Text(headerStatus)
-                .font(.dd(10, .medium))
+                .font(.dd(11, .medium))
                 .lineLimit(1)
         }
         .foregroundStyle(viewModel.isQueueProcessing ? DDTheme.accent : DDTheme.success)

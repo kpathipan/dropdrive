@@ -6,7 +6,7 @@ import Observation
 /// the app popover; right-click (or control-click) shows a small menu whose only
 /// item quits the app. The icon reflects download state — idle tray, a live
 /// progress ring, a completion checkmark, or a warning triangle — refreshed on a
-/// light timer so no Observation plumbing is needed in AppKit.
+/// Observation-driven so the idle menu-bar app does not wake twice a second.
 @MainActor
 final class StatusItemController: NSObject {
     /// The live controller, so code that opens a modal panel can keep the
@@ -15,7 +15,6 @@ final class StatusItemController: NSObject {
 
     private let statusItem: NSStatusItem
     private let popover: NSPopover
-    private var refreshTimer: Timer?
     private var lastImageKey = ""
 
     /// While a system panel (the folder chooser) is up it takes key focus, and a
@@ -44,18 +43,8 @@ final class StatusItemController: NSObject {
             button.setAccessibilityLabel("DropDrive")
         }
 
-        let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refreshIcon() }
-        }
-        // The app sits idle in the menu bar for hours at a time, and an exact
-        // half-second tick forces its own wake-up every time. Slack lets the OS
-        // coalesce this with whatever else it was already waking for; the icon
-        // still refreshes far faster than the eye needs.
-        timer.tolerance = 0.25
-        RunLoop.main.add(timer, forMode: .common)
-        refreshTimer = timer
-
         Self.current = self
+        observeState()
     }
 
     // MARK: - Click handling
@@ -75,7 +64,13 @@ final class StatusItemController: NSObject {
     private func togglePopover() {
         if popover.isShown {
             popover.performClose(nil)
-        } else if let button = statusItem.button {
+        } else {
+            showPopover()
+        }
+    }
+
+    func showPopover() {
+        if !popover.isShown, let button = statusItem.button {
             NSApp.activate(ignoringOtherApps: true)
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
@@ -85,6 +80,16 @@ final class StatusItemController: NSObject {
             // since sharing that meant opening the window often changed nothing
             // and the Preferences button stayed the only way to find a release.
             UpdateService.shared.checkOnOpen()
+        }
+    }
+
+    func showSettings() {
+        showPopover()
+        Task { @MainActor in
+            // Let a newly opened popover install its SwiftUI subscriptions
+            // before selecting the pane.
+            await Task.yield()
+            NotificationCenter.default.post(name: .dropDriveShowSettings, object: nil)
         }
     }
 
@@ -162,6 +167,18 @@ final class StatusItemController: NSObject {
         guard key != lastImageKey else { return }
         lastImageKey = key
         statusItem.button?.image = Self.image(for: state)
+    }
+
+    private func observeState() {
+        withObservationTracking {
+            _ = currentState()
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.refreshIcon()
+                self?.observeState()
+            }
+        }
+        refreshIcon()
     }
 
     private static func image(for state: IconState) -> NSImage {

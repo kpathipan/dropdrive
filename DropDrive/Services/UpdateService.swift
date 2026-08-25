@@ -406,8 +406,9 @@ final class UpdateService {
         // A truncated or tampered download can still be a mountable DMG; make
         // sure what came out of it is an intact, signed bundle before it
         // replaces a working app.
-        try run("/usr/bin/codesign", ["--verify", "--deep", staged.path])
+        try run("/usr/bin/codesign", ["--verify", "--deep", "--strict", staged.path])
         try requireSameSigner(as: Bundle.main.bundleURL, staged: staged)
+        try requireHardenedRuntime(staged: staged)
         try requireRunnableArchitecture(staged: staged)
         try requireSupportedOSVersion(staged: staged)
         return staged
@@ -431,6 +432,16 @@ final class UpdateService {
         guard teamIdentifier(of: staged) == mine,
               let installedRequirement = designatedRequirement(of: installed),
               designatedRequirement(of: staged) == installedRequirement else {
+            throw UpdateError.wrongSigner
+        }
+    }
+
+    /// Every published update is expected to carry Hardened Runtime. This is a
+    /// cheap release-integrity check and prevents accidentally replacing a
+    /// hardened copy with a weaker package after a script change.
+    private nonisolated static func requireHardenedRuntime(staged: URL) throws {
+        guard let output = try? run("/usr/bin/codesign", ["-dvvv", staged.path]),
+              output.contains("runtime") else {
             throw UpdateError.wrongSigner
         }
     }

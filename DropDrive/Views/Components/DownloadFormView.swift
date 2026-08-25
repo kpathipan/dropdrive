@@ -28,7 +28,7 @@ struct DownloadFormView: View {
                 Spacer()
 
                 Text("⌘V")
-                    .font(.dd(10, .medium).monospaced())
+                    .font(.dd(11, .medium).monospaced())
                     .foregroundStyle(.tertiary)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
@@ -106,7 +106,7 @@ struct DownloadFormView: View {
                     "Drive, YouTube, TikTok, Facebook, Instagram · paste multiple links",
                     "Drive, YouTube, TikTok, Facebook, Instagram · วางหลายลิงก์ได้"
                 ))
-                .font(.dd(10))
+                .font(.dd(11))
                 .foregroundStyle(.tertiary)
             }
         }

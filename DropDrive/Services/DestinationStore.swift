@@ -55,7 +55,7 @@ enum DestinationStore {
             options: .withSecurityScope,
             relativeTo: nil,
             bookmarkDataIsStale: &isStale
-        ), url.startAccessingSecurityScopedResource() else { return nil }
+        ), SecurityScopedAccessManager.shared.retainAccess(to: url) else { return nil }
         return url
     }
 
@@ -102,7 +102,7 @@ enum DestinationStore {
                 options: .withSecurityScope,
                 relativeTo: nil,
                 bookmarkDataIsStale: &isStale
-            ), url.startAccessingSecurityScopedResource() else { return nil }
+            ), SecurityScopedAccessManager.shared.retainAccess(to: url) else { return nil }
             return url
         }
     }

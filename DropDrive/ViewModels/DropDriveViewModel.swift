@@ -13,22 +13,34 @@ struct QueueSummary {
 /// exact same reserve is enforced again at start time, so this is informative
 /// without becoming a second source of truth.
 struct DestinationPreflight: Equatable {
-    let availableBytes: Int64?
+    let capacity: DestinationCapacity.State
     let requiredBytes: Int64?
     let hasNameCollision: Bool
     let canQueue: Bool
 
     var spaceDescription: String {
-        guard let availableBytes else {
+        switch capacity {
+        case .notSelected:
             return tr("Choose a folder to check available space.", "เลือกโฟลเดอร์เพื่อตรวจพื้นที่ว่าง")
+        case .unavailable:
+            return tr("Destination unavailable — choose another folder.", "โฟลเดอร์ปลายทางใช้งานไม่ได้ — เลือกโฟลเดอร์ใหม่")
+        case .unknown:
+            if let requiredBytes {
+                return tr(
+                    "Needs \(Formatters.byteCount(requiredBytes)) · free space will be checked while downloading",
+                    "ต้องใช้ \(Formatters.byteCount(requiredBytes)) · จะตรวจพื้นที่อีกครั้งระหว่างดาวน์โหลด"
+                )
+            }
+            return tr("Free space will be checked while downloading.", "จะตรวจพื้นที่อีกครั้งระหว่างดาวน์โหลด")
+        case .available(let availableBytes):
+            if let requiredBytes {
+                return tr(
+                    "Needs \(Formatters.byteCount(requiredBytes)) · \(Formatters.byteCount(availableBytes)) free",
+                    "ต้องใช้ \(Formatters.byteCount(requiredBytes)) · เหลือ \(Formatters.byteCount(availableBytes))"
+                )
+            }
+            return tr("Size unknown · \(Formatters.byteCount(availableBytes)) free", "ยังไม่ทราบขนาด · เหลือ \(Formatters.byteCount(availableBytes))")
         }
-        if let requiredBytes {
-            return tr(
-                "Needs \(Formatters.byteCount(requiredBytes)) · \(Formatters.byteCount(availableBytes)) free",
-                "ต้องใช้ \(Formatters.byteCount(requiredBytes)) · เหลือ \(Formatters.byteCount(availableBytes))"
-            )
-        }
-        return tr("Size unknown · \(Formatters.byteCount(availableBytes)) free", "ยังไม่ทราบขนาด · เหลือ \(Formatters.byteCount(availableBytes))")
     }
 }
 
@@ -50,7 +62,19 @@ final class DropDriveViewModel {
         case needsConnection
         case unsupported
         case videoUnavailable
-        case failed(String)
+        case failed(FriendlyFailure)
+    }
+
+    private nonisolated enum FriendlyFailure: Sendable {
+        case outOfSpace
+        case driveServer(Int)
+        case driveInvalidResponse
+        case driveUnsupported
+        case offline
+        case timedOut
+        case network
+        case write
+        case other
     }
 
     private nonisolated struct BatchWork: Sendable {
@@ -107,6 +131,11 @@ final class DropDriveViewModel {
     /// icon can flash a checkmark.
     var showCompletionFlash = false
     private var completionFlashTask: Task<Void, Never>?
+    /// Capacity lookups can block on a sleeping NAS. SwiftUI may rebuild the
+    /// review card several times for an unrelated state change, so keep the
+    /// last answer briefly; the start-download gate always performs a fresh
+    /// check before writing.
+    @ObservationIgnored private var capacityCache: (path: String, state: DestinationCapacity.State, checkedAt: Date)?
 
     init() {
         let loginManager = LoginManager.shared
@@ -162,19 +191,29 @@ final class DropDriveViewModel {
     }
 
     func preflight(for analysis: DriveLinkAnalysis) -> DestinationPreflight {
-        guard let destination = selectedDestinationURL else {
-            return DestinationPreflight(availableBytes: nil, requiredBytes: analysis.totalBytes, hasNameCollision: false, canQueue: false)
+        let capacity = cachedDestinationCapacity()
+        let canQueue: Bool
+        switch capacity {
+        case .notSelected, .unavailable:
+            canQueue = false
+        case .unknown:
+            // A number of writable SMB/NAS volumes report zero when capacity is
+            // unavailable. Let the download proceed and rely on write errors
+            // rather than turning an unknown value into a disabled button.
+            canQueue = true
+        case .available(let free):
+            if let bytes = analysis.totalBytes {
+                canQueue = free >= Self.requiredCapacity(for: bytes)
+            } else {
+                canQueue = free >= Self.unknownSizeFloorBytes
+            }
         }
-        let available = (try? destination.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
-            .volumeAvailableCapacityForImportantUsage
-        let reserve = analysis.totalBytes.map { $0 + Self.diskSpaceHeadroomBytes }
-        let canQueue = available.map { free in
-            guard let reserve else { return free >= Self.unknownSizeFloorBytes }
-            return free >= reserve
-        } ?? true
+        guard let destination = selectedDestinationURL else {
+            return DestinationPreflight(capacity: capacity, requiredBytes: analysis.totalBytes, hasNameCollision: false, canQueue: canQueue)
+        }
         let candidate = destination.appendingPathComponent(analysis.name, isDirectory: analysis.type == .folder)
         return DestinationPreflight(
-            availableBytes: available,
+            capacity: capacity,
             requiredBytes: analysis.totalBytes,
             hasNameCollision: FileManager.default.fileExists(atPath: candidate.path),
             canQueue: canQueue
@@ -230,10 +269,6 @@ final class DropDriveViewModel {
         Task { await downloadService.clearAnalysisCache() }
     }
 
-    func handleCallbackURL(_ url: URL) {
-        _ = loginManager.handleCallbackURL(url)
-    }
-
     /// Entry point for every URL the app is opened with: Google Sign-In's OAuth
     /// callback, or `dropdrive://download?url=<Drive link>` from the Chrome
     /// extension or Share Extension — both of which hand off a
@@ -246,7 +281,6 @@ final class DropDriveViewModel {
     /// endpoint — still the one `dropdrive://download?url=` form, just repeated.
     func handleIncomingURL(_ url: URL) {
         guard url.scheme?.caseInsensitiveCompare("dropdrive") == .orderedSame else {
-            handleCallbackURL(url)
             return
         }
 
@@ -271,60 +305,60 @@ final class DropDriveViewModel {
     /// right-click Service. Analyzed and queued silently (video links included,
     /// full-video mode), a notification confirms what arrived, and the queue
     /// starts on its own if idle — the sender isn't looking at the window.
-    func receiveExternalLinks(_ links: [String], sourceLabel: String) {
-        Task {
-            var queuedNames: [String] = []
-            /// A link that was neither queued nor a known duplicate — it could
-            /// not be read at all. Counted so the failure can be reported: the
-            /// phone inbox deletes each file as it consumes it (so a crash
-            /// mid-queue can't loop on it forever), which makes the app's
-            /// notification the only trace the link ever existed. Saying
-            /// nothing meant sharing from a phone with the Mac offline, or
-            /// sharing a private file while signed out, looked identical to the
-            /// feature not working.
-            var unusable = 0
-            for link in links {
-                if VideoDownloadService.isSupportedLink(link) {
-                    guard let analysis = try? await videoDownloadService.analyze(link) else { unusable += 1; continue }
-                    guard !queue.contains(where: { $0.itemID == analysis.itemID }),
-                          !hasCompletedDownloadPreviously(itemID: analysis.itemID) else { continue }
-                    enqueue(analysis: analysis, driveLink: link)
-                    queuedNames.append(analysis.name)
-                } else if let itemID = GoogleDriveLinkParser.itemID(from: link) {
-                    let resourceKey = GoogleDriveLinkParser.resourceKey(from: link)
-                    guard let result = try? await downloadService.analyzeLink(itemID: itemID, resourceKey: resourceKey),
-                          case .success(let analysis) = result else { unusable += 1; continue }
-                    guard !queue.contains(where: { $0.itemID == analysis.itemID }),
-                          !hasCompletedDownloadPreviously(itemID: analysis.itemID) else { continue }
-                    enqueue(analysis: analysis, driveLink: link)
-                    queuedNames.append(analysis.name)
+    func receiveExternalLinks(
+        _ links: [String],
+        sourceLabel: String,
+        autoStart: Bool = true,
+        notify: Bool = true
+    ) async -> ExternalLinkReceipt {
+        var receipt = ExternalLinkReceipt()
+        var queuedNames: [String] = []
+        let downloadService = self.downloadService
+        let videoDownloadService = self.videoDownloadService
+        let work = await BoundedAsyncMap.run(links, limit: Self.batchAnalysisConcurrency) { link in
+            await Self.analyzeBatchLink(
+                link,
+                downloadService: downloadService,
+                videoDownloadService: videoDownloadService
+            )
+        }
+
+        for item in work {
+            switch item.result {
+            case .ready(let analysis):
+                if queue.contains(where: { $0.itemID == analysis.itemID })
+                    || DownloadHistoryStore.shared.hasCompleted(itemID: analysis.itemID) {
+                    receipt.duplicates += 1
                 } else {
-                    unusable += 1
+                    enqueue(analysis: analysis, driveLink: item.link)
+                    queuedNames.append(analysis.name)
+                    receipt.queued += 1
                 }
+            case .unsupported:
+                receipt.unsupported += 1
+            case .needsConnection, .videoUnavailable, .failed:
+                receipt.retryableFailures += 1
             }
+        }
 
-            if queuedNames.isEmpty, unusable > 0 {
-                NotificationService.notify(
-                    title: tr("Couldn't use the link \(sourceLabel)", "ใช้ลิงก์\(sourceLabel)ไม่ได้"),
-                    body: tr(
-                        "It may need a Google sign-in, or not be a link DropDrive can download.",
-                        "อาจต้องลงชื่อเข้า Google หรือไม่ใช่ลิงก์ที่ DropDrive ดาวน์โหลดได้"
-                    )
-                )
-                return
-            }
-
-            guard !queuedNames.isEmpty else { return }
+        if notify, queuedNames.isEmpty, receipt.retryableFailures + receipt.unsupported > 0 {
+            NotificationService.notify(
+                title: tr("Couldn't use the link \(sourceLabel)", "ใช้ลิงก์\(sourceLabel)ไม่ได้"),
+                body: receipt.retryableFailures > 0
+                    ? tr("DropDrive will keep it and retry when the connection or sign-in is ready.", "DropDrive จะเก็บลิงก์ไว้และลองใหม่เมื่อเน็ตหรือการลงชื่อเข้าใช้พร้อม")
+                    : tr("This link is not supported. The original will be kept in Rejected.", "ไม่รองรับลิงก์นี้ โดยจะเก็บต้นฉบับไว้ในโฟลเดอร์ Rejected")
+            )
+        } else if notify, !queuedNames.isEmpty {
             NotificationService.notify(
                 title: tr("Link received \(sourceLabel)", "รับลิงก์\(sourceLabel)แล้ว"),
                 body: queuedNames.count == 1
                     ? queuedNames[0]
                     : tr("\(queuedNames.count) items queued", "เข้าคิว \(queuedNames.count) รายการ")
             )
-            if !isQueueProcessing {
-                startQueueDownloads()
-            }
         }
+
+        if autoStart, receipt.queued > 0, !isQueueProcessing { startQueueDownloads() }
+        return receipt
     }
 
     /// Analyzes and enqueues several links in order, silently (no inline analysis
@@ -333,13 +367,12 @@ final class DropDriveViewModel {
     /// sign-in, already downloaded) are simply skipped rather than interrupting the
     /// rest of the batch.
     private func enqueueBatch(_ links: [String]) async {
-        for link in links {
-            guard let itemID = GoogleDriveLinkParser.itemID(from: link) else { continue }
-            let resourceKey = GoogleDriveLinkParser.resourceKey(from: link)
-            guard let result = try? await downloadService.analyzeLink(itemID: itemID, resourceKey: resourceKey),
-                  case .success(let analysis) = result else { continue }
-            handleSuccessfulAnalysis(analysis, trimmedLink: link, reportInline: false)
-        }
+        _ = await receiveExternalLinks(
+            links,
+            sourceLabel: tr("from the browser", "จากเบราว์เซอร์"),
+            autoStart: false,
+            notify: false
+        )
     }
 
     func chooseDestinationFolder() {
@@ -352,12 +385,14 @@ final class DropDriveViewModel {
             }
 
             selectedDestinationURL = folderURL
+            capacityCache = nil
             DestinationStore.save(folderURL)
         }
     }
 
     func selectDestinationFolder(_ folderURL: URL) {
         selectedDestinationURL = folderURL
+        capacityCache = nil
         DestinationStore.save(folderURL)
     }
 
@@ -372,6 +407,7 @@ final class DropDriveViewModel {
 
         if let suggestedDestination = DestinationStore.destinationRule(forLink: trimmed) {
             selectedDestinationURL = suggestedDestination
+            capacityCache = nil
         }
 
         let links = Self.links(from: trimmed)
@@ -453,8 +489,8 @@ final class DropDriveViewModel {
                 BatchLinkReview(link: work.link, isSelected: false, result: .unavailable(tr("Unsupported link", "ไม่รองรับลิงก์นี้")))
             case .videoUnavailable:
                 BatchLinkReview(link: work.link, isSelected: false, result: .unavailable(tr("Couldn't read this video link.", "อ่านลิงก์วิดีโอนี้ไม่ได้")))
-            case .failed(let message):
-                BatchLinkReview(link: work.link, isSelected: false, result: .unavailable(message))
+            case .failed(let failure):
+                BatchLinkReview(link: work.link, isSelected: false, result: .unavailable(Self.friendlyMessage(for: failure)))
             }
         }
         linkAnalysisState = .batchReview(items)
@@ -484,7 +520,7 @@ final class DropDriveViewModel {
             case .needsAuthentication: return BatchWork(link: link, result: .needsConnection)
             }
         } catch {
-            return BatchWork(link: link, result: .failed(Self.friendlyMessage(for: error)))
+            return BatchWork(link: link, result: .failed(Self.failure(for: error)))
         }
     }
 
@@ -620,20 +656,7 @@ final class DropDriveViewModel {
     /// Checks Recent Downloads (which spans past app sessions), not just this
     /// session's in-memory queue.
     private func hasCompletedDownloadPreviously(itemID: String) -> Bool {
-        DownloadHistoryStore.shared.items.contains { historyItem in
-            guard historyItem.status == .completed else { return false }
-            if let driveID = GoogleDriveLinkParser.itemID(from: historyItem.driveLink) {
-                return driveID == itemID
-            }
-            // A video link has no Drive ID at all, so reading history through the
-            // Drive parser alone answered "never downloaded" for every video ever
-            // downloaded: the duplicate prompt never appeared for one, and the
-            // phone/Services dedupe silently passed them straight through — which
-            // is precisely where a video is most likely to arrive twice. Their
-            // analysis identifies them by the link itself, so history has to be
-            // read the same way.
-            return LinkIdentity.videoItemID(for: historyItem.driveLink) == itemID
-        }
+        DownloadHistoryStore.shared.hasCompleted(itemID: itemID)
     }
 
     private func flashDuplicate(itemID: String) {
@@ -758,11 +781,35 @@ final class DropDriveViewModel {
 
     /// Breathing room on top of the download itself, so a download can never take
     /// the volume to its last byte (macOS gets unhappy well before zero).
-    private static let diskSpaceHeadroomBytes: Int64 = 2 * 1024 * 1024 * 1024
+    private static let maximumDiskSpaceHeadroomBytes: Int64 = 2 * 1024 * 1024 * 1024
+    private static let minimumDiskSpaceHeadroomBytes: Int64 = 64 * 1024 * 1024
     /// Required free space when the download's size is unknown — video links are
     /// confirmed from oEmbed data, which carries no size at all, and those used
     /// to skip the check entirely.
     private static let unknownSizeFloorBytes: Int64 = 5 * 1024 * 1024 * 1024
+
+    /// Small downloads should not require an unrelated 2 GB of free space.
+    /// Reserve 10% with sensible 64 MB–2 GB bounds instead.
+    private static func requiredCapacity(for bytes: Int64) -> Int64 {
+        let headroom = min(
+            Self.maximumDiskSpaceHeadroomBytes,
+            max(Self.minimumDiskSpaceHeadroomBytes, bytes / 10)
+        )
+        return bytes + headroom
+    }
+
+    private func cachedDestinationCapacity() -> DestinationCapacity.State {
+        guard let destination = selectedDestinationURL else { return .notSelected }
+        let path = destination.standardizedFileURL.path
+        if let cached = capacityCache,
+           cached.path == path,
+           Date().timeIntervalSince(cached.checkedAt) < 5 {
+            return cached.state
+        }
+        let state = DestinationCapacity.inspect(destination)
+        capacityCache = (path, state, .now)
+        return state
+    }
 
     func startQueueDownloads() {
         guard canStartQueue else { return }
@@ -801,10 +848,17 @@ final class DropDriveViewModel {
     /// no size) used to bypass the check completely, which is exactly how a disk
     /// filled up mid-download; they're now held to a minimum-free-space floor.
     private func diskSpaceShortfall() -> String? {
-        guard let destination = queue.first(where: { $0.status == .ready })?.destinationURL ?? selectedDestinationURL,
-              let values = try? destination.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
-              let free = values.volumeAvailableCapacityForImportantUsage,
-              free > 0 else { return nil }
+        let destination = queue.first(where: { $0.status == .ready })?.destinationURL ?? selectedDestinationURL
+        let capacity = DestinationCapacity.inspect(destination)
+        guard case .available(let free) = capacity else {
+            if case .unavailable = capacity {
+                return tr(
+                    "The destination folder is no longer available. Choose another folder, then try again.",
+                    "โฟลเดอร์ปลายทางใช้งานไม่ได้ เลือกโฟลเดอร์ใหม่แล้วลองอีกครั้ง"
+                )
+            }
+            return nil
+        }
 
         let known = queueSummary.totalBytes
         let freeText = Formatters.byteCount(free)
@@ -817,7 +871,7 @@ final class DropDriveViewModel {
             )
         }
 
-        let required = known + Self.diskSpaceHeadroomBytes
+        let required = Self.requiredCapacity(for: known)
         guard free < required else { return nil }
 
         let knownText = Formatters.byteCount(known)
@@ -1220,18 +1274,40 @@ final class DropDriveViewModel {
     /// says what to do about it — a disk that filled up mid-download used to
     /// surface as "Something went wrong", leaving the user to work out the cause
     /// on their own.
-    private nonisolated static func friendlyMessage(for error: Error) -> String {
-        if isOutOfSpace(error) {
+    private static func friendlyMessage(for error: Error) -> String {
+        friendlyMessage(for: failure(for: error))
+    }
+
+    private nonisolated static func failure(for error: Error) -> FriendlyFailure {
+        if isOutOfSpace(error) { return .outOfSpace }
+        if let driveError = error as? DriveDownloadError {
+            switch driveError {
+            case .server(let statusCode, _): return .driveServer(statusCode)
+            case .invalidResponse: return .driveInvalidResponse
+            case .unsupportedFileType: return .driveUnsupported
+            }
+        }
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .notConnectedToInternet, .networkConnectionLost: return .offline
+            case .timedOut: return .timedOut
+            default: return .network
+            }
+        }
+        let nsError = error as NSError
+        if nsError.domain == NSPOSIXErrorDomain || nsError.domain == NSCocoaErrorDomain { return .write }
+        return .other
+    }
+
+    private static func friendlyMessage(for failure: FriendlyFailure) -> String {
+        switch failure {
+        case .outOfSpace:
             return tr(
                 "The disk is full. Free up some space, then retry.",
                 "พื้นที่ดิสก์เต็ม กรุณาเคลียร์พื้นที่แล้วกดลองใหม่"
             )
-        }
-
-        if let driveError = error as? DriveDownloadError {
-            switch driveError {
-            case .server(let statusCode, _):
-                switch statusCode {
+        case .driveServer(let statusCode):
+            switch statusCode {
                 case 404:
                     return tr(
                         "This link doesn't point to an existing Google Drive file or folder.",
@@ -1257,48 +1333,25 @@ final class DropDriveViewModel {
                         "Google Drive couldn't process this link right now.",
                         "Google Drive ประมวลผลลิงก์นี้ไม่ได้ในตอนนี้"
                     )
-                }
-            case .invalidResponse:
-                return tr(
-                    "Google Drive sent back something unexpected. Retry in a moment.",
-                    "Google Drive ตอบกลับผิดปกติ รอสักครู่แล้วลองใหม่"
-                )
-            case .unsupportedFileType:
-                return tr(
-                    "This file type can't be downloaded directly from Google Drive.",
-                    "ไฟล์ชนิดนี้ดาวน์โหลดตรงจาก Google Drive ไม่ได้"
-                )
             }
-        }
-
-        if let urlError = error as? URLError {
-            switch urlError.code {
-            case .notConnectedToInternet, .networkConnectionLost:
-                return tr(
-                    "The internet connection dropped. It will retry automatically.",
-                    "เน็ตหลุด ระบบจะลองใหม่ให้อัตโนมัติ"
-                )
-            case .timedOut:
-                return tr(
-                    "The connection timed out. Check your internet, then retry.",
-                    "การเชื่อมต่อหมดเวลา เช็คเน็ตแล้วกดลองใหม่"
-                )
-            default:
-                return tr(
-                    "Check your internet connection and try again.",
-                    "เช็คการเชื่อมต่ออินเทอร์เน็ตแล้วลองใหม่"
-                )
-            }
-        }
-
-        if (error as NSError).domain == NSPOSIXErrorDomain || (error as NSError).domain == NSCocoaErrorDomain {
+        case .driveInvalidResponse:
+            return tr("Google Drive sent back something unexpected. Retry in a moment.", "Google Drive ตอบกลับผิดปกติ รอสักครู่แล้วลองใหม่")
+        case .driveUnsupported:
+            return tr("This file type can't be downloaded directly from Google Drive.", "ไฟล์ชนิดนี้ดาวน์โหลดตรงจาก Google Drive ไม่ได้")
+        case .offline:
+            return tr("The internet connection dropped. It will retry automatically.", "เน็ตหลุด ระบบจะลองใหม่ให้อัตโนมัติ")
+        case .timedOut:
+            return tr("The connection timed out. Check your internet, then retry.", "การเชื่อมต่อหมดเวลา เช็คเน็ตแล้วกดลองใหม่")
+        case .network:
+            return tr("Check your internet connection and try again.", "เช็คการเชื่อมต่ออินเทอร์เน็ตแล้วลองใหม่")
+        case .write:
             return tr(
                 "Couldn't write the file to the destination folder. Check the folder still exists and has space.",
                 "เขียนไฟล์ลงโฟลเดอร์ปลายทางไม่ได้ ตรวจสอบว่าโฟลเดอร์ยังอยู่และมีพื้นที่พอ"
             )
+        case .other:
+            return tr("Something went wrong. Please try again.", "เกิดข้อผิดพลาด กรุณาลองใหม่")
         }
-
-        return tr("Something went wrong. Please try again.", "เกิดข้อผิดพลาด กรุณาลองใหม่")
     }
 
     /// Disk-full surfaces differently depending on which layer hit it: Foundation

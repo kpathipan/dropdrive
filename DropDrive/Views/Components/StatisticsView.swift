@@ -17,8 +17,8 @@ struct StatisticsSection: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(tr("Statistics", "สถิติ"))
                         .font(.dd(17, .bold))
-                    Text(tr("Stored only on this Mac", "เก็บข้อมูลไว้เฉพาะใน Mac เครื่องนี้"))
-                        .font(.dd(10))
+                    Text(tr("All-time · stored only on this Mac", "ตลอดการใช้งาน · เก็บเฉพาะใน Mac เครื่องนี้"))
+                        .font(.dd(11))
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -65,7 +65,7 @@ struct StatisticsSection: View {
                 .cardBackground()
             } else {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(tr("What you download", "ส่วนใหญ่โหลดอะไร"))
+                    Text(tr("Recent download mix", "ประเภทการดาวน์โหลดล่าสุด"))
                         .font(.dd(12, .semibold))
 
                     GeometryReader { proxy in
@@ -101,7 +101,7 @@ struct StatisticsSection: View {
                 .minimumScaleFactor(0.75)
 
             Text(label)
-                .font(.dd(10, .medium))
+                .font(.dd(11, .medium))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)

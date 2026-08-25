@@ -1,7 +1,7 @@
 import AppKit
 import UniformTypeIdentifiers
 
-/// A near-instant, UI-less hand-off: extracts a Google Drive link from whatever was
+/// A near-instant, UI-less hand-off: extracts a supported link from whatever was
 /// shared, then asks the system to open it via DropDrive's `dropdrive://` URL scheme
 /// — no App Group or shared container needed, the same mechanism the browser
 /// extension uses. The 1x1 view exists only because the Share extension point
@@ -19,18 +19,18 @@ final class ShareViewController: NSViewController {
     private func handleShare() async {
         guard let inputItem = extensionContext?.inputItems.first as? NSExtensionItem,
               let attachments = inputItem.attachments else {
-            extensionContext?.cancelRequest(withError: ShareExtensionError.noDriveLink)
+            extensionContext?.cancelRequest(withError: ShareExtensionError.noSupportedLink)
             return
         }
 
         for attachment in attachments {
-            if let link = await Self.driveLink(from: attachment) {
+            if let link = await Self.supportedLink(from: attachment) {
                 await openInDropDrive(link)
                 return
             }
         }
 
-        extensionContext?.cancelRequest(withError: ShareExtensionError.noDriveLink)
+        extensionContext?.cancelRequest(withError: ShareExtensionError.noSupportedLink)
     }
 
     private func openInDropDrive(_ link: String) async {
@@ -43,7 +43,7 @@ final class ShareViewController: NSViewController {
         let unreserved = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
         let encoded = link.addingPercentEncoding(withAllowedCharacters: unreserved) ?? link
         guard let target = URL(string: "dropdrive://download?url=\(encoded)") else {
-            extensionContext?.cancelRequest(withError: ShareExtensionError.noDriveLink)
+            extensionContext?.cancelRequest(withError: ShareExtensionError.noSupportedLink)
             return
         }
 
@@ -59,16 +59,16 @@ final class ShareViewController: NSViewController {
         }
     }
 
-    private static func driveLink(from attachment: NSItemProvider) async -> String? {
+    private static func supportedLink(from attachment: NSItemProvider) async -> String? {
         if attachment.hasItemConformingToTypeIdentifier(UTType.url.identifier),
            let value = try? await attachment.loadItem(forTypeIdentifier: UTType.url.identifier),
-           let url = value as? URL, looksLikeDriveLink(url.absoluteString) {
+           let url = value as? URL, looksLikeSupportedLink(url.absoluteString) {
             return url.absoluteString
         }
 
         if attachment.hasItemConformingToTypeIdentifier(UTType.plainText.identifier),
            let value = try? await attachment.loadItem(forTypeIdentifier: UTType.plainText.identifier),
-           let text = value as? String, looksLikeDriveLink(text) {
+           let text = value as? String, looksLikeSupportedLink(text) {
             return text
         }
 
@@ -78,15 +78,19 @@ final class ShareViewController: NSViewController {
     /// A light-weight check, deliberately not a full re-implementation of the main
     /// app's link parser (which lives in a different target) — the real parsing and
     /// validation happens once DropDrive itself receives the link.
-    private static func looksLikeDriveLink(_ text: String) -> Bool {
+    private static func looksLikeSupportedLink(_ text: String) -> Bool {
         guard let components = URLComponents(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),
               let host = components.host?.lowercased() else {
             return false
         }
-        return host.hasSuffix("drive.google.com") || host.hasSuffix("docs.google.com")
+        let supportedHosts = [
+            "drive.google.com", "docs.google.com", "youtube.com", "youtu.be",
+            "tiktok.com", "instagram.com", "instagr.am", "facebook.com", "fb.watch"
+        ]
+        return supportedHosts.contains { host == $0 || host.hasSuffix(".\($0)") }
     }
 }
 
 private enum ShareExtensionError: Error {
-    case noDriveLink
+    case noSupportedLink
 }

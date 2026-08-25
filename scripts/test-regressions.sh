@@ -1,0 +1,16 @@
+#!/bin/bash
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+OUT=$(mktemp -d)
+trap 'rm -rf "$OUT"' EXIT
+
+xcrun swiftc -O \
+  DropDrive/Utilities/DestinationCapacity.swift \
+  DropDrive/Models/ExternalLinkReceipt.swift \
+  DropDrive/Utilities/UniqueDestinationNaming.swift \
+  scripts/regression-harness/main.swift \
+  -o "$OUT/regression-harness"
+
+"$OUT/regression-harness"

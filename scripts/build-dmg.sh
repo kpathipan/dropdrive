@@ -84,9 +84,11 @@ SIGN_ID=$(security find-identity -v -p codesigning 2>/dev/null \
 # certificate would otherwise make every future update uninstallable, on every
 # friend's Mac at once. Ad-hoc signatures can't be timestamped, hence the split.
 TIMESTAMP_FLAG=()
+RUNTIME_FLAG=()
 if [ -n "$SIGN_ID" ]; then
   echo "==> Signing as: $SIGN_ID"
   TIMESTAMP_FLAG=(--timestamp)
+  RUNTIME_FLAG=(--options runtime)
 else
   if [ "$ALLOW_ADHOC" = false ]; then
     echo "Refusing to package: no Apple Development signing certificate was found." >&2
@@ -130,6 +132,7 @@ done
 
 if [ -d "$APPEX_PATH" ]; then
   codesign --force --deep --sign "$SIGN_ID" "${TIMESTAMP_FLAG[@]}" \
+    "${RUNTIME_FLAG[@]}" \
     --entitlements DropDriveShare/DropDriveShare.entitlements \
     "$APPEX_PATH"
 fi
@@ -137,6 +140,7 @@ fi
 REQUIREMENT_FLAG=()
 [ -n "$REQUIREMENT" ] && REQUIREMENT_FLAG=(-r="$REQUIREMENT")
 codesign --force --sign "$SIGN_ID" "${TIMESTAMP_FLAG[@]}" "${REQUIREMENT_FLAG[@]}" \
+  "${RUNTIME_FLAG[@]}" \
   --entitlements packaging/DropDrive-adhoc.entitlements \
   "$APP_PATH"
 
@@ -152,6 +156,13 @@ if [ "$SIGN_ID" != "-" ]; then
     *"Timestamp="*) ;;
     *)
       echo "Refusing to ship: the signature has no secure timestamp, so it would stop verifying when the certificate expires." >&2
+      exit 1
+      ;;
+  esac
+  case "$SIGNATURE_INFO" in
+    *"runtime"*) ;;
+    *)
+      echo "Refusing to ship: the main app is missing Hardened Runtime." >&2
       exit 1
       ;;
   esac

@@ -61,6 +61,7 @@ fi
 echo "==> Rebuilding $VERSION with update checking enabled"
 ./scripts/test-keychain-isolation.sh
 ./scripts/test-performance-improvements.sh
+./scripts/test-regressions.sh
 ./scripts/build-dmg.sh >/dev/null
 DMG="dist/DropDrive-v$VERSION-adhoc.dmg"
 [ -f "$DMG" ] || { echo "error: expected $DMG" >&2; exit 1; }

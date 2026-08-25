@@ -88,11 +88,8 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
                     }
                 }
             } else if actionID == NotificationService.openDropDriveActionID {
-                // Menu-bar-only app: there is no window to order front, and the
-                // menu bar extra can't be popped open programmatically — just
-                // activate so the menu bar icon is where the user left it.
                 await MainActor.run {
-                    NSApp.activate(ignoringOtherApps: true)
+                    StatusItemController.current?.showPopover()
                 }
             }
             return

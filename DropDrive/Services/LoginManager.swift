@@ -11,7 +11,6 @@ protocol LoginManaging: Sendable {
     func refreshSavedAccount() async -> GoogleAccount?
     func signIn() async throws -> GoogleAccount
     func signOut()
-    func handleCallbackURL(_ url: URL) -> Bool
     func validAccessToken() async throws -> String
     func cachedAccessTokenIfAvailable() async -> String?
 }
@@ -50,8 +49,7 @@ final class LoginManager: LoginManaging {
         keychainAttributes: [.useFileBasedKeychain]
     )
 
-    /// AppAuth hands back a session object that the redirect has to be fed into;
-    /// held here so `handleCallbackURL(_:)` can resume the in-flight flow.
+    /// Retained until ASWebAuthenticationSession captures its callback.
     private var currentAuthorizationFlow: OIDExternalUserAgentSession?
 
     init(userDefaults: UserDefaults = .standard) {
@@ -137,21 +135,6 @@ final class LoginManager: LoginManaging {
         userDefaults.removeObject(forKey: StorageKey.googleAccount)
     }
 
-    /// Only relevant if AppAuth falls back to the system browser — on macOS 10.15+
-    /// it presents an `ASWebAuthenticationSession`, which captures the redirect
-    /// itself without the URL ever reaching the app.
-    ///
-    /// AppAuth deprecates this in favour of `resumeExternalUserAgentFlowWithURL:error:`,
-    /// but both selectors import into Swift under the same name and the deprecated
-    /// one wins, so the replacement isn't callable from Swift at all.
-    func handleCallbackURL(_ url: URL) -> Bool {
-        guard let flow = currentAuthorizationFlow, flow.resumeExternalUserAgentFlow(with: url) else {
-            return false
-        }
-        currentAuthorizationFlow = nil
-        return true
-    }
-
     // MARK: - Tokens
 
     /// Returns a valid access token only if a stored session already carries the
@@ -221,6 +204,7 @@ final class LoginManager: LoginManaging {
                 byPresenting: request,
                 presenting: window
             ) { authState, error in
+                self.currentAuthorizationFlow = nil
                 if let authState {
                     continuation.resume(returning: UncheckedSendable(authState))
                 } else {

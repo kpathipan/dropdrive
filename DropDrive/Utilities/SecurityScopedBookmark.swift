@@ -27,7 +27,7 @@ enum SecurityScopedBookmark {
             options: .withSecurityScope,
             relativeTo: nil,
             bookmarkDataIsStale: &isStale
-        ), url.startAccessingSecurityScopedResource() else {
+        ), SecurityScopedAccessManager.shared.retainAccess(to: url) else {
             return nil
         }
 

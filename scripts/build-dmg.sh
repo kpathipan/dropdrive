@@ -162,7 +162,9 @@ DESIGNATED_REQUIREMENT=$(codesign -d -r- "$APP_PATH" 2>&1 | grep designated || t
 echo "$DESIGNATED_REQUIREMENT"
 if [ "$SIGN_ID" != "-" ]; then
   case "$DESIGNATED_REQUIREMENT" in
-    *'identifier "com.dropdrive.DropDrive"'*"certificate leaf[subject.OU] = \"$TEAM_ID\""*) ;;
+    # `codesign` canonicalizes a ten-character Team ID as a bare token even
+    # though the requirement source passed to it quotes the value.
+    *'identifier "com.dropdrive.DropDrive"'*"certificate leaf[subject.OU] = $TEAM_ID"*) ;;
     *)
       echo "Refusing to package: the signed app does not carry the stable Team-ID requirement." >&2
       exit 1

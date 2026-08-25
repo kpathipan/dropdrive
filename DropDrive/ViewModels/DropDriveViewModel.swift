@@ -9,6 +9,29 @@ struct QueueSummary {
     let estimatedSeconds: Double?
 }
 
+/// The local destination check shown before an item reaches the queue. The
+/// exact same reserve is enforced again at start time, so this is informative
+/// without becoming a second source of truth.
+struct DestinationPreflight: Equatable {
+    let availableBytes: Int64?
+    let requiredBytes: Int64?
+    let hasNameCollision: Bool
+    let canQueue: Bool
+
+    var spaceDescription: String {
+        guard let availableBytes else {
+            return tr("Choose a folder to check available space.", "เลือกโฟลเดอร์เพื่อตรวจพื้นที่ว่าง")
+        }
+        if let requiredBytes {
+            return tr(
+                "Needs \(Formatters.byteCount(requiredBytes)) · \(Formatters.byteCount(availableBytes)) free",
+                "ต้องใช้ \(Formatters.byteCount(requiredBytes)) · เหลือ \(Formatters.byteCount(availableBytes))"
+            )
+        }
+        return tr("Size unknown · \(Formatters.byteCount(availableBytes)) free", "ยังไม่ทราบขนาด · เหลือ \(Formatters.byteCount(availableBytes))")
+    }
+}
+
 @MainActor
 @Observable
 final class DropDriveViewModel {
@@ -114,13 +137,33 @@ final class DropDriveViewModel {
     /// its own Download button, so the paste box can stop offering both.
     var hasActiveAnalysisCard: Bool {
         switch linkAnalysisState {
-        case .analyzed, .duplicateCompleted: true
+        case .analyzed, .batchReview, .duplicateCompleted: true
         default: false
         }
     }
 
     var canStartQueue: Bool {
         hasReadyItems && selectedDestinationURL != nil && !isQueueProcessing && !isSigningIn
+    }
+
+    func preflight(for analysis: DriveLinkAnalysis) -> DestinationPreflight {
+        guard let destination = selectedDestinationURL else {
+            return DestinationPreflight(availableBytes: nil, requiredBytes: analysis.totalBytes, hasNameCollision: false, canQueue: false)
+        }
+        let available = (try? destination.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
+            .volumeAvailableCapacityForImportantUsage
+        let reserve = analysis.totalBytes.map { $0 + Self.diskSpaceHeadroomBytes }
+        let canQueue = available.map { free in
+            guard let reserve else { return free >= Self.unknownSizeFloorBytes }
+            return free >= reserve
+        } ?? true
+        let candidate = destination.appendingPathComponent(analysis.name, isDirectory: analysis.type == .folder)
+        return DestinationPreflight(
+            availableBytes: available,
+            requiredBytes: analysis.totalBytes,
+            hasNameCollision: FileManager.default.fileExists(atPath: candidate.path),
+            canQueue: canQueue
+        )
     }
 
     var isLargeDownload: Bool {
@@ -298,6 +341,11 @@ final class DropDriveViewModel {
         }
     }
 
+    func selectDestinationFolder(_ folderURL: URL) {
+        selectedDestinationURL = folderURL
+        DestinationStore.save(folderURL)
+    }
+
     // MARK: - Link analysis
 
     private func scheduleAnalysis() {
@@ -307,8 +355,25 @@ final class DropDriveViewModel {
         let trimmed = driveLink.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
+        if let suggestedDestination = DestinationStore.destinationRule(forLink: trimmed) {
+            selectedDestinationURL = suggestedDestination
+        }
+
+        let links = Self.links(from: trimmed)
+        if links.count > 1 {
+            analysisTask = Task {
+                try? await Task.sleep(for: .milliseconds(120))
+                guard !Task.isCancelled else { return }
+                await runBatchAnalysis(for: links)
+            }
+            return
+        }
+
         analysisTask = Task {
-            try? await Task.sleep(for: .milliseconds(500))
+            // A paste is a committed value, not a search query. This still
+            // coalesces browser paste events while removing the perceptible
+            // half-second wait before analysis starts.
+            try? await Task.sleep(for: .milliseconds(120))
             guard !Task.isCancelled else { return }
             await runAnalysis(for: trimmed)
         }
@@ -344,6 +409,67 @@ final class DropDriveViewModel {
             guard !Task.isCancelled else { return }
             linkAnalysisState = .failed(Self.friendlyMessage(for: error))
         }
+    }
+
+    /// Build a review instead of silently enqueuing a pasted list. This is kept
+    /// deliberately conservative: each item gets the same reliable metadata
+    /// path as a single paste, and an unreadable item remains visible rather
+    /// than being dropped behind a generic batch error.
+    private func runBatchAnalysis(for links: [String]) async {
+        linkAnalysisState = .analyzing
+        var items: [BatchLinkReview] = []
+        items.reserveCapacity(links.count)
+
+        for link in links {
+            guard !Task.isCancelled else { return }
+            if VideoDownloadService.isSupportedLink(link) {
+                if let analysis = await videoDownloadService.quickAnalyze(link) {
+                    items.append(BatchLinkReview(link: link, isSelected: true, result: .ready(analysis)))
+                } else {
+                    items.append(BatchLinkReview(link: link, isSelected: false, result: .unavailable(tr("Couldn't read this video link.", "อ่านลิงก์วิดีโอนี้ไม่ได้"))))
+                }
+                continue
+            }
+            guard let itemID = GoogleDriveLinkParser.itemID(from: link) else {
+                items.append(BatchLinkReview(link: link, isSelected: false, result: .unavailable(tr("Unsupported link", "ไม่รองรับลิงก์นี้"))))
+                continue
+            }
+            do {
+                let result = try await downloadService.analyzeLink(
+                    itemID: itemID,
+                    resourceKey: GoogleDriveLinkParser.resourceKey(from: link)
+                )
+                switch result {
+                case .success(let analysis):
+                    items.append(BatchLinkReview(link: link, isSelected: true, result: .ready(analysis)))
+                case .needsAuthentication:
+                    items.append(BatchLinkReview(link: link, isSelected: false, result: .needsConnection))
+                }
+            } catch {
+                items.append(BatchLinkReview(link: link, isSelected: false, result: .unavailable(Self.friendlyMessage(for: error))))
+            }
+        }
+        guard !Task.isCancelled else { return }
+        linkAnalysisState = .batchReview(items)
+    }
+
+    private static func links(from raw: String) -> [String] {
+        let range = NSRange(raw.startIndex..., in: raw)
+        let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+        var seen: Set<String> = []
+        var links: [String] = []
+        detector?.enumerateMatches(in: raw, range: range) { match, _, _ in
+            guard let url = match?.url,
+                  ["https", "http"].contains(url.scheme?.lowercased() ?? "")
+            else { return }
+            let link = url.absoluteString
+            if seen.insert(link).inserted { links.append(link) }
+        }
+        // A plain one-line paste can occasionally bypass NSDataDetector while
+        // an edit is in flight; never reject it merely because that helper has
+        // not caught up yet.
+        if links.isEmpty, URL(string: raw) != nil { return [raw] }
+        return links
     }
 
     /// TikTok/YouTube/Facebook links go through yt-dlp for their metadata; the
@@ -432,10 +558,9 @@ final class DropDriveViewModel {
         }
     }
 
-    /// The user confirmed the analyzed link: queue it with whatever destination
-    /// is selected right now, and start immediately unless something is already
-    /// downloading (in which case it just lines up behind it). `asAudio` is the
-    /// MP3 choice on video cards.
+    /// The user confirmed the analyzed link: queue it with its current
+    /// destination. "Add to queue" intentionally does not start a network
+    /// transfer; starting remains an explicit queue-level action.
     func confirmAnalyzedDownload(asAudio: Bool = false, clipSection: String? = nil, customName: String? = nil) {
         guard case .analyzed(let analysis) = linkAnalysisState else { return }
         let trimmedLink = driveLink.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -448,9 +573,6 @@ final class DropDriveViewModel {
         )
         driveLink = ""
         linkAnalysisState = .idle
-        if !isQueueProcessing {
-            startQueueDownloads()
-        }
     }
 
     /// Checks Recent Downloads (which spans past app sessions), not just this
@@ -494,6 +616,28 @@ final class DropDriveViewModel {
         driveLink = ""
     }
 
+    func toggleBatchSelection(for link: String) {
+        guard case .batchReview(var items) = linkAnalysisState,
+              let index = items.firstIndex(where: { $0.link == link }) else { return }
+        guard case .ready = items[index].result else { return }
+        items[index].isSelected.toggle()
+        linkAnalysisState = .batchReview(items)
+    }
+
+    func addSelectedBatchToQueue() {
+        guard case .batchReview(let items) = linkAnalysisState,
+              selectedDestinationURL != nil else { return }
+        for item in items where item.isSelected {
+            guard case .ready(let analysis) = item.result,
+                  !queue.contains(where: { $0.itemID == analysis.itemID }),
+                  !hasCompletedDownloadPreviously(itemID: analysis.itemID)
+            else { continue }
+            enqueue(analysis: analysis, driveLink: item.link)
+        }
+        driveLink = ""
+        linkAnalysisState = .idle
+    }
+
     func retryAnalysis() {
         scheduleAnalysis()
     }
@@ -526,9 +670,15 @@ final class DropDriveViewModel {
         let trimmed = driveLink.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
+        let links = Self.links(from: trimmed)
+
         analysisTask?.cancel()
         analysisTask = Task {
-            await runAnalysis(for: trimmed)
+            if links.count > 1 {
+                await runBatchAnalysis(for: links)
+            } else {
+                await runAnalysis(for: trimmed)
+            }
         }
     }
 
@@ -929,6 +1079,22 @@ final class DropDriveViewModel {
 
     func clearCompletedQueueItems() {
         queue.removeAll { $0.status == .completed }
+        QueueStore.save(queue)
+    }
+
+    /// A completed row remains actionable: create a fresh queue entry instead
+    /// of mutating history or pretending the existing finished item can run
+    /// again. The destination and video choices are kept with the new entry.
+    func downloadAgain(_ id: UUID) {
+        guard let item = queue.first(where: { $0.id == id && $0.status == .completed }) else { return }
+        queue.append(QueueItem(
+            driveLink: item.driveLink,
+            analysis: item.analysis,
+            destinationURL: item.destinationURL ?? selectedDestinationURL,
+            asAudio: item.asAudio,
+            clipSection: item.clipSection,
+            customName: item.customName
+        ))
         QueueStore.save(queue)
     }
 

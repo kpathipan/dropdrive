@@ -20,6 +20,8 @@ struct QueueView: View {
     let onResumePaused: () -> Void
     let onRevealInFinder: (QueueItem) -> Void
     let onOpen: (QueueItem) -> Void
+    let onCopyLink: (QueueItem) -> Void
+    let onDownloadAgain: (UUID) -> Void
     let onClearCompleted: () -> Void
     let onPauseQueue: () -> Void
     let onResumeQueue: () -> Void
@@ -44,7 +46,9 @@ struct QueueView: View {
                     onPauseActive: onPauseActive,
                     onResumePaused: onResumePaused,
                     onRevealInFinder: { onRevealInFinder(item) },
-                    onOpen: { onOpen(item) }
+                    onOpen: { onOpen(item) },
+                    onCopyLink: { onCopyLink(item) },
+                    onDownloadAgain: { onDownloadAgain(item.id) }
                 )
                 .id(item.id)
                 .transition(.opacity.combined(with: .move(edge: .top)))
@@ -134,7 +138,7 @@ struct QueueView: View {
             .foregroundStyle(.secondary)
 
             Button(action: onStartQueue) {
-                Label(tr("Download All", "ดาวน์โหลดทั้งหมด"), systemImage: "arrow.down.circle.fill")
+                Label(tr("Start queue", "เริ่มคิว"), systemImage: "play.circle.fill")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
@@ -192,6 +196,8 @@ private struct QueueRow: View {
     let onResumePaused: () -> Void
     let onRevealInFinder: () -> Void
     let onOpen: () -> Void
+    let onCopyLink: () -> Void
+    let onDownloadAgain: () -> Void
 
     @State private var isHovering = false
     @State private var showCompletionSweep = false
@@ -250,6 +256,24 @@ private struct QueueRow: View {
                     .foregroundStyle(.secondary)
                     .help(tr("Reveal in Finder", "เปิดใน Finder"))
                     .accessibilityLabel("Reveal in Finder")
+
+                    Button(action: onCopyLink) {
+                        Image(systemName: "doc.on.doc")
+                            .font(.dd(11))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help(tr("Copy source link", "คัดลอกลิงก์ต้นทาง"))
+                    .accessibilityLabel("Copy source link")
+
+                    Button(action: onDownloadAgain) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.dd(11))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help(tr("Add to queue again", "เพิ่มเข้าคิวอีกครั้ง"))
+                    .accessibilityLabel("Add \(item.displayName) to queue again")
                 }
 
                 statusIndicator
@@ -294,7 +318,12 @@ private struct QueueRow: View {
                     Button(tr("Retry", "ลองใหม่"), action: onRetry)
                         .buttonStyle(.bordered)
                         .controlSize(.small)
+                        .help(tr("Retry and continue from the downloaded part when supported.", "ลองใหม่และโหลดต่อจากส่วนที่มีเมื่อรองรับ"))
+                        .accessibilityLabel(tr("Retry and continue download", "ลองใหม่และโหลดต่อ"))
                 }
+                Text(tr("Retry continues from the downloaded part when the source supports it.", "การลองใหม่จะโหลดต่อจากส่วนเดิมเมื่อแหล่งข้อมูลรองรับ"))
+                    .font(.dd(11))
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(12)
@@ -344,6 +373,8 @@ private struct QueueRow: View {
         .contextMenu {
             if item.status == .completed {
                 Button(tr("Reveal in Finder", "เปิดใน Finder"), action: onRevealInFinder)
+                Button(tr("Copy source link", "คัดลอกลิงก์ต้นทาง"), action: onCopyLink)
+                Button(tr("Add to queue again", "เพิ่มเข้าคิวอีกครั้ง"), action: onDownloadAgain)
             }
             if item.status != .downloading {
                 Button(tr("Remove", "ลบออก"), action: onRemove)

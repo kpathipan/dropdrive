@@ -49,27 +49,12 @@ enum DDTheme {
 }
 
 extension Font {
-    /// App-wide typeface: Sukhumvit Set, the loopless Thai family bundled with
-    /// macOS (its Latin glyphs read cleanly too).
-    ///
-    /// The size asked for is the size drawn. It used to render a point smaller
-    /// than every call site declared, which put most of the app's secondary text
-    /// at 8.5–9pt — below anything macOS itself uses, and the reason the window
-    /// read as cramped no matter how the spacing was adjusted.
+    /// Use the system text face rather than a custom family. macOS supplies SF
+    /// Pro for Latin and its own matching Thai fallback, which preserves the
+    /// platform's Dynamic Type metrics and makes mixed Thai/English content read
+    /// like part of the OS instead of a separately styled panel.
     static func dd(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
-        let name: String
-        if weight == .bold || weight == .heavy || weight == .black {
-            name = "SukhumvitSet-Bold"
-        } else if weight == .semibold {
-            name = "SukhumvitSet-SemiBold"
-        } else if weight == .medium {
-            name = "SukhumvitSet-Medium"
-        } else if weight == .light || weight == .thin || weight == .ultraLight {
-            name = "SukhumvitSet-Light"
-        } else {
-            name = "SukhumvitSet-Text"
-        }
-        return .custom(name, size: size)
+        .system(size: size, weight: weight)
     }
 }
 

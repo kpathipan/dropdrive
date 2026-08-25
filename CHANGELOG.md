@@ -5,6 +5,31 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.16.0] - Queue-first downloads
+
+### Changed
+- **Queue-first confirmation.** A reviewed link now says “Add to queue” and
+  does not begin downloading until the queue is explicitly started.
+- **Review cards now show a destination preflight.** They surface the selected
+  folder, available space, required size when known, a possible name collision,
+  and public/private access before an item enters the queue.
+- **Settings has its own window.** The menu-bar popover stays focused on quick
+  download work.
+
+### Added
+- **Paste many links.** Review individual results, select only the wanted
+  items, and add them together.
+- **Destination favorites, recents, and source rules.** A chosen folder can be
+  pinned, reused, or explicitly remembered for a source such as YouTube or
+  Google Drive.
+- **Faster analysis start.** The paste debounce was reduced from 500ms to
+  120ms; cached Drive analyses remain instant.
+
+### Fixed
+- **README no longer promises drag-and-drop.** The feature was removed in
+  6.15.4, so the documentation now directs people to paste, Share, the Chrome
+  extension, or the macOS Service.
+
 ## [6.15.5] - Easier link downloads
 
 ### Changed

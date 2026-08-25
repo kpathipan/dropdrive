@@ -2,13 +2,13 @@ import SwiftUI
 
 /// The whole app UI, shown as the menu bar extra's window. A narrow icon rail
 /// on the left switches the detail pane between the download queue, recent
-/// downloads, statistics, and preferences — there is no separate main window.
+/// downloads, and statistics. Longer-lived preferences open in their own
+/// settings window so the popover stays a fast-action surface.
 struct MenuBarView: View {
     enum Pane: String, CaseIterable, Identifiable {
         case queue
         case recent
         case stats
-        case prefs
 
         var id: String { rawValue }
 
@@ -17,7 +17,6 @@ struct MenuBarView: View {
             case .queue: "arrow.down.circle"
             case .recent: "clock.arrow.circlepath"
             case .stats: "chart.bar"
-            case .prefs: "gearshape"
             }
         }
 
@@ -26,7 +25,6 @@ struct MenuBarView: View {
             case .queue: tr("Queue", "คิวดาวน์โหลด")
             case .recent: tr("Recent", "ล่าสุด")
             case .stats: tr("Statistics", "สถิติ")
-            case .prefs: tr("Preferences", "ตั้งค่า")
             }
         }
     }
@@ -58,8 +56,6 @@ struct MenuBarView: View {
             raw = measuredHeight + Self.chromeAllowance
         case .stats:
             raw = 330
-        case .prefs:
-            raw = 420
         }
         return min(max(raw, Self.minWindowHeight), Self.maxWindowHeight)
     }
@@ -202,6 +198,16 @@ struct MenuBarView: View {
                 onSignIn: viewModel.signInWithGoogle,
                 onSignOut: viewModel.signOut
             )
+
+            Button(action: SettingsWindow.show) {
+                Image(systemName: "gearshape")
+                    .font(.dd(13))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+            .help(tr("Settings", "การตั้งค่า"))
+            .accessibilityLabel("Settings")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -271,8 +277,6 @@ struct MenuBarView: View {
             recentPane.transition(.opacity)
         case .stats:
             statsPane.transition(.opacity)
-        case .prefs:
-            PreferencesView().transition(.opacity)
         }
     }
 
@@ -289,6 +293,7 @@ struct MenuBarView: View {
                             isLocked: viewModel.isSigningIn,
                             hasActiveCard: viewModel.hasActiveAnalysisCard,
                             onChooseDestination: viewModel.chooseDestinationFolder,
+                            onSelectDestination: viewModel.selectDestinationFolder,
                             onSubmit: viewModel.handleSubmit,
                             onEscape: viewModel.cancelAnalysis
                         )
@@ -323,6 +328,11 @@ struct MenuBarView: View {
                                     guard let url = item.resultURL else { return }
                                     NSWorkspace.shared.open(url)
                                 },
+                                onCopyLink: { item in
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(item.driveLink, forType: .string)
+                                },
+                                onDownloadAgain: viewModel.downloadAgain,
                                 onClearCompleted: viewModel.clearCompletedQueueItems,
                                 onPauseQueue: viewModel.pauseQueue,
                                 onResumeQueue: viewModel.resumeQueue,
@@ -481,7 +491,10 @@ struct MenuBarView: View {
             AnalyzedPromptView(
                 analysis: analysis,
                 destinationURL: viewModel.selectedDestinationURL,
+                preflight: viewModel.preflight(for: analysis),
+                sourceLink: viewModel.driveLink,
                 onChooseDestination: viewModel.chooseDestinationFolder,
+                onSelectDestination: viewModel.selectDestinationFolder,
                 onDownload: { asAudio, clipSection, customName in
                     viewModel.confirmAnalyzedDownload(asAudio: asAudio, clipSection: clipSection, customName: customName)
                 },
@@ -492,6 +505,16 @@ struct MenuBarView: View {
             // resets its @State, silently reverting an MP3 or trim choice the
             // user had already made.
             .id(analysis.itemID)
+        case .batchReview(let items):
+            BatchReviewView(
+                items: items,
+                destinationURL: viewModel.selectedDestinationURL,
+                onChooseDestination: viewModel.chooseDestinationFolder,
+                onSelectDestination: viewModel.selectDestinationFolder,
+                onToggle: viewModel.toggleBatchSelection,
+                onAdd: viewModel.addSelectedBatchToQueue,
+                onCancel: viewModel.cancelAnalysis
+            )
         case .failed(let message):
             LinkAnalysisErrorView(message: message, onRetry: viewModel.retryAnalysis)
         case .duplicateActive:

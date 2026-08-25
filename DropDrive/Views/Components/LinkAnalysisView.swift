@@ -127,6 +127,129 @@ struct LinkAnalysisErrorView: View {
     }
 }
 
+/// A pasted collection gets one deliberate review step. A single inaccessible
+/// link should never block its neighbours, and nothing starts until the user
+/// explicitly adds the selected rows to the queue.
+struct BatchReviewView: View {
+    let items: [BatchLinkReview]
+    let destinationURL: URL?
+    let onChooseDestination: () -> Void
+    let onSelectDestination: (URL) -> Void
+    let onToggle: (String) -> Void
+    let onAdd: () -> Void
+    let onCancel: () -> Void
+
+    private var selectedCount: Int {
+        items.filter { item in
+            if case .ready = item.result { return item.isSelected }
+            return false
+        }.count
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(tr("Review links", "ตรวจสอบลิงก์"))
+                        .font(.dd(13, .semibold))
+                    Text(tr("Choose what to add — downloads will not start yet.", "เลือกรายการที่จะเข้าคิว — ยังไม่เริ่มดาวน์โหลด"))
+                        .font(.dd(11))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text("\(items.count)")
+                    .font(.dd(12, .semibold).monospacedDigit())
+                    .foregroundStyle(DDTheme.accent)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(DDTheme.accentSoft))
+            }
+
+            DestinationRow(
+                destinationURL: destinationURL,
+                isLocked: false,
+                showsLabel: true,
+                sourceLink: nil,
+                onChooseDestination: onChooseDestination,
+                onSelectDestination: onSelectDestination
+            )
+
+            ForEach(items) { item in
+                batchRow(item)
+            }
+
+            HStack(spacing: 10) {
+                Button(tr("Cancel", "ยกเลิก"), role: .cancel, action: onCancel)
+                    .buttonStyle(.bordered)
+
+                Button(action: onAdd) {
+                    Label(
+                        tr("Add \(selectedCount) to queue", "เพิ่ม \(selectedCount) เข้าคิว"),
+                        systemImage: "plus.circle.fill"
+                    )
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(selectedCount == 0 || destinationURL == nil)
+            }
+        }
+        .padding(16)
+        .cardBackground()
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
+    @ViewBuilder
+    private func batchRow(_ item: BatchLinkReview) -> some View {
+        switch item.result {
+        case .ready(let analysis):
+            Button { onToggle(item.link) } label: {
+                HStack(spacing: 9) {
+                    Image(systemName: item.isSelected ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(item.isSelected ? DDTheme.accent : Color.secondary)
+                    Image(systemName: analysis.isVideo == true ? "play.rectangle.fill" : analysis.type == .folder ? "folder.fill" : "doc.fill")
+                        .foregroundStyle(DDTheme.accent)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(analysis.name)
+                            .font(.dd(12, .medium))
+                            .lineLimit(1)
+                        Text(batchMetadata(analysis))
+                            .font(.dd(11))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .frame(minHeight: 32, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(item.isSelected ? "Selected" : "Not selected"), \(analysis.name)")
+        case .needsConnection:
+            unavailableRow(item.link, icon: "lock.fill", message: tr("Sign in required", "ต้องลงชื่อเข้าใช้"))
+        case .unavailable(let message):
+            unavailableRow(item.link, icon: "exclamationmark.triangle.fill", message: message)
+        }
+    }
+
+    private func unavailableRow(_ link: String, icon: String, message: String) -> some View {
+        HStack(spacing: 9) {
+            Image(systemName: icon).foregroundStyle(.orange)
+            Text(message).font(.dd(11)).foregroundStyle(.secondary).lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .frame(minHeight: 32)
+        .help(link)
+    }
+
+    private func batchMetadata(_ analysis: DriveLinkAnalysis) -> String {
+        var parts: [String] = []
+        if let bytes = analysis.totalBytes { parts.append(Formatters.byteCount(bytes)) }
+        if let count = analysis.fileCount { parts.append(tr("\(count) files", "\(count) ไฟล์")) }
+        parts.append(analysis.isPublic ? tr("Public", "สาธารณะ") : tr("Private", "ส่วนตัว"))
+        return parts.joined(separator: " · ")
+    }
+}
+
 /// Shown when analysis succeeds: the item's details plus an explicit Download
 /// confirm, so the destination can still be changed before anything is queued.
 ///
@@ -138,7 +261,10 @@ struct LinkAnalysisErrorView: View {
 struct AnalyzedPromptView: View {
     let analysis: DriveLinkAnalysis
     let destinationURL: URL?
+    let preflight: DestinationPreflight
+    let sourceLink: String
     let onChooseDestination: () -> Void
+    let onSelectDestination: (URL) -> Void
     let onDownload: (_ asAudio: Bool, _ clipSection: String?, _ customName: String?) -> Void
     let onCancel: () -> Void
 
@@ -216,7 +342,7 @@ struct AnalyzedPromptView: View {
                             Text(tr("· by \(ownerName)", "· โดย \(ownerName)"))
                         }
                     }
-                    .font(.dd(11))
+                    .font(.dd(12))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 }
@@ -271,26 +397,16 @@ struct AnalyzedPromptView: View {
 
             Divider()
 
-            HStack(spacing: 5) {
-                Image(systemName: destinationURL == nil ? "folder" : "folder.fill")
-                    .font(.dd(11))
-                    .foregroundStyle(destinationURL == nil ? Color.secondary : DDTheme.accent)
+            DestinationRow(
+                destinationURL: destinationURL,
+                isLocked: false,
+                showsLabel: true,
+                sourceLink: sourceLink,
+                onChooseDestination: onChooseDestination,
+                onSelectDestination: onSelectDestination
+            )
 
-                Text(destinationURL?.lastPathComponent ?? tr("Choose a folder", "เลือกโฟลเดอร์"))
-                    .font(.dd(11))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-
-                Button(destinationURL == nil ? tr("Choose…", "เลือก…") : tr("Change…", "เปลี่ยน…"),
-                       action: onChooseDestination)
-                    .buttonStyle(.plain)
-                    .font(.dd(11, .medium))
-                    .foregroundStyle(DDTheme.accent)
-                    .accessibilityLabel(destinationURL == nil ? "Choose destination folder" : "Change destination folder")
-
-                Spacer(minLength: 0)
-            }
+            preflightView
 
             HStack(spacing: 10) {
                 Button(tr("Cancel", "ยกเลิก"), role: .cancel, action: onCancel)
@@ -300,13 +416,13 @@ struct AnalyzedPromptView: View {
                     onDownload(asAudio, clipSection, customName)
                 } label: {
                     Label(
-                        asAudio ? tr("Download MP3", "ดาวน์โหลด MP3") : tr("Download", "ดาวน์โหลด"),
-                        systemImage: asAudio ? "music.note" : "arrow.down.circle.fill"
+                        asAudio ? tr("Add MP3 to queue", "เพิ่ม MP3 เข้าคิว") : tr("Add to queue", "เพิ่มเข้าคิว"),
+                        systemImage: asAudio ? "music.note" : "plus.circle.fill"
                     )
                     .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(trimEnabled && trimInvalid)
+                .disabled(trimEnabled && trimInvalid || !preflight.canQueue)
                 // Return confirms the card, carrying the format, trim and name
                 // chosen on it. The paste box deliberately no longer answers
                 // Return while this card is up: it can't see any of that.
@@ -327,6 +443,31 @@ struct AnalyzedPromptView: View {
         // already typed.
         .task(id: analysis.itemID) { seedNameIfUntouched() }
         .onChange(of: analysis.name) { _, _ in seedNameIfUntouched() }
+    }
+
+    private var preflightView: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 5) {
+                Image(systemName: analysis.isPublic ? "eye" : "lock.fill")
+                    .foregroundStyle(analysis.isPublic ? Color.secondary : Color.orange)
+                Text(analysis.isPublic
+                     ? tr("Public link", "ลิงก์สาธารณะ")
+                     : tr("Private — uses your Google access", "ส่วนตัว — ใช้สิทธิ์ Google ของคุณ"))
+            }
+
+            HStack(spacing: 5) {
+                Image(systemName: "internaldrive")
+                Text(preflight.spaceDescription)
+            }
+
+            if preflight.hasNameCollision {
+                Label(tr("A matching name exists — DropDrive will keep both files.", "พบชื่อซ้ำ — DropDrive จะเก็บทั้งสองไฟล์"), systemImage: "doc.on.doc")
+                    .foregroundStyle(.orange)
+            }
+        }
+        .font(.dd(11))
+        .foregroundStyle(.secondary)
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Name

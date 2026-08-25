@@ -1,22 +1,24 @@
 # DropDrive
 
-DropDrive is a native macOS app that downloads Google Drive files and folders directly to your Mac — paste a link, review what it points to, and download it.
+DropDrive is a native macOS download utility — paste a link, review exactly what it will save and where it will go, add it to a queue, then start when you are ready.
 
 ## Features
 
 - **Smart Link Analysis** — paste a Drive link and see what it is (file or folder, size, file count, owner, public/private) before downloading anything, including items behind a Drive "shortcut" or a `resourcekey`-protected link
 - **Video downloads** — paste a TikTok / YouTube / Facebook / Instagram link instead and DropDrive downloads the video through bundled yt-dlp + ffmpeg (TikTok without the watermark, YouTube at full quality), with the same queue, progress, and history
+- **Paste many links** — paste a collection of links, review each result, deselect any you do not want, then add the selection to the queue in one step
 - Public links download without signing in; private links prompt for Google sign-in only when actually needed
 - Real progress reporting (bytes, speed, ETA) with cancel support; downloads **resume** after an interruption whenever the server allows it, and large files can download over **multiple concurrent connections**
-- Optional **bandwidth limit**, and a queue that can be **paused/resumed** and **reordered** by drag-and-drop
+- Optional **bandwidth limit**, and a queue that can be **paused/resumed** and **reordered** by drag-and-drop. Adding a link never starts a download by itself.
+- **Destinations** — remembers recent folders, lets you favorite them, and can save an explicit per-source rule (for example, use one folder for YouTube and another for Google Drive)
 - Destination collisions get a smart `(1)`, `(2)`… suffix instead of being overwritten
 - Recent download history, persisted across launches and **searchable**, with **Reveal in Finder** and **Copy Google Drive Link** on every entry, plus lightweight local download statistics in Preferences
 - Duplicate-download detection across sessions, not just the current one
-- Drag and drop a Drive link straight onto the window (from a browser, as text, or as a dragged URL file)
+- Paste links in the field, use the macOS Share menu, the Chrome extension, or the right-click Service; drag-and-drop onto the window is not currently supported
 - Send a link into DropDrive without copy/paste: a [Chrome extension](browser-extension/chrome), or the macOS **Share menu**
 - Native notifications on completion, with **Reveal in Finder** and **Open DropDrive** actions
-- **Menu-bar-only app** — no Dock icon, no separate window; the whole app opens in a popover under its menu bar icon, with an icon rail switching between Queue, Recent, Statistics, and Preferences
-- Preferences for default download folder, auto-open in Finder, notification sound, launch at login, and bandwidth limit
+- **Menu-bar-first app** — the fast queue workflow lives in a popover under its menu bar icon; Settings opens separately so longer preferences never crowd the queue
+- Keyboard controls: Command-V paste, Return analyze/confirm, Command-O choose a folder, and Space pause/resume the queue
 - Optional GitHub-based update check (notify-only — DropDrive never auto-downloads or auto-installs updates)
 
 ## Requirements

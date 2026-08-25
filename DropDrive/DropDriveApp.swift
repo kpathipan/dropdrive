@@ -106,8 +106,30 @@ struct DropDriveApp: App {
 
     var body: some Scene {
         // The UI is an NSStatusItem + NSPopover driven from the app delegate;
-        // SwiftUI still needs one scene, so this empty Settings scene is the
-        // no-op placeholder (never shown — the app is an LSUIElement agent).
+        // SwiftUI still needs one scene. Keyboard-first queue controls live in
+        // the app command menu so they remain available while focus is inside a
+        // text field or a review card.
         Settings { EmptyView() }
+            .commands {
+                CommandMenu("DropDrive") {
+                    Button(tr("Choose destination…", "เลือกโฟลเดอร์ปลายทาง…")) {
+                        DropDriveViewModel.shared.chooseDestinationFolder()
+                    }
+                    .keyboardShortcut("o", modifiers: .command)
+
+                    Button(
+                        DropDriveViewModel.shared.isQueuePaused
+                            ? tr("Resume queue", "ทำต่อคิว")
+                            : tr("Pause queue", "พักคิว")
+                    ) {
+                        if DropDriveViewModel.shared.isQueuePaused {
+                            DropDriveViewModel.shared.resumeQueue()
+                        } else {
+                            DropDriveViewModel.shared.pauseQueue()
+                        }
+                    }
+                    .keyboardShortcut(" ", modifiers: [])
+                }
+            }
     }
 }

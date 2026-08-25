@@ -83,9 +83,26 @@ enum LinkAnalysisState: Equatable {
     /// analysis finished, which read as "the download button doesn't work" and
     /// froze the destination before the user could change it.
     case analyzed(DriveLinkAnalysis)
+    /// Several pasted links are reviewed together. Each entry retains its own
+    /// result so one private/bad link never hides the useful ones.
+    case batchReview([BatchLinkReview])
     /// The link's item ID matches a non-completed item already in the queue.
     case duplicateActive
     /// The link's item ID matches an item that already completed this session;
     /// asks the user whether to queue it again.
     case duplicateCompleted(DriveLinkAnalysis)
+}
+
+struct BatchLinkReview: Identifiable, Equatable {
+    enum Result: Equatable {
+        case ready(DriveLinkAnalysis)
+        case needsConnection
+        case unavailable(String)
+    }
+
+    let link: String
+    var isSelected: Bool
+    let result: Result
+
+    var id: String { link }
 }

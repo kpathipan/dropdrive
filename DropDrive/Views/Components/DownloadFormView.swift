@@ -12,9 +12,11 @@ struct DownloadFormView: View {
     /// to fit under 480pt.
     let hasActiveCard: Bool
     let onChooseDestination: () -> Void
+    let onSelectDestination: (URL) -> Void
     let onSubmit: () -> Void
     let onEscape: () -> Void
     @FocusState private var isLinkFieldFocused: Bool
+    @State private var clipboardHasSupportedLink = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
@@ -33,7 +35,7 @@ struct DownloadFormView: View {
                         .onExitCommand(perform: onEscape)
                         .accessibilityLabel("Google Drive link")
 
-                    if driveLink.isEmpty {
+                    if driveLink.isEmpty, clipboardHasSupportedLink {
                         Button(action: pasteFromClipboard) {
                             Image(systemName: "doc.on.clipboard")
                                 .font(.dd(11))
@@ -59,10 +61,10 @@ struct DownloadFormView: View {
 
                 if !hasActiveCard {
                     Button(action: onSubmit) {
-                        Image(systemName: "arrow.down")
-                            .font(.dd(14, .semibold))
+                        Label(tr("Analyze", "วิเคราะห์"), systemImage: "arrow.right")
+                            .font(.dd(11, .semibold))
                             .foregroundStyle(.white)
-                            .frame(width: 34, height: 34)
+                            .frame(minWidth: 72, minHeight: 34, maxHeight: 34)
                             .background(
                                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                                     .fill(driveLink.isEmpty || isLocked ? DDTheme.accent.opacity(0.4) : DDTheme.accent)
@@ -70,67 +72,55 @@ struct DownloadFormView: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(driveLink.isEmpty || isLocked)
-                    .help(tr("Download", "ดาวน์โหลด"))
-                    .accessibilityLabel("Download")
+                    .help(tr("Analyze link", "วิเคราะห์ลิงก์"))
+                    .accessibilityLabel("Analyze link")
                 }
             }
 
             if !hasActiveCard {
-                destinationRow
+                DestinationRow(
+                    destinationURL: destinationURL,
+                    isLocked: isLocked,
+                    showsLabel: true,
+                    sourceLink: driveLink,
+                    onChooseDestination: onChooseDestination,
+                    onSelectDestination: onSelectDestination
+                )
 
                 Text(tr(
                     "Supports Google Drive, YouTube, TikTok, Facebook, and Instagram.",
                     "รองรับ Google Drive, YouTube, TikTok, Facebook และ Instagram"
                 ))
-                .font(.dd(10))
+                .font(.dd(11))
                 .foregroundStyle(.tertiary)
             }
         }
         .onAppear {
+            refreshClipboardSuggestion()
             guard !hasActiveCard, !isLocked else { return }
             isLinkFieldFocused = true
         }
     }
 
-    private var destinationRow: some View {
-        HStack(spacing: 5) {
-            Text(tr("Save to", "บันทึกที่"))
-                .font(.dd(10, .medium))
-                .foregroundStyle(.tertiary)
-
-            Image(systemName: destinationURL == nil ? "folder" : "folder.fill")
-                .font(.dd(11))
-                .foregroundStyle(destinationURL == nil ? Color.secondary : DDTheme.accent)
-
-            // The folder's own name, not the whole path: at 10.5pt a full path
-            // crowded the button beside it down to "เปลี่ยน…" with the label
-            // clipped, and the leading directories were never the part anyone
-            // was reading.
-            Text(destinationURL?.lastPathComponent ?? tr("Choose a folder", "เลือกโฟลเดอร์"))
-                .font(.dd(11))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .layoutPriority(-1)
-                .help(destinationURL?.path(percentEncoded: false) ?? "")
-
-            Button(destinationURL == nil ? tr("Choose…", "เลือก…") : tr("Change…", "เปลี่ยน…"),
-                   action: onChooseDestination)
-                .buttonStyle(.plain)
-                .font(.dd(11))
-                .foregroundStyle(DDTheme.accent)
-                .disabled(isLocked)
-                .fixedSize()
-                .accessibilityLabel(destinationURL == nil ? "Choose destination folder" : "Change destination folder")
-
-            Spacer(minLength: 0)
-        }
-        .padding(.leading, 2)
-    }
-
     private func pasteFromClipboard() {
         if let text = NSPasteboard.general.string(forType: .string) {
             driveLink = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
+
+    /// Reading the clipboard is local-only. The button is intentionally offered
+    /// only when it contains a link DropDrive can recognise, rather than showing
+    /// a generic paste affordance for every copied private note or password.
+    private func refreshClipboardSuggestion() {
+        guard let text = NSPasteboard.general.string(forType: .string) else {
+            clipboardHasSupportedLink = false
+            return
+        }
+        let candidates = text
+            .split(whereSeparator: { $0.isWhitespace || $0.isNewline })
+            .map(String.init)
+        clipboardHasSupportedLink = candidates.contains { candidate in
+            VideoDownloadService.isSupportedLink(candidate) || GoogleDriveLinkParser.itemID(from: candidate) != nil
         }
     }
 }

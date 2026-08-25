@@ -42,6 +42,21 @@ final class DropDriveViewModel {
 
     private static let largeDownloadThresholdBytes: Int64 = 1_073_741_824 // 1 GB
     private static let assumedDownloadRateBytesPerSecond: Double = 5_000_000 // conservative ~5 MB/s estimate for the ETA shown before starting
+    private static let batchAnalysisConcurrency = 4
+    private static let linkDetector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+
+    private nonisolated enum BatchWorkResult: Sendable {
+        case ready(DriveLinkAnalysis)
+        case needsConnection
+        case unsupported
+        case videoUnavailable
+        case failed(String)
+    }
+
+    private nonisolated struct BatchWork: Sendable {
+        let link: String
+        let result: BatchWorkResult
+    }
 
     var driveLink = "" {
         didSet {
@@ -362,7 +377,7 @@ final class DropDriveViewModel {
         let links = Self.links(from: trimmed)
         if links.count > 1 {
             analysisTask = Task {
-                try? await Task.sleep(for: .milliseconds(120))
+                try? await Task.sleep(for: .milliseconds(70))
                 guard !Task.isCancelled else { return }
                 await runBatchAnalysis(for: links)
             }
@@ -373,7 +388,7 @@ final class DropDriveViewModel {
             // A paste is a committed value, not a search query. This still
             // coalesces browser paste events while removing the perceptible
             // half-second wait before analysis starts.
-            try? await Task.sleep(for: .milliseconds(120))
+            try? await Task.sleep(for: .milliseconds(70))
             guard !Task.isCancelled else { return }
             await runAnalysis(for: trimmed)
         }
@@ -417,53 +432,80 @@ final class DropDriveViewModel {
     /// than being dropped behind a generic batch error.
     private func runBatchAnalysis(for links: [String]) async {
         linkAnalysisState = .analyzing
-        var items: [BatchLinkReview] = []
-        items.reserveCapacity(links.count)
-
-        for link in links {
-            guard !Task.isCancelled else { return }
-            if VideoDownloadService.isSupportedLink(link) {
-                if let analysis = await videoDownloadService.quickAnalyze(link) {
-                    items.append(BatchLinkReview(link: link, isSelected: true, result: .ready(analysis)))
-                } else {
-                    items.append(BatchLinkReview(link: link, isSelected: false, result: .unavailable(tr("Couldn't read this video link.", "อ่านลิงก์วิดีโอนี้ไม่ได้"))))
-                }
-                continue
-            }
-            guard let itemID = GoogleDriveLinkParser.itemID(from: link) else {
-                items.append(BatchLinkReview(link: link, isSelected: false, result: .unavailable(tr("Unsupported link", "ไม่รองรับลิงก์นี้"))))
-                continue
-            }
-            do {
-                let result = try await downloadService.analyzeLink(
-                    itemID: itemID,
-                    resourceKey: GoogleDriveLinkParser.resourceKey(from: link)
-                )
-                switch result {
-                case .success(let analysis):
-                    items.append(BatchLinkReview(link: link, isSelected: true, result: .ready(analysis)))
-                case .needsAuthentication:
-                    items.append(BatchLinkReview(link: link, isSelected: false, result: .needsConnection))
-                }
-            } catch {
-                items.append(BatchLinkReview(link: link, isSelected: false, result: .unavailable(Self.friendlyMessage(for: error))))
-            }
+        let downloadService = self.downloadService
+        let videoDownloadService = self.videoDownloadService
+        let work = await BoundedAsyncMap.run(links, limit: Self.batchAnalysisConcurrency) { link in
+            await Self.analyzeBatchLink(
+                link,
+                downloadService: downloadService,
+                videoDownloadService: videoDownloadService
+            )
         }
         guard !Task.isCancelled else { return }
+
+        let items = work.map { work in
+            switch work.result {
+            case .ready(let analysis):
+                BatchLinkReview(link: work.link, isSelected: true, result: .ready(analysis))
+            case .needsConnection:
+                BatchLinkReview(link: work.link, isSelected: false, result: .needsConnection)
+            case .unsupported:
+                BatchLinkReview(link: work.link, isSelected: false, result: .unavailable(tr("Unsupported link", "ไม่รองรับลิงก์นี้")))
+            case .videoUnavailable:
+                BatchLinkReview(link: work.link, isSelected: false, result: .unavailable(tr("Couldn't read this video link.", "อ่านลิงก์วิดีโอนี้ไม่ได้")))
+            case .failed(let message):
+                BatchLinkReview(link: work.link, isSelected: false, result: .unavailable(message))
+            }
+        }
         linkAnalysisState = .batchReview(items)
+    }
+
+    private nonisolated static func analyzeBatchLink(
+        _ link: String,
+        downloadService: any DownloadServicing,
+        videoDownloadService: VideoDownloadService
+    ) async -> BatchWork {
+        if VideoDownloadService.isSupportedLink(link) {
+            let analysis = await videoDownloadService.quickAnalyze(link)
+            return BatchWork(link: link, result: analysis.map(BatchWorkResult.ready) ?? .videoUnavailable)
+        }
+
+        guard let itemID = GoogleDriveLinkParser.itemID(from: link) else {
+            return BatchWork(link: link, result: .unsupported)
+        }
+
+        do {
+            let result = try await downloadService.analyzeLink(
+                itemID: itemID,
+                resourceKey: GoogleDriveLinkParser.resourceKey(from: link)
+            )
+            switch result {
+            case .success(let analysis): return BatchWork(link: link, result: .ready(analysis))
+            case .needsAuthentication: return BatchWork(link: link, result: .needsConnection)
+            }
+        } catch {
+            return BatchWork(link: link, result: .failed(Self.friendlyMessage(for: error)))
+        }
     }
 
     private static func links(from raw: String) -> [String] {
         let range = NSRange(raw.startIndex..., in: raw)
-        let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
         var seen: Set<String> = []
         var links: [String] = []
-        detector?.enumerateMatches(in: raw, range: range) { match, _, _ in
+        linkDetector?.enumerateMatches(in: raw, range: range) { match, _, _ in
             guard let url = match?.url,
                   ["https", "http"].contains(url.scheme?.lowercased() ?? "")
             else { return }
             let link = url.absoluteString
-            if seen.insert(link).inserted { links.append(link) }
+            let identity: String
+            if let driveID = GoogleDriveLinkParser.itemID(from: link) {
+                identity = "drive:\(driveID)"
+            } else if VideoDownloadService.isSupportedLink(link) {
+                identity = LinkIdentity.videoItemID(for: link)
+            } else {
+                identity = link
+            }
+            if seen.insert(identity).inserted { links.append(link) }
         }
         // A plain one-line paste can occasionally bypass NSDataDetector while
         // an edit is in flight; never reject it merely because that helper has
@@ -590,7 +632,7 @@ final class DropDriveViewModel {
             // is precisely where a video is most likely to arrive twice. Their
             // analysis identifies them by the link itself, so history has to be
             // read the same way.
-            return "video:\(historyItem.driveLink)" == itemID
+            return LinkIdentity.videoItemID(for: historyItem.driveLink) == itemID
         }
     }
 
@@ -1178,7 +1220,7 @@ final class DropDriveViewModel {
     /// says what to do about it — a disk that filled up mid-download used to
     /// surface as "Something went wrong", leaving the user to work out the cause
     /// on their own.
-    private static func friendlyMessage(for error: Error) -> String {
+    private nonisolated static func friendlyMessage(for error: Error) -> String {
         if isOutOfSpace(error) {
             return tr(
                 "The disk is full. Free up some space, then retry.",
@@ -1262,7 +1304,7 @@ final class DropDriveViewModel {
     /// Disk-full surfaces differently depending on which layer hit it: Foundation
     /// file writes report `NSFileWriteOutOfSpaceError`, raw POSIX writes report
     /// `ENOSPC`.
-    private static func isOutOfSpace(_ error: Error) -> Bool {
+    private nonisolated static func isOutOfSpace(_ error: Error) -> Bool {
         let nsError = error as NSError
         if nsError.domain == NSCocoaErrorDomain, nsError.code == NSFileWriteOutOfSpaceError { return true }
         if nsError.domain == NSPOSIXErrorDomain, nsError.code == Int(ENOSPC) { return true }

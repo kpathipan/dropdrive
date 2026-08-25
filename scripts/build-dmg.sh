@@ -3,6 +3,17 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+ALLOW_ADHOC=false
+case "${1:-}" in
+  "") ;;
+  --allow-adhoc) ALLOW_ADHOC=true ;;
+  *) echo "usage: $0 [--allow-adhoc]" >&2; exit 1 ;;
+esac
+if [ -n "${2:-}" ]; then
+  echo "usage: $0 [--allow-adhoc]" >&2
+  exit 1
+fi
+
 VERSION=$(grep -m1 'MARKETING_VERSION' DropDrive.xcodeproj/project.pbxproj | sed -E 's/.*= ([0-9.]+);/\1/')
 
 # Apple Silicon only from 6.13.0. macOS 27 dropped Intel Macs entirely and
@@ -60,8 +71,10 @@ fi
 # This is an Apple Development certificate, which comes free with any Apple ID
 # through Xcode; it is not the paid Developer Program, and it does not make the
 # app pass Gatekeeper — quarantine still has to be cleared on first launch.
-# Falls back to ad-hoc when no certificate is present, so a fresh checkout on
-# another machine still builds.
+# A distributable build must never silently fall back to ad-hoc: that would
+# replace the stable requirement with a changing binary hash and make every
+# user's keychain ask for a password on the next launch. Developers can opt in
+# explicitly with --allow-adhoc for a local-only package.
 SIGN_ID=$(security find-identity -v -p codesigning 2>/dev/null \
   | grep -oE '"Apple Develop(ment|er ID Application)[^"]*"' | head -1 | tr -d '"')
 # A secure timestamp, countersigned by Apple, is what keeps a signature valid
@@ -75,9 +88,15 @@ if [ -n "$SIGN_ID" ]; then
   echo "==> Signing as: $SIGN_ID"
   TIMESTAMP_FLAG=(--timestamp)
 else
+  if [ "$ALLOW_ADHOC" = false ]; then
+    echo "Refusing to package: no Apple Development signing certificate was found." >&2
+    echo "An ad-hoc update changes the app identity and makes users enter their keychain password." >&2
+    echo "For a local-only DMG, run: $0 --allow-adhoc" >&2
+    exit 1
+  fi
   SIGN_ID="-"
-  echo "==> No signing certificate found; falling back to ad-hoc"
-  echo "    (updates will re-prompt for the keychain password every time)"
+  echo "==> No signing certificate found; using explicitly requested ad-hoc signing"
+  echo "    This DMG is local-only and must never be published as an update."
 fi
 
 # Pin the app's identity to the Team ID rather than to this particular
@@ -99,8 +118,9 @@ if [ "$SIGN_ID" != "-" ]; then
     REQUIREMENT="designated => identifier \"com.dropdrive.DropDrive\" and anchor apple generic and certificate leaf[subject.OU] = \"$TEAM_ID\""
     echo "==> Pinning identity to Team ID: $TEAM_ID"
   else
-    echo "==> Could not read a Team ID; falling back to the default requirement"
-    echo "    (renewing the certificate will cost one keychain prompt)"
+    echo "Refusing to package: could not read a Team ID from '$SIGN_ID'." >&2
+    echo "Without the Team-ID requirement, a certificate renewal would trigger a keychain prompt." >&2
+    exit 1
   fi
 fi
 
@@ -138,7 +158,17 @@ if [ "$SIGN_ID" != "-" ]; then
 fi
 
 echo "==> Designated requirement (stable across builds when signed by certificate)"
-codesign -d -r- "$APP_PATH" 2>&1 | grep designated || true
+DESIGNATED_REQUIREMENT=$(codesign -d -r- "$APP_PATH" 2>&1 | grep designated || true)
+echo "$DESIGNATED_REQUIREMENT"
+if [ "$SIGN_ID" != "-" ]; then
+  case "$DESIGNATED_REQUIREMENT" in
+    *'identifier "com.dropdrive.DropDrive"'*"certificate leaf[subject.OU] = \"$TEAM_ID\""*) ;;
+    *)
+      echo "Refusing to package: the signed app does not carry the stable Team-ID requirement." >&2
+      exit 1
+      ;;
+  esac
+fi
 
 echo "==> Verifying signature and entitlements"
 codesign -dv "$APP_PATH" 2>&1 | grep -E "Signature|Authority"

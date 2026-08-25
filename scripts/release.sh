@@ -43,6 +43,8 @@ git add DropDrive.xcodeproj/project.pbxproj
 git commit -qm "Release v$VERSION" || true
 
 echo "==> Building the DMG"
+./scripts/test-keychain-isolation.sh
+./scripts/test-performance-improvements.sh
 ./scripts/build-dmg.sh >/dev/null
 
 DMG="dist/DropDrive-v$VERSION-adhoc.dmg"

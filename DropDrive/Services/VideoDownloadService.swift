@@ -5,7 +5,7 @@ import Foundation
 /// yt-dlp binary (with ffmpeg alongside for merging YouTube's separate
 /// video/audio tracks). TikTok comes out watermark-free — the same source the
 /// "no watermark" websites serve, just without the ads.
-struct VideoDownloadService {
+struct VideoDownloadService: Sendable {
     struct VideoError: LocalizedError {
         let message: String
         var errorDescription: String? { message }
@@ -14,21 +14,21 @@ struct VideoDownloadService {
     /// Hosts routed to yt-dlp instead of the Google Drive pipeline. Instagram
     /// works for public posts/reels; login-walled content surfaces yt-dlp's
     /// error on the failed card.
-    private static let videoHosts = [
+    private nonisolated static let videoHosts = [
         "tiktok.com", "youtube.com", "youtu.be", "facebook.com", "fb.watch",
         "instagram.com", "instagr.am"
     ]
 
-    static func isSupportedLink(_ raw: String) -> Bool {
+    nonisolated static func isSupportedLink(_ raw: String) -> Bool {
         guard toolsAvailable,
               let url = URL(string: raw.trimmingCharacters(in: .whitespacesAndNewlines)),
               let host = url.host?.lowercased() else { return false }
         return videoHosts.contains { host == $0 || host.hasSuffix(".\($0)") }
     }
 
-    static var toolsAvailable: Bool { ytDlpURL != nil }
+    nonisolated static var toolsAvailable: Bool { ytDlpURL != nil }
 
-    private static var ytDlpURL: URL? {
+    private nonisolated static var ytDlpURL: URL? {
         Bundle.main.url(forResource: "yt-dlp", withExtension: nil)
     }
 
@@ -66,7 +66,7 @@ struct VideoDownloadService {
         }
 
         return DriveLinkAnalysis(
-            itemID: "video:\(link)",
+            itemID: LinkIdentity.videoItemID(for: link),
             name: title,
             type: .file,
             isPublic: true,
@@ -151,7 +151,7 @@ struct VideoDownloadService {
         let duration = (json["duration"] as? Double) ?? (json["duration"] as? Int).map(Double.init)
 
         return DriveLinkAnalysis(
-            itemID: "video:\(link)",
+            itemID: LinkIdentity.videoItemID(for: link),
             name: title,
             type: .file,
             isPublic: true,
@@ -283,6 +283,11 @@ struct VideoDownloadService {
         var output: String
 
         if let cachedInfo = Self.freshInfoCache(for: link) {
+            // The resolved formats are only a bridge from analysis to this
+            // download. Remove them as soon as they have served that purpose;
+            // keeping one json file per video until the hourly temp sweep adds
+            // space without making any later action faster.
+            defer { try? FileManager.default.removeItem(at: cachedInfo) }
             // Reuse the formats resolved during analysis instead of making
             // yt-dlp extract them all over again.
             do {

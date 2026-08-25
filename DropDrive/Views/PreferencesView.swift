@@ -39,6 +39,30 @@ struct PreferencesView: View {
     private let folderSelectionService: FolderSelectionServicing = FolderSelectionService()
 
     var body: some View {
+        TabView {
+            generalTab
+                .tabItem { Label(tr("General", "ทั่วไป"), systemImage: "gearshape") }
+
+            transferTab
+                .tabItem { Label(tr("Downloads", "ดาวน์โหลด"), systemImage: "arrow.down.circle") }
+
+            appearanceTab
+                .tabItem { Label(tr("Appearance", "หน้าตา"), systemImage: "paintbrush") }
+
+            aboutTab
+                .tabItem { Label(tr("About", "เกี่ยวกับ"), systemImage: "info.circle") }
+        }
+        .padding(.top, 8)
+        .task {
+            preferences.syncLaunchAtLoginWithSystemState()
+            if BandwidthPreset.matching(preferences.bandwidthLimitBytesPerSecond) == .custom,
+               let stored = preferences.bandwidthLimitBytesPerSecond {
+                customLimitMBps = stored / 1_048_576
+            }
+        }
+    }
+
+    private var generalTab: some View {
         Form {
             Section {
                 HStack {
@@ -82,21 +106,12 @@ struct PreferencesView: View {
                     Label(tr("Launch DropDrive at login", "เปิด DropDrive อัตโนมัติตอนเข้าเครื่อง"), systemImage: "power")
                 }
             }
+        }
+        .settingsFormStyle()
+    }
 
-            Section {
-                Toggle(isOn: $preferences.preferCompatibleVideo) {
-                    Label(tr("Keep videos playable on Mac (H.264/MP4)", "ให้วิดีโอเปิดได้บน Mac (H.264/MP4)"), systemImage: "play.rectangle")
-                }
-            } header: {
-                Text(tr("Video", "วิดีโอ"))
-            } footer: {
-                Text(tr(
-                    "On means files always open in QuickTime and editing software, capped at 1080p on videos whose higher resolutions are AV1 only. Off takes the best available, up to 4K.",
-                    "เปิดไว้ = ไฟล์เปิดได้ใน QuickTime และโปรแกรมตัดต่อเสมอ แต่บางคลิปจะได้สูงสุด 1080p (เพราะ 4K มีเฉพาะ AV1) ปิด = เอาคุณภาพสูงสุดถึง 4K"
-                ))
-                .foregroundStyle(.secondary)
-            }
-
+    private var transferTab: some View {
+        Form {
             Section {
                 Picker(selection: bandwidthPresetBinding) {
                     ForEach(BandwidthPreset.presets, id: \.self) { preset in
@@ -122,6 +137,25 @@ struct PreferencesView: View {
             }
 
             Section {
+                Toggle(isOn: $preferences.preferCompatibleVideo) {
+                    Label(tr("Keep videos playable on Mac (H.264/MP4)", "ให้วิดีโอเปิดได้บน Mac (H.264/MP4)"), systemImage: "play.rectangle")
+                }
+            } header: {
+                Text(tr("Video", "วิดีโอ"))
+            } footer: {
+                Text(tr(
+                    "On means files always open in QuickTime and editing software, capped at 1080p on videos whose higher resolutions are AV1 only. Off takes the best available, up to 4K.",
+                    "เปิดไว้ = ไฟล์เปิดได้ใน QuickTime และโปรแกรมตัดต่อเสมอ แต่บางคลิปจะได้สูงสุด 1080p (เพราะ 4K มีเฉพาะ AV1) ปิด = เอาคุณภาพสูงสุดถึง 4K"
+                ))
+                .foregroundStyle(.secondary)
+            }
+        }
+        .settingsFormStyle()
+    }
+
+    private var appearanceTab: some View {
+        Form {
+            Section {
                 Picker(tr("Language", "ภาษา"), selection: $language.code) {
                     Text("English").tag(AppLanguage.english)
                     Text("ไทย").tag(AppLanguage.thai)
@@ -141,7 +175,12 @@ struct PreferencesView: View {
             } header: {
                 Text(tr("Theme", "ธีม"))
             }
+        }
+        .settingsFormStyle()
+    }
 
+    private var aboutTab: some View {
+        Form {
             Section {
                 LabeledContent(tr("Version", "เวอร์ชัน"), value: appVersion)
                 if updates.isConfigured {
@@ -150,19 +189,14 @@ struct PreferencesView: View {
             } header: {
                 Text(tr("About", "เกี่ยวกับ"))
             } footer: {
-                Text(tr("Download Google Drive files and folders directly to your Mac.", "ดาวน์โหลดไฟล์และโฟลเดอร์จาก Google Drive ลงเครื่อง Mac ของคุณโดยตรง"))
+                Text(tr(
+                    "A private, native download queue for Drive and video links. No analytics or telemetry.",
+                    "คิวดาวน์โหลดแบบเนทีฟสำหรับลิงก์ Drive และวิดีโอ ไม่มี analytics หรือ telemetry"
+                ))
                     .foregroundStyle(.secondary)
             }
         }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
-        .task {
-            preferences.syncLaunchAtLoginWithSystemState()
-            if BandwidthPreset.matching(preferences.bandwidthLimitBytesPerSecond) == .custom,
-               let stored = preferences.bandwidthLimitBytesPerSecond {
-                customLimitMBps = stored / 1_048_576
-            }
-        }
+        .settingsFormStyle()
     }
 
     /// The update control, which is the whole update UI: one row that reflects
@@ -247,4 +281,11 @@ struct PreferencesView: View {
 
 #Preview {
     PreferencesView()
+}
+
+private extension View {
+    func settingsFormStyle() -> some View {
+        formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+    }
 }

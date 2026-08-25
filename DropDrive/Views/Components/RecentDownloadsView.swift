@@ -639,7 +639,10 @@ struct EmptyStateView: View {
                 .font(.dd(26))
                 .foregroundStyle(.tertiary)
 
-            Text(tr("Download Google Drive files and folders effortlessly.", "ดาวน์โหลดไฟล์และโฟลเดอร์จาก Google Drive ได้ง่ายๆ"))
+            Text(tr(
+                "Your finished Drive and video downloads will appear here.",
+                "ไฟล์จาก Drive และวิดีโอที่ดาวน์โหลดเสร็จจะแสดงที่นี่"
+            ))
                 .font(.dd(13))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

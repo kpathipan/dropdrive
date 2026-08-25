@@ -4,6 +4,7 @@ import SwiftUI
 /// analytics, no telemetry, nothing leaves the device.
 struct StatisticsSection: View {
     @State private var historyStore = DownloadHistoryStore.shared
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
 
     var body: some View {
         // Kept as a rollup on the store — recomputed when history changes, not
@@ -11,20 +12,62 @@ struct StatisticsSection: View {
         let totals = historyStore.totals
         let mix = Self.mix(of: historyStore.items)
 
-        Section {
-            statRow(tr("Total Downloads", "ดาวน์โหลดทั้งหมด"), value: "\(totals.completedCount)")
-            statRow(tr("Total Files", "ไฟล์ทั้งหมด"), value: "\(totals.totalFiles)")
-            statRow(tr("Total Downloaded", "ปริมาณที่ดาวน์โหลด"), value: Formatters.byteCount(totals.totalBytes))
-        } header: {
-            Text(tr("Statistics", "สถิติ"))
-        }
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(tr("Statistics", "สถิติ"))
+                        .font(.dd(17, .bold))
+                    Text(tr("Stored only on this Mac", "เก็บข้อมูลไว้เฉพาะใน Mac เครื่องนี้"))
+                        .font(.dd(10))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chart.bar.xaxis")
+                    .font(.dd(18, .semibold))
+                    .foregroundStyle(DDTheme.accent)
+                    .frame(width: 34, height: 34)
+                    .background(Circle().fill(DDTheme.accentSoft))
+            }
 
-        // Three numbers were the whole pane, and a number cannot answer the
-        // question this pane is actually asked — "what do I pull down all day?"
-        // The bar answers it at a glance, from history the app already keeps.
-        if !mix.isEmpty {
-            Section {
+            LazyVGrid(columns: columns, spacing: 8) {
+                metricCard(
+                    tr("Downloads", "ดาวน์โหลด"),
+                    value: "\(totals.completedCount)",
+                    icon: "arrow.down.circle.fill"
+                )
+                metricCard(
+                    tr("Files", "ไฟล์ทั้งหมด"),
+                    value: "\(totals.totalFiles)",
+                    icon: "doc.on.doc.fill"
+                )
+                metricCard(
+                    tr("Downloaded", "ขนาดรวม"),
+                    value: Formatters.byteCount(totals.totalBytes),
+                    icon: "internaldrive.fill"
+                )
+            }
+
+            if mix.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "sparkles")
+                        .font(.dd(20))
+                        .foregroundStyle(DDTheme.accent)
+                    Text(tr(
+                        "Your download mix will appear after the first completed item.",
+                        "สัดส่วนประเภทไฟล์จะแสดงหลังดาวน์โหลดรายการแรกเสร็จ"
+                    ))
+                    .font(.dd(11))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 18)
+                .cardBackground()
+            } else {
                 VStack(alignment: .leading, spacing: 10) {
+                    Text(tr("What you download", "ส่วนใหญ่โหลดอะไร"))
+                        .font(.dd(12, .semibold))
+
                     GeometryReader { proxy in
                         HStack(spacing: 2) {
                             ForEach(mix, id: \.kind) { slice in
@@ -40,20 +83,33 @@ struct StatisticsSection: View {
                     // entries fit on a line and five categories is the maximum.
                     FlowLegend(slices: mix)
                 }
-                .padding(.vertical, 2)
-            } header: {
-                Text(tr("What you download", "ส่วนใหญ่โหลดอะไร"))
+                .padding(14)
+                .cardBackground()
             }
         }
     }
 
-    private func statRow(_ label: String, value: String) -> some View {
-        HStack {
-            Text(label)
-            Spacer()
+    private func metricCard(_ label: String, value: String, icon: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: icon)
+                .font(.dd(13, .semibold))
+                .foregroundStyle(DDTheme.accent)
+
             Text(value)
+                .font(.dd(17, .bold).monospacedDigit())
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+
+            Text(label)
+                .font(.dd(10, .medium))
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
+        .frame(maxWidth: .infinity, minHeight: 86, alignment: .leading)
+        .padding(10)
+        .cardBackground()
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Mix

@@ -5,6 +5,41 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+## [6.16.1] - Safer, faster updates
+
+### Changed
+- **The menu-bar window is easier to scan.** Download controls now sit in one
+  clear card, the live state is shown as a compact status pill, and recent and
+  statistics empty states describe every supported source instead of Drive
+  alone.
+- **Settings is split into General, Downloads, Appearance, and About tabs.**
+  The shorter focused pages replace one long scrolling form.
+- **Multi-link analysis now runs up to four checks at once while preserving
+  paste order.** The link detector is reused and the paste delay is reduced
+  from 120ms to 70ms, so analysis starts and finishes sooner without creating
+  extra cache files.
+
+### Fixed
+- **Debug builds can no longer make the installed app ask for the Keychain
+  password after an update.** Development sessions now use a separate Keychain
+  item, while Release builds keep the existing production item and its stable
+  access grant.
+- **A release can no longer silently fall back to an ad-hoc signature.** The
+  packaging script refuses to create a distributable update unless it has a
+  timestamped certificate signature and the stable Team-ID requirement. A
+  local-only ad-hoc DMG requires an explicit flag and cannot happen by accident.
+- **The updater now rejects a package whose designated requirement changes,**
+  even if it was signed by the same Apple team. This prevents a manually built
+  release from installing successfully and only revealing its changed identity
+  when Keychain asks the user for a password after relaunch.
+- **Equivalent share links no longer create duplicate queue or history items.**
+  YouTube, TikTok, and Instagram links are compared by their canonical content
+  identity, ignoring common tracking parameters.
+- **Temporary video metadata is removed as soon as a download finishes.** Old
+  yt-dlp cache directories are also included in startup cleanup.
+
 ## [6.16.0] - Queue-first downloads
 
 ### Changed

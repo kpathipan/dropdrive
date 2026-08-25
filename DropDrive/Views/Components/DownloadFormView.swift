@@ -19,8 +19,23 @@ struct DownloadFormView: View {
     @State private var clipboardHasSupportedLink = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 7) {
+        VStack(alignment: .leading, spacing: DDMetrics.controlGap) {
+            HStack {
+                Label(tr("New download", "ดาวน์โหลดใหม่"), systemImage: "plus.circle.fill")
+                    .font(.dd(11, .semibold))
+                    .foregroundStyle(DDTheme.accent)
+
+                Spacer()
+
+                Text("⌘V")
+                    .font(.dd(10, .medium).monospaced())
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(DDTheme.rail))
+            }
+
+            HStack(spacing: DDMetrics.controlGap) {
                 HStack(spacing: 7) {
                     Image(systemName: "link")
                         .font(.dd(13))
@@ -56,7 +71,7 @@ struct DownloadFormView: View {
                     }
                 }
                 .padding(.horizontal, 10)
-                .frame(height: 34)
+                .frame(height: DDMetrics.controlHeight)
                 .inputFieldBackground()
 
                 if !hasActiveCard {
@@ -64,7 +79,7 @@ struct DownloadFormView: View {
                         Label(tr("Analyze", "วิเคราะห์"), systemImage: "arrow.right")
                             .font(.dd(11, .semibold))
                             .foregroundStyle(.white)
-                            .frame(minWidth: 72, minHeight: 34, maxHeight: 34)
+                            .frame(minWidth: 78, minHeight: DDMetrics.controlHeight, maxHeight: DDMetrics.controlHeight)
                             .background(
                                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                                     .fill(driveLink.isEmpty || isLocked ? DDTheme.accent.opacity(0.4) : DDTheme.accent)
@@ -88,13 +103,15 @@ struct DownloadFormView: View {
                 )
 
                 Text(tr(
-                    "Supports Google Drive, YouTube, TikTok, Facebook, and Instagram.",
-                    "รองรับ Google Drive, YouTube, TikTok, Facebook และ Instagram"
+                    "Drive, YouTube, TikTok, Facebook, Instagram · paste multiple links",
+                    "Drive, YouTube, TikTok, Facebook, Instagram · วางหลายลิงก์ได้"
                 ))
-                .font(.dd(11))
+                .font(.dd(10))
                 .foregroundStyle(.tertiary)
             }
         }
+        .padding(12)
+        .cardBackground()
         .onAppear {
             refreshClipboardSuggestion()
             guard !hasActiveCard, !isLocked else { return }

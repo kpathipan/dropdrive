@@ -40,14 +40,13 @@ final class LoginManager: LoginManaging {
         static let googleAccount = "googleAccount"
     }
 
-    private static let keychainItemName = "DropDriveAuthSession"
     private static let userInfoEndpoint = URL(string: "https://www.googleapis.com/oauth2/v3/userinfo")!
 
     private let userDefaults: UserDefaults
 
     /// `.useFileBasedKeychain` is the whole point — see the type-level note above.
     private let keychainStore = KeychainStore(
-        itemName: LoginManager.keychainItemName,
+        itemName: KeychainNamespace.sessionItem,
         keychainAttributes: [.useFileBasedKeychain]
     )
 

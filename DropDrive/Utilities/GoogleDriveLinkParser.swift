@@ -1,6 +1,6 @@
 import Foundation
 
-enum GoogleDriveLinkParser {
+nonisolated enum GoogleDriveLinkParser {
     /// Extracts a Drive item ID (file or folder) from a variety of Google Drive link formats:
     /// - .../drive/folders/<id>
     /// - .../file/d/<id>/...

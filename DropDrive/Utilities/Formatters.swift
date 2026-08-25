@@ -32,6 +32,10 @@ enum Formatters {
     private nonisolated static let lock = NSLock()
 
     nonisolated static func byteCount(_ bytes: Int64) -> String {
+        // ByteCountFormatter spells this as "Zero KB" in some locales, which
+        // leaks English into an otherwise Thai screen and is visually noisier
+        // than the numeric form used for every non-zero value.
+        if bytes == 0 { return "0 KB" }
         lock.lock()
         defer { lock.unlock() }
         return byteFormatter.string(fromByteCount: bytes)

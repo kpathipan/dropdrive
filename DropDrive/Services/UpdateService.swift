@@ -414,17 +414,23 @@ final class UpdateService {
     }
 
     /// Refuses an update signed by anyone other than whoever signed the running
-    /// copy.
+    /// copy, or whose designated requirement changed underneath the same team.
     ///
     /// The checksum check above only bites when the release notes carry a
     /// `sha256:` line; a release published by hand, or one whose notes were
     /// edited, has no integrity check at all — and the app would then install
     /// whatever DMG happened to be attached. Comparing team identifiers doesn't
-    /// depend on the notes saying anything. Skipped when the running copy has no
-    /// team of its own (an ad-hoc local build), since there's nothing to match.
+    /// depend on the notes saying anything. Requiring the exact same designated
+    /// requirement also protects Keychain continuity: a build signed by the same
+    /// team but without our pinned requirement would install successfully, then
+    /// macOS would see a different app identity and ask for the user's password.
+    /// Skipped when the running copy has no team of its own (an ad-hoc local
+    /// build), since there's nothing stable to match.
     private nonisolated static func requireSameSigner(as installed: URL, staged: URL) throws {
         guard let mine = teamIdentifier(of: installed), !mine.isEmpty else { return }
-        guard teamIdentifier(of: staged) == mine else {
+        guard teamIdentifier(of: staged) == mine,
+              let installedRequirement = designatedRequirement(of: installed),
+              designatedRequirement(of: staged) == installedRequirement else {
             throw UpdateError.wrongSigner
         }
     }
@@ -485,6 +491,14 @@ final class UpdateService {
             return value == "not set" ? nil : value
         }
         return nil
+    }
+
+    private nonisolated static func designatedRequirement(of bundle: URL) -> String? {
+        guard let output = try? run("/usr/bin/codesign", ["-d", "-r-", bundle.path]) else { return nil }
+        return output
+            .split(separator: "\n")
+            .first(where: { $0.hasPrefix("designated =>") })?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Moves the current bundle aside and puts the new one in its place. The old

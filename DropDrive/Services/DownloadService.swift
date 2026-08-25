@@ -7,7 +7,7 @@ import UniformTypeIdentifiers
 /// folder's directory tree, statting thousands of planned files, sweeping stale
 /// staging files, truncating and renaming — on the main thread, with the window
 /// unable to redraw until it finished.
-nonisolated protocol DownloadServicing {
+nonisolated protocol DownloadServicing: Sendable {
     @discardableResult
     func download(_ request: DownloadRequest, progress: @escaping @Sendable (DownloadProgress) -> Void) async throws -> URL
     func analyzeLink(itemID: String, resourceKey: String?) async throws -> LinkAnalysisResult

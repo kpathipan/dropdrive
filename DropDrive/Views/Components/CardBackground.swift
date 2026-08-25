@@ -46,6 +46,23 @@ enum DDTheme {
         dark ? Color(red: 0.298, green: 0.525, blue: 1.0).opacity(0.16)
              : Color(red: 0.918, green: 0.941, blue: 0.996)            // #EAF0FE
     }
+
+    static var success: Color { dark ? Color(red: 0.35, green: 0.82, blue: 0.56) : Color(red: 0.10, green: 0.58, blue: 0.30) }
+    static var warning: Color { dark ? Color(red: 1.0, green: 0.68, blue: 0.25) : Color(red: 0.84, green: 0.43, blue: 0.05) }
+}
+
+/// One spacing/radius scale for the compact popover and the larger settings
+/// window. Keeping these here stops each new card from inventing a subtly
+/// different inset or corner radius.
+enum DDMetrics {
+    static let compact: CGFloat = 6
+    static let controlGap: CGFloat = 8
+    static let standard: CGFloat = 12
+    static let section: CGFloat = 16
+    static let contentInset: CGFloat = 16
+    static let controlHeight: CGFloat = 38
+    static let inputRadius: CGFloat = 11
+    static let cardRadius: CGFloat = 14
 }
 
 extension Font {
@@ -59,7 +76,7 @@ extension Font {
 }
 
 struct CardBackground: ViewModifier {
-    var cornerRadius: CGFloat = 12
+    var cornerRadius: CGFloat = DDMetrics.cardRadius
 
     func body(content: Content) -> some View {
         content
@@ -72,7 +89,7 @@ struct CardBackground: ViewModifier {
 }
 
 struct InputFieldBackground: ViewModifier {
-    var cornerRadius: CGFloat = 10
+    var cornerRadius: CGFloat = DDMetrics.inputRadius
 
     func body(content: Content) -> some View {
         content
@@ -85,11 +102,11 @@ struct InputFieldBackground: ViewModifier {
 }
 
 extension View {
-    func cardBackground(cornerRadius: CGFloat = 12) -> some View {
+    func cardBackground(cornerRadius: CGFloat = DDMetrics.cardRadius) -> some View {
         modifier(CardBackground(cornerRadius: cornerRadius))
     }
 
-    func inputFieldBackground(cornerRadius: CGFloat = 10) -> some View {
+    func inputFieldBackground(cornerRadius: CGFloat = DDMetrics.inputRadius) -> some View {
         modifier(InputFieldBackground(cornerRadius: cornerRadius))
     }
 }

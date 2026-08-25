@@ -41,6 +41,7 @@ nonisolated enum TempCleaner {
             // cutoff keeps this off any download still in flight.
             guard name.hasPrefix("DropDrive-")
                 || name == "DropDrive-info"
+                || name == "dropdrive-ytdlp-cache"
                 || name.hasPrefix("CFNetworkDownload_")
             else { continue }
 

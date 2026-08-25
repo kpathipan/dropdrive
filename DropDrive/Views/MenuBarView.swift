@@ -45,9 +45,9 @@ struct MenuBarView: View {
     private static let springMotion = Animation.spring(response: 0.38, dampingFraction: 0.86)
     /// Fixed chrome above and below the scrolling content: the top logo bar plus
     /// its divider, and the bottom tab bar plus its divider.
-    private static let chromeAllowance: CGFloat = 33 + 37
-    private static let maxWindowHeight: CGFloat = 520
-    private static let minWindowHeight: CGFloat = 130
+    private static let chromeAllowance: CGFloat = 43 + 43
+    private static let maxWindowHeight: CGFloat = 560
+    private static let minWindowHeight: CGFloat = 160
 
     private var windowHeight: CGFloat {
         let raw: CGFloat
@@ -55,7 +55,10 @@ struct MenuBarView: View {
         case .queue, .recent:
             raw = measuredHeight + Self.chromeAllowance
         case .stats:
-            raw = 330
+            // The empty-state insight card needs a little more vertical room
+            // than the metric row; keeping it visible avoids a mystery card
+            // that looks clipped in the compact menu-bar window.
+            raw = 390
         }
         return min(max(raw, Self.minWindowHeight), Self.maxWindowHeight)
     }
@@ -79,7 +82,7 @@ struct MenuBarView: View {
                 welcomeView
             }
         }
-        .frame(width: 380, height: hasSeenWelcome ? windowHeight : 340)
+        .frame(width: 400, height: hasSeenWelcome ? windowHeight : 360)
         .font(.dd(13))
         // Frosted, not painted. Every menu bar panel macOS ships — Control
         // Centre, Wi-Fi, Sound — sits on a translucent material, and a flat
@@ -128,8 +131,8 @@ struct MenuBarView: View {
 
             VStack(alignment: .leading, spacing: 12) {
                 welcomeStep(1, tr("The app lives up here in the menu bar — there's no Dock icon.", "แอพอยู่บนเมนูบาร์ตรงนี้ ↑ ไม่มีไอคอนใน Dock"))
-                welcomeStep(2, tr("Copy a Google Drive link and paste it in the box.", "ก๊อปลิงก์ Google Drive มาวางในช่อง"))
-                welcomeStep(3, tr("Pick a download folder once — it's remembered.", "ตั้งโฟลเดอร์ปลายทางครั้งเดียว จำให้ตลอด"))
+                welcomeStep(2, tr("Paste a Drive or video link — one or many at a time.", "วางลิงก์ Drive หรือวิดีโอ จะวางทีละลิงก์หรือหลายลิงก์ก็ได้"))
+                welcomeStep(3, tr("Review the destination, then start the queue when you're ready.", "ตรวจปลายทาง แล้วเริ่มคิวเมื่อพร้อม"))
             }
             .padding(.horizontal, 8)
 
@@ -169,7 +172,7 @@ struct MenuBarView: View {
     /// Slim header: the app logo and wordmark on the left, live status, and the
     /// account control on the right. Shown above every pane.
     private var topBar: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: 8) {
             Image("AppLogo")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
@@ -185,9 +188,7 @@ struct MenuBarView: View {
             .accessibilityElement()
             .accessibilityLabel("DropDrive")
 
-            Text(headerStatus)
-                .font(.dd(11))
-                .foregroundStyle(.secondary)
+            statusPill
 
             Spacer()
 
@@ -209,8 +210,8 @@ struct MenuBarView: View {
             .help(tr("Settings", "การตั้งค่า"))
             .accessibilityLabel("Settings")
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
     }
 
     // MARK: - Bottom tab bar
@@ -221,8 +222,8 @@ struct MenuBarView: View {
                 tabButton(pane)
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
         .background(DDTheme.rail)
     }
 
@@ -349,7 +350,7 @@ struct MenuBarView: View {
                             }
                         }
                     }
-                    .padding(16)
+                    .padding(DDMetrics.contentInset)
                     .background(
                         GeometryReader { proxy in
                             Color.clear.preference(key: ContentHeightKey.self, value: proxy.size.height)
@@ -384,6 +385,24 @@ struct MenuBarView: View {
         let today = historyStore.totals.completedToday
         if today > 0 { return tr("\(today) today", "วันนี้ \(today) รายการ") }
         return tr("Ready", "พร้อมใช้งาน")
+    }
+
+    private var statusPill: some View {
+        HStack(spacing: 4) {
+            Image(systemName: viewModel.isQueueProcessing ? "arrow.down.circle.fill" : "checkmark.circle.fill")
+                .font(.dd(9, .semibold))
+            Text(headerStatus)
+                .font(.dd(10, .medium))
+                .lineLimit(1)
+        }
+        .foregroundStyle(viewModel.isQueueProcessing ? DDTheme.accent : DDTheme.success)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background(
+            Capsule().fill((viewModel.isQueueProcessing ? DDTheme.accent : DDTheme.success).opacity(0.12))
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(headerStatus)
     }
 
     /// Only ever shown three at a time, so the scan stops there rather than
@@ -566,11 +585,15 @@ struct MenuBarView: View {
     }
 
     private var statsPane: some View {
-        Form {
+        ScrollView {
             StatisticsSection()
+                .padding(DDMetrics.contentInset)
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(key: ContentHeightKey.self, value: proxy.size.height)
+                    }
+                )
         }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
     }
 
 }

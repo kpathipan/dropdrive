@@ -14,8 +14,8 @@ enum SettingsWindow {
             let newWindow = NSWindow(contentViewController: hosting)
             newWindow.title = tr("DropDrive Settings", "การตั้งค่า DropDrive")
             newWindow.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-            newWindow.setContentSize(NSSize(width: 520, height: 620))
-            newWindow.minSize = NSSize(width: 460, height: 420)
+            newWindow.setContentSize(NSSize(width: 560, height: 500))
+            newWindow.minSize = NSSize(width: 500, height: 420)
             newWindow.isReleasedWhenClosed = false
             newWindow.center()
             window = newWindow

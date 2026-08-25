@@ -472,7 +472,7 @@ struct MenuBarView: View {
         case .idle:
             EmptyView()
         case .invalidLink:
-            LinkInvalidView()
+            LinkInvalidView(link: viewModel.driveLink, onClear: viewModel.cancelAnalysis)
         case .analyzing:
             LinkAnalyzingView()
         case .needsConnection:

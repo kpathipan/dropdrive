@@ -5,6 +5,21 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.15.5] - Easier link downloads
+
+### Changed
+- **The link field is ready as soon as the queue opens.** Paste with Command-V
+  without first clicking into the field, and see the supported sources:
+  Google Drive, YouTube, TikTok, Facebook, and Instagram.
+- **The download destination is clearer.** It is now labelled “Save to” next
+  to the selected folder, so it is obvious where the next download will land.
+
+### Fixed
+- **Unsupported links now explain what to paste instead.** A Google Photos
+  album gets a specific explanation that it is not supported yet; other
+  unsupported links list the supported services. Either state can be cleared
+  in one click.
+
 ## [6.15.4] - Clearer download results
 
 ### Fixed

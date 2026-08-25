@@ -14,6 +14,7 @@ struct DownloadFormView: View {
     let onChooseDestination: () -> Void
     let onSubmit: () -> Void
     let onEscape: () -> Void
+    @FocusState private var isLinkFieldFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
@@ -26,6 +27,7 @@ struct DownloadFormView: View {
                     TextField(tr("Drive / TikTok / YouTube / IG link…", "วางลิงก์ Drive / TikTok / YouTube / IG…"), text: $driveLink)
                         .textFieldStyle(.plain)
                         .font(.dd(13))
+                        .focused($isLinkFieldFocused)
                         .disabled(isLocked)
                         .onSubmit(onSubmit)
                         .onExitCommand(perform: onEscape)
@@ -75,12 +77,27 @@ struct DownloadFormView: View {
 
             if !hasActiveCard {
                 destinationRow
+
+                Text(tr(
+                    "Supports Google Drive, YouTube, TikTok, Facebook, and Instagram.",
+                    "รองรับ Google Drive, YouTube, TikTok, Facebook และ Instagram"
+                ))
+                .font(.dd(10))
+                .foregroundStyle(.tertiary)
             }
+        }
+        .onAppear {
+            guard !hasActiveCard, !isLocked else { return }
+            isLinkFieldFocused = true
         }
     }
 
     private var destinationRow: some View {
         HStack(spacing: 5) {
+            Text(tr("Save to", "บันทึกที่"))
+                .font(.dd(10, .medium))
+                .foregroundStyle(.tertiary)
+
             Image(systemName: destinationURL == nil ? "folder" : "folder.fill")
                 .font(.dd(11))
                 .foregroundStyle(destinationURL == nil ? Color.secondary : DDTheme.accent)

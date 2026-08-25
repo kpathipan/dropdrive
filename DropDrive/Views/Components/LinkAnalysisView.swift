@@ -19,15 +19,37 @@ struct LinkAnalyzingView: View {
 }
 
 struct LinkInvalidView: View {
+    let link: String
+    let onClear: () -> Void
+
+    private var message: String {
+        let host = URL(string: link)?.host?.lowercased() ?? ""
+        if host == "photos.google.com" || host.hasSuffix(".photos.google.com") {
+            return tr(
+                "Google Photos albums aren't supported yet. Paste a Google Drive, YouTube, TikTok, Facebook, or Instagram link instead.",
+                "อัลบั้ม Google Photos ยังไม่รองรับ — ลองวางลิงก์ Google Drive, YouTube, TikTok, Facebook หรือ Instagram แทน"
+            )
+        }
+        return tr(
+            "Paste a Google Drive, YouTube, TikTok, Facebook, or Instagram link.",
+            "วางลิงก์ Google Drive, YouTube, TikTok, Facebook หรือ Instagram"
+        )
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
 
-            Text(tr("That doesn't look like a Google Drive link.", "ลิงก์นี้ดูไม่ใช่ลิงก์ Google Drive"))
+            Text(message)
                 .font(.dd(13))
                 .foregroundStyle(.secondary)
+                .lineLimit(3)
                 .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button(tr("Clear", "ล้าง"), action: onClear)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
         }
         .padding(16)
         .cardBackground()

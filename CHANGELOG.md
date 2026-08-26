@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [6.19.0] - Verified transfers and smoother capture
+
 ### Added
 - **Active transfers keep the Mac awake until their current network attempt
   finishes.** Idle sleep is allowed again during retry delays, pauses, and when

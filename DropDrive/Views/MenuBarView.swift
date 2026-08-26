@@ -119,6 +119,10 @@ struct MenuBarView: View {
             previousPrimaryPane = selectedPane == .settings ? previousPrimaryPane : selectedPane
             selectedPane = .settings
         }
+        .onReceive(NotificationCenter.default.publisher(for: .dropDriveShowQueue)) { _ in
+            previousPrimaryPane = .queue
+            selectedPane = .queue
+        }
     }
 
     // MARK: - Welcome

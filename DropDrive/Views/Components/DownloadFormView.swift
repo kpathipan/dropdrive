@@ -133,11 +133,6 @@ struct DownloadFormView: View {
             clipboardHasSupportedLink = false
             return
         }
-        let candidates = text
-            .split(whereSeparator: { $0.isWhitespace || $0.isNewline })
-            .map(String.init)
-        clipboardHasSupportedLink = candidates.contains { candidate in
-            VideoDownloadService.isSupportedLink(candidate) || GoogleDriveLinkParser.itemID(from: candidate) != nil
-        }
+        clipboardHasSupportedLink = !SupportedLinkExtractor.links(from: text).isEmpty
     }
 }

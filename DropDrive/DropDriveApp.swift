@@ -52,13 +52,7 @@ final class ServicesProvider: NSObject {
         }
         guard !text.isEmpty else { return }
 
-        var links: [String] = []
-        let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
-        detector?.enumerateMatches(in: text, range: NSRange(text.startIndex..., in: text)) { match, _, _ in
-            if let url = match?.url, url.scheme == "https" || url.scheme == "http" {
-                links.append(url.absoluteString)
-            }
-        }
+        let links = SupportedLinkExtractor.links(from: text)
         guard !links.isEmpty else { return }
 
         Task { @MainActor in
@@ -72,6 +66,7 @@ final class ServicesProvider: NSObject {
 
 extension Notification.Name {
     static let dropDriveShowSettings = Notification.Name("DropDrive.showSettings")
+    static let dropDriveShowQueue = Notification.Name("DropDrive.showQueue")
 }
 
 @main

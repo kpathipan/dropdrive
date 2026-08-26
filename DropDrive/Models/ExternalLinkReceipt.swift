@@ -8,6 +8,10 @@ nonisolated struct ExternalLinkReceipt: Equatable, Sendable {
     var duplicates = 0
     var retryableFailures = 0
     var unsupported = 0
+    /// Exact transient failures are retained for interactive hand-offs such as
+    /// menu-bar drops, where the app can put only the unresolved links back in
+    /// the review field instead of repeating successful ones.
+    var retryableLinks: [String] = []
 
     var disposition: PhoneInboxDisposition {
         if retryableFailures > 0 { return .retry }

@@ -7,6 +7,23 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [6.18.0] - Faster capture from anywhere
+
+### Added
+- **Opening DropDrive can pick up supported links from the clipboard.** The
+  clipboard is read only on open—never polled in the background—and analysis
+  starts without beginning a download.
+- **Links can be dropped directly onto the menu-bar icon.** A ready destination
+  uses the existing one-step external-link queue; links that need setup or
+  sign-in remain in the review field instead of being lost.
+- **Control-Option-D opens DropDrive from any app.** If the clipboard contains
+  one or more supported links, the same shortcut prepares them for review.
+
+### Changed
+- **Every link entry point uses one parser.** Paste, clipboard, Services, and
+  menu-bar drops now share source filtering, stable duplicate removal, and
+  Drive resource-key preservation.
+
 ## [6.17.1] - Remember disconnected destinations
 
 ### Fixed

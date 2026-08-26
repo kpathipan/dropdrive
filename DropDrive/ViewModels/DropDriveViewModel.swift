@@ -55,7 +55,6 @@ final class DropDriveViewModel {
     private static let largeDownloadThresholdBytes: Int64 = 1_073_741_824 // 1 GB
     private static let assumedDownloadRateBytesPerSecond: Double = 5_000_000 // conservative ~5 MB/s estimate for the ETA shown before starting
     private static let batchAnalysisConcurrency = 4
-    private static let linkDetector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
 
     private nonisolated enum BatchWorkResult: Sendable {
         case ready(DriveLinkAnalysis)
@@ -121,6 +120,9 @@ final class DropDriveViewModel {
     private var isChoosingDestination = false
     private var highlightTask: Task<Void, Never>?
     private var isPausingActiveItem = false
+    /// Prevents the same clipboard contents from being re-imported every time
+    /// the popover is reopened after the user has handled or cleared them.
+    private var lastImportedClipboardChangeCount = -1
 
     /// Auto-retry on network drops: attempts already made per queue item, and the
     /// backoff before each retry. Cleared on success, pause, cancel, or removal.
@@ -198,6 +200,33 @@ final class DropDriveViewModel {
             guard item.status == .ready, let destination = item.destinationURL else { return false }
             return !FileManager.default.fileExists(atPath: destination.path)
         }
+    }
+
+    /// Fills an otherwise-empty link field from the current clipboard. This is
+    /// deliberately event-driven (only when the user opens DropDrive), so the
+    /// app never polls or retains unrelated clipboard contents in the background.
+    /// Analysis may begin, but downloads still require the normal review action.
+    @discardableResult
+    func importClipboardLinksIfAppropriate() -> Bool {
+        guard driveLink.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !hasActiveAnalysisCard,
+              !isSigningIn else { return false }
+
+        let pasteboard = NSPasteboard.general
+        guard pasteboard.changeCount != lastImportedClipboardChangeCount else { return false }
+
+        let raw = [
+            pasteboard.string(forType: .string),
+            pasteboard.string(forType: .URL)
+        ]
+        .compactMap { $0 }
+        .joined(separator: "\n")
+        let links = SupportedLinkExtractor.links(from: raw)
+        guard !links.isEmpty else { return false }
+
+        lastImportedClipboardChangeCount = pasteboard.changeCount
+        driveLink = links.joined(separator: "\n")
+        return true
     }
 
     private func installRecoveryObservers() {
@@ -373,6 +402,7 @@ final class DropDriveViewModel {
                 receipt.unsupported += 1
             case .needsConnection, .videoUnavailable, .failed:
                 receipt.retryableFailures += 1
+                receipt.retryableLinks.append(item.link)
             }
         }
 
@@ -464,7 +494,7 @@ final class DropDriveViewModel {
             capacityCache = nil
         }
 
-        let links = Self.links(from: trimmed)
+        let links = SupportedLinkExtractor.links(from: trimmed)
         if links.count > 1 {
             analysisTask = Task {
                 try? await Task.sleep(for: .milliseconds(70))
@@ -576,32 +606,6 @@ final class DropDriveViewModel {
         } catch {
             return BatchWork(link: link, result: .failed(Self.failure(for: error)))
         }
-    }
-
-    private static func links(from raw: String) -> [String] {
-        let range = NSRange(raw.startIndex..., in: raw)
-        var seen: Set<String> = []
-        var links: [String] = []
-        linkDetector?.enumerateMatches(in: raw, range: range) { match, _, _ in
-            guard let url = match?.url,
-                  ["https", "http"].contains(url.scheme?.lowercased() ?? "")
-            else { return }
-            let link = url.absoluteString
-            let identity: String
-            if let driveID = GoogleDriveLinkParser.itemID(from: link) {
-                identity = "drive:\(driveID)"
-            } else if VideoDownloadService.isSupportedLink(link) {
-                identity = LinkIdentity.videoItemID(for: link)
-            } else {
-                identity = link
-            }
-            if seen.insert(identity).inserted { links.append(link) }
-        }
-        // A plain one-line paste can occasionally bypass NSDataDetector while
-        // an edit is in flight; never reject it merely because that helper has
-        // not caught up yet.
-        if links.isEmpty, URL(string: raw) != nil { return [raw] }
-        return links
     }
 
     /// TikTok/YouTube/Facebook links go through yt-dlp for their metadata; the
@@ -801,7 +805,7 @@ final class DropDriveViewModel {
         let trimmed = driveLink.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
-        let links = Self.links(from: trimmed)
+        let links = SupportedLinkExtractor.links(from: trimmed)
 
         analysisTask?.cancel()
         analysisTask = Task {

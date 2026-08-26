@@ -17,6 +17,19 @@ check("known duplicate phone handoff is consumed", ExternalLinkReceipt(duplicate
 check("transient phone failure is retained", ExternalLinkReceipt(retryableFailures: 1).disposition == .retry)
 check("unsupported phone handoff is archived", ExternalLinkReceipt(unsupported: 1).disposition == .archiveRejected)
 check("retry wins for mixed handoff", ExternalLinkReceipt(queued: 1, retryableFailures: 1, unsupported: 1).disposition == .retry)
+check("retry receipt retains its exact link", ExternalLinkReceipt(retryableFailures: 1, retryableLinks: ["https://drive.google.com/file/d/retry/view"]).retryableLinks.count == 1)
+
+let mixedLinks = SupportedLinkExtractor.links(from: """
+Notes https://example.com/nope
+https://drive.google.com/file/d/drive-item/view
+https://youtu.be/abc123?si=first
+https://www.youtube.com/watch?v=abc123&utm_source=duplicate
+https://drive.google.com/file/d/drive-item/view?resourcekey=better-key
+""")
+check("supported-link extraction ignores unrelated URLs", mixedLinks.count == 2)
+check("supported-link extraction preserves source order", mixedLinks.first?.contains("drive-item") == true)
+check("supported-link extraction deduplicates video variants", mixedLinks.last?.contains("youtu") == true)
+check("Drive duplicate keeps its resource key", GoogleDriveLinkParser.resourceKey(from: mixedLinks[0]) == "better-key")
 
 let scratch = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
 defer { try? FileManager.default.removeItem(at: scratch) }

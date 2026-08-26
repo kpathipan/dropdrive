@@ -11,19 +11,8 @@ struct VideoDownloadService: Sendable {
         var errorDescription: String? { message }
     }
 
-    /// Hosts routed to yt-dlp instead of the Google Drive pipeline. Instagram
-    /// works for public posts/reels; login-walled content surfaces yt-dlp's
-    /// error on the failed card.
-    private nonisolated static let videoHosts = [
-        "tiktok.com", "youtube.com", "youtu.be", "facebook.com", "fb.watch",
-        "instagram.com", "instagr.am"
-    ]
-
     nonisolated static func isSupportedLink(_ raw: String) -> Bool {
-        guard toolsAvailable,
-              let url = URL(string: raw.trimmingCharacters(in: .whitespacesAndNewlines)),
-              let host = url.host?.lowercased() else { return false }
-        return videoHosts.contains { host == $0 || host.hasSuffix(".\($0)") }
+        toolsAvailable && SupportedLinkExtractor.isPotentialVideoLink(raw)
     }
 
     nonisolated static var toolsAvailable: Bool { ytDlpURL != nil }

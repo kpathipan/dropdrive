@@ -14,11 +14,11 @@ DropDrive is a native macOS download utility — paste a link, review exactly wh
 - Destination collisions get a smart `(1)`, `(2)`… suffix instead of being overwritten
 - Recent download history, persisted across launches and **searchable**, with **Reveal in Finder** and **Copy Google Drive Link** on every entry, plus lightweight local download statistics in Preferences
 - Duplicate-download detection across sessions, not just the current one
-- Paste links in the field, use the macOS Share menu, the Chrome extension, or the right-click Service; drag-and-drop onto the window is not currently supported
+- Paste links in the field, open DropDrive to pick up a copied link, drag links onto the menu-bar icon, or use the macOS Share menu, Chrome extension, or right-click Service
 - Send a link into DropDrive without copy/paste: a [Chrome extension](browser-extension/chrome), or the macOS **Share menu**
 - Native notifications on completion, with **Reveal in Finder** and **Open DropDrive** actions
-- **Menu-bar-first app** — the fast queue workflow lives in a popover under its menu bar icon; Settings opens separately so longer preferences never crowd the queue
-- Keyboard controls: Command-V paste, Return analyze/confirm, Command-O choose a folder, and Space pause/resume the queue
+- **Menu-bar-first app** — the queue, history, items needing attention, and Settings all stay in one compact popover under the menu-bar icon
+- Keyboard controls: Control-Option-D opens DropDrive globally; Command-V pastes, Return analyzes/confirms, Command-O chooses a folder, and Space pauses/resumes the queue
 - Optional GitHub-based update check (notify-only — DropDrive never auto-downloads or auto-installs updates)
 
 ## Requirements

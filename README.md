@@ -9,6 +9,7 @@ DropDrive is a native macOS download utility — paste a link, review exactly wh
 - **Paste many links** — paste a collection of links, review each result, deselect any you do not want, then add the selection to the queue in one step
 - Public links download without signing in; private links prompt for Google sign-in only when actually needed
 - Real progress reporting (bytes, speed, ETA) with cancel support; downloads **resume** after an interruption whenever the server allows it, and large files can download over **multiple concurrent connections**
+- Active transfers prevent idle sleep, and Google Drive files are verified against the source checksum when Drive provides one—without creating a second file copy
 - Optional **bandwidth limit**, and a queue that can be **paused/resumed** and **reordered** by drag-and-drop. Adding a link never starts a download by itself.
 - **Destinations** — remembers recent folders, lets you favorite them, and can save an explicit per-source rule (for example, use one folder for YouTube and another for Google Drive)
 - Destination collisions get a smart `(1)`, `(2)`… suffix instead of being overwritten

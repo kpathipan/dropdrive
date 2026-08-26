@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 nonisolated func descendants(of folder: URL, skipsHidden: Bool = false) -> [URL] {
     let options: FileManager.DirectoryEnumerationOptions = skipsHidden ? [.skipsHiddenFiles] : []
@@ -50,12 +51,20 @@ func contents(for id: String, size: Int) -> Data {
     return data
 }
 
+func md5(for id: String, size: Int) -> String {
+    Insecure.MD5.hash(data: contents(for: id, size: size))
+        .map { String(format: "%02x", $0) }
+        .joined()
+}
+
 // The one big file used for the multi-part range test.
 let bigID = "bigfile"
 // A file whose Drive name carries no extension.
 let bareID = "barename"
 // A file whose Drive name ends in something that only looks like one.
 let timestampID = "timestamped"
+// Metadata deliberately disagrees with the served bytes for integrity cleanup.
+let corruptID = "corrupt-checksum"
 let bigSize = 300 * 1024 * 1024 / 1000 // 300 KB stand-in; size is faked in metadata
 let bigDeclaredSize = 300 * 1024 * 1024
 
@@ -133,8 +142,10 @@ final class DriveStub: URLProtocol, @unchecked Sendable {
                     files.append(["id": c, "name": c, "mimeType": "application/vnd.google-apps.folder"])
                 }
                 for f in 0..<node.files {
-                    files.append(["id": "\(folderID)_f\(f)", "name": "\(folderID)_f\(f).jpg",
-                                  "mimeType": "image/jpeg", "size": "\(fileSize)"])
+                    let id = "\(folderID)_f\(f)"
+                    files.append(["id": id, "name": "\(id).jpg",
+                                  "mimeType": "image/jpeg", "size": "\(fileSize)",
+                                  "md5Checksum": md5(for: id, size: fileSize)])
                 }
                 // Drive identifies files by id, so one folder really can hold
                 // several files with identical names. Only the root carries
@@ -142,7 +153,8 @@ final class DriveStub: URLProtocol, @unchecked Sendable {
                 if folderID == "root" {
                     for (index, id) in duplicateNameIDs.enumerated() {
                         files.append(["id": id, "name": "invoice.pdf",
-                                      "mimeType": "application/pdf", "size": "\(fileSize)"])
+                                      "mimeType": "application/pdf", "size": "\(fileSize)",
+                                      "md5Checksum": md5(for: id, size: fileSize)])
                         _ = index
                     }
                 }
@@ -158,14 +170,20 @@ final class DriveStub: URLProtocol, @unchecked Sendable {
                 } else if id == bareID {
                     // A real case from Drive: a clip uploaded under a name with no
                     // extension at all, its type known only from the metadata.
-                    body = ["id": id, "name": "Vo", "mimeType": "video/mp4", "size": "\(fileSize)"]
+                    body = ["id": id, "name": "Vo", "mimeType": "video/mp4", "size": "\(fileSize)",
+                            "md5Checksum": md5(for: id, size: fileSize)]
                 } else if id == timestampID {
                     // The other real shape: a name whose trailing ".549Z" is part
                     // of a timestamp, which macOS reads as an unknown extension.
                     body = ["id": id, "name": "ไฟล์ - 2026-08-10T05:03:42.549Z",
-                            "mimeType": "video/quicktime", "size": "\(fileSize)"]
+                            "mimeType": "video/quicktime", "size": "\(fileSize)",
+                            "md5Checksum": md5(for: id, size: fileSize)]
+                } else if id == corruptID {
+                    body = ["id": id, "name": "corrupt.bin", "mimeType": "application/octet-stream",
+                            "size": "\(fileSize)", "md5Checksum": String(repeating: "0", count: 32)]
                 } else {
-                    body = ["id": id, "name": "\(id).jpg", "mimeType": "image/jpeg", "size": "\(fileSize)"]
+                    body = ["id": id, "name": "\(id).jpg", "mimeType": "image/jpeg", "size": "\(fileSize)",
+                            "md5Checksum": md5(for: id, size: fileSize)]
                 }
             }
 
@@ -306,6 +324,7 @@ let selectiveIDs: Set<String> = ["root_f0", "a0_f0"]
 let selectiveMediaBefore = counter.count("media")
 let selectiveListingsBefore = counter.count("list")
 let selectedManifest = analysis.folderItems?.filter { selectiveIDs.contains($0.id) } ?? []
+pass("selected manifest keeps Drive checksums", selectedManifest.allSatisfy { $0.md5Checksum != nil })
 let selectiveURL = try await service.download(
     DownloadRequest(
         driveLink: "x",
@@ -391,6 +410,19 @@ check("downloaded alongside, not over", soloURL.lastPathComponent, "solo (1).jpg
 check("the existing file is untouched", try Data(contentsOf: collision), precious)
 pass("the new file has the downloaded bytes",
      (try Data(contentsOf: soloURL)) == contents(for: "solo", size: fileSize))
+
+// Google supplies md5Checksum for uploaded binary files. A mismatch must never
+// leave a file that Finder or a resume pass could mistake for completed.
+do {
+    _ = try await service.download(
+        DownloadRequest(driveLink: "x", itemID: corruptID, destinationURL: singleDest,
+                        resourceKey: nil, resumeID: UUID())) { _ in }
+    pass("checksum mismatch is rejected", false)
+} catch DriveDownloadError.integrityMismatch {
+    pass("checksum mismatch is rejected", true)
+}
+pass("checksum mismatch removes the bad file",
+     !FileManager.default.fileExists(atPath: singleDest.appendingPathComponent("corrupt.bin").path))
 
 // MARK: - 7. Renaming before the download starts
 

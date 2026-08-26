@@ -7,6 +7,15 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Active transfers keep the Mac awake until their current network attempt
+  finishes.** Idle sleep is allowed again during retry delays, pauses, and when
+  the queue is idle.
+- **Google Drive checksums are verified when available.** Uploaded binary files
+  are hashed in bounded chunks after transfer; a mismatched file is removed and
+  shown as needing attention instead of being presented as complete. Native
+  Google Docs exports, which do not provide MD5, keep their existing path.
+
 ## [6.18.0] - Faster capture from anywhere
 
 ### Added

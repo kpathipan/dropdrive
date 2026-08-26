@@ -69,6 +69,7 @@ final class DropDriveViewModel {
         case driveServer(Int)
         case driveInvalidResponse
         case driveUnsupported
+        case integrity
         case offline
         case timedOut
         case network
@@ -1013,6 +1014,8 @@ final class DropDriveViewModel {
         )
 
         downloadTask = Task {
+            let activity = DownloadActivityService.begin()
+            defer { DownloadActivityService.end(activity) }
             do {
                 let resultURL = try await downloadService.download(request) { progress in
                     Task { @MainActor [self] in
@@ -1047,6 +1050,8 @@ final class DropDriveViewModel {
     /// are shared. yt-dlp resumes its own .part files, so pause/resume works.
     private func startVideoDownload(_ item: QueueItem, destinationURL: URL) {
         downloadTask = Task {
+            let activity = DownloadActivityService.begin()
+            defer { DownloadActivityService.end(activity) }
             do {
                 let resultURL = try await videoDownloadService.download(
                     link: item.driveLink,
@@ -1398,6 +1403,7 @@ final class DropDriveViewModel {
             case .server(let statusCode, _): return .driveServer(statusCode)
             case .invalidResponse: return .driveInvalidResponse
             case .unsupportedFileType: return .driveUnsupported
+            case .integrityMismatch: return .integrity
             }
         }
         if let urlError = error as? URLError {
@@ -1451,6 +1457,11 @@ final class DropDriveViewModel {
             return tr("Google Drive sent back something unexpected. Retry in a moment.", "Google Drive ตอบกลับผิดปกติ รอสักครู่แล้วลองใหม่")
         case .driveUnsupported:
             return tr("This file type can't be downloaded directly from Google Drive.", "ไฟล์ชนิดนี้ดาวน์โหลดตรงจาก Google Drive ไม่ได้")
+        case .integrity:
+            return tr(
+                "The file didn't match Google Drive's checksum, so the incomplete copy was removed. Retry the download.",
+                "ไฟล์ไม่ตรงกับ checksum ของ Google Drive จึงลบสำเนาที่ไม่สมบูรณ์แล้ว กรุณาลองดาวน์โหลดอีกครั้ง"
+            )
         case .offline:
             return tr("The internet connection dropped. It will retry automatically.", "เน็ตหลุด ระบบจะลองใหม่ให้อัตโนมัติ")
         case .timedOut:

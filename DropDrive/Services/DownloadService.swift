@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import UniformTypeIdentifiers
 
 /// `nonisolated` on the protocol, not just the implementation: the requirement's
@@ -32,15 +33,16 @@ nonisolated struct DriveFile: Decodable, Sendable {
     let ownerName: String?
     let shortcutDetails: ShortcutDetails?
     let resourceKey: String?
+    let md5Checksum: String?
 
     var isFolder: Bool { mimeType == "application/vnd.google-apps.folder" }
     var isShortcut: Bool { mimeType == "application/vnd.google-apps.shortcut" }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, mimeType, size, owners, shortcutDetails, resourceKey
+        case id, name, mimeType, size, owners, shortcutDetails, resourceKey, md5Checksum
     }
 
-    init(id: String, name: String, mimeType: String, size: Int64?, resourceKey: String?) {
+    init(id: String, name: String, mimeType: String, size: Int64?, resourceKey: String?, md5Checksum: String? = nil) {
         self.id = id
         self.name = name
         self.mimeType = mimeType
@@ -48,6 +50,7 @@ nonisolated struct DriveFile: Decodable, Sendable {
         self.ownerName = nil
         self.shortcutDetails = nil
         self.resourceKey = resourceKey
+        self.md5Checksum = md5Checksum
     }
 
     init(from decoder: Decoder) throws {
@@ -64,6 +67,7 @@ nonisolated struct DriveFile: Decodable, Sendable {
         ownerName = owners?.first?.displayName
         shortcutDetails = try container.decodeIfPresent(ShortcutDetails.self, forKey: .shortcutDetails)
         resourceKey = try container.decodeIfPresent(String.self, forKey: .resourceKey)
+        md5Checksum = try container.decodeIfPresent(String.self, forKey: .md5Checksum)
     }
 }
 
@@ -76,6 +80,7 @@ enum DriveDownloadError: LocalizedError {
     case invalidResponse
     case server(Int, String)
     case unsupportedFileType
+    case integrityMismatch(String)
 
     var errorDescription: String? {
         switch self {
@@ -85,6 +90,8 @@ enum DriveDownloadError: LocalizedError {
             "Google Drive returned an error (\(statusCode)): \(message)"
         case .unsupportedFileType:
             "This file type can't be downloaded directly from Google Drive."
+        case .integrityMismatch(let fileName):
+            "The downloaded bytes for \(fileName) didn't match Google Drive's checksum."
         }
     }
 }
@@ -551,8 +558,8 @@ private final class DownloadTaskCoordinator: NSObject, URLSessionDownloadDelegat
 
 nonisolated struct GoogleDriveDownloadService: DownloadServicing {
     private static let apiBase = "https://www.googleapis.com/drive/v3/files"
-    private static let metadataFields = "id,name,mimeType,size,owners(displayName),shortcutDetails(targetId,targetMimeType,targetResourceKey),resourceKey"
-    private static let listFields = "nextPageToken, files(id, name, mimeType, size, shortcutDetails(targetId,targetMimeType,targetResourceKey), resourceKey)"
+    private static let metadataFields = "id,name,mimeType,size,md5Checksum,owners(displayName),shortcutDetails(targetId,targetMimeType,targetResourceKey),resourceKey"
+    private static let listFields = "nextPageToken, files(id, name,mimeType,size,md5Checksum,shortcutDetails(targetId,targetMimeType,targetResourceKey),resourceKey)"
 
     /// Multi-part ranged downloads only pay off past this size; below it the extra
     /// round trips (probe + N connection setups) aren't worth it.
@@ -733,7 +740,8 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
                             mimeType: child.mimeType,
                             size: child.size,
                             category: FileCategoryClassifier.category(mimeType: child.mimeType, name: child.name),
-                            resourceKey: childKeys[child.id] ?? child.resourceKey
+                            resourceKey: childKeys[child.id] ?? child.resourceKey,
+                            md5Checksum: child.md5Checksum
                         ))
                     }
                 }
@@ -902,7 +910,8 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
                         name: item.name,
                         mimeType: item.mimeType,
                         size: item.size,
-                        resourceKey: item.resourceKey
+                        resourceKey: item.resourceKey,
+                        md5Checksum: item.md5Checksum
                     ),
                     destinationFolderURL: destinationFolder
                 ))
@@ -1252,6 +1261,7 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
                         onBytes(count)
                     }
                 )
+                try Self.verifyChecksum(of: destinationURL, expectedMD5: file.md5Checksum)
                 ResumeEnvelopeStore.clear(for: resumeID)
                 return destinationURL
             } catch {
@@ -1287,6 +1297,7 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
             } else {
                 result = try await coordinator.run(session: session, request: request)
             }
+            try Self.verifyChecksum(of: result, expectedMD5: file.md5Checksum)
             ResumeEnvelopeStore.clear(for: resumeID)
             return result
         } catch let interruption as DownloadInterruption {
@@ -1302,8 +1313,28 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
             if let cause = interruption.cause { throw cause }
             throw CancellationError()
         } catch {
+            ResumeEnvelopeStore.clear(for: resumeID)
             try? FileManager.default.removeItem(at: destinationURL)
             throw error
+        }
+    }
+
+    /// Google Drive exposes MD5 for uploaded binary files (not native Docs
+    /// exports). Hash the completed file in bounded chunks: no extra copy, no
+    /// second file, and constant memory even for multi-gigabyte downloads.
+    private static func verifyChecksum(of url: URL, expectedMD5: String?) throws {
+        guard let expectedMD5, !expectedMD5.isEmpty else { return }
+
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        var hasher = Insecure.MD5()
+        while let chunk = try handle.read(upToCount: 1_048_576), !chunk.isEmpty {
+            try Task.checkCancellation()
+            hasher.update(data: chunk)
+        }
+        let actual = hasher.finalize().map { String(format: "%02x", $0) }.joined()
+        guard actual.caseInsensitiveCompare(expectedMD5) == .orderedSame else {
+            throw DriveDownloadError.integrityMismatch(url.lastPathComponent)
         }
     }
 

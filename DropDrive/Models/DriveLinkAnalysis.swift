@@ -36,6 +36,7 @@ nonisolated struct DriveLinkAnalysis: Equatable, Sendable, Codable {
         let size: Int64?
         let category: Category
         let resourceKey: String?
+        let md5Checksum: String?
 
         init(
             id: String,
@@ -44,7 +45,8 @@ nonisolated struct DriveLinkAnalysis: Equatable, Sendable, Codable {
             mimeType: String,
             size: Int64?,
             category: Category,
-            resourceKey: String? = nil
+            resourceKey: String? = nil,
+            md5Checksum: String? = nil
         ) {
             self.id = id
             self.name = name
@@ -53,6 +55,7 @@ nonisolated struct DriveLinkAnalysis: Equatable, Sendable, Codable {
             self.size = size
             self.category = category
             self.resourceKey = resourceKey
+            self.md5Checksum = md5Checksum
         }
     }
 

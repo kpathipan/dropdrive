@@ -6,7 +6,8 @@
 # Covers: folder analysis (counts, bytes, category breakdown, parallel scan,
 # concurrency cap, shortcut cycles), folder download (every file byte-identical,
 # no staging files left), resume (only missing files re-fetched), and multi-part
-# ranged downloads (byte-identical, correct range count, probe cached per host).
+# ranged downloads (byte-identical, correct range count, probe cached per host),
+# and Drive-provided checksum verification with corrupt-file cleanup.
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."

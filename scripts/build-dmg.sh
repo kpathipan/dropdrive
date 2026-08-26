@@ -75,8 +75,12 @@ fi
 # replace the stable requirement with a changing binary hash and make every
 # user's keychain ask for a password on the next launch. Developers can opt in
 # explicitly with --allow-adhoc for a local-only package.
+# A Developer ID identity is preferred when available because it is eligible
+# for Apple's notarization service. Xcode's free Apple Development identity is
+# still stable enough for keychain continuity on the current distribution.
 SIGN_ID=$(security find-identity -v -p codesigning 2>/dev/null \
-  | grep -oE '"Apple Develop(ment|er ID Application)[^"]*"' | head -1 | tr -d '"')
+  | grep -oE '"(Developer ID Application|Apple Development)[^"]*"' \
+  | sort -r | head -1 | tr -d '"')
 # A secure timestamp, countersigned by Apple, is what keeps a signature valid
 # after the certificate behind it expires. Without one the signature is only
 # good for the certificate's own lifetime — and since the in-app updater

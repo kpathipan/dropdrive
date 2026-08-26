@@ -147,7 +147,7 @@ final class StatusItemController: NSObject {
             let raw = viewModel.activeProgress?.fractionCompleted ?? 0
             return .progress((raw * 50).rounded() / 50) // 2% steps
         }
-        if viewModel.queue.contains(where: { $0.status == .failed }) { return .failed }
+        if viewModel.queue.contains(where: { $0.status == .failed || $0.status == .waiting }) { return .failed }
         // Ranked below anything to do with a download: an update can wait, and
         // a failed download is what the user needs to see first.
         if case .available = UpdateService.shared.state { return .updateAvailable }

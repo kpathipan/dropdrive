@@ -8,6 +8,14 @@ struct QueueItem: Identifiable, Equatable, Codable {
         case failed
         case cancelled
         case paused
+        /// A recoverable interruption (network/NAS/sleep). The app owns the
+        /// retry; this is surfaced separately from a terminal failure.
+        case waiting
+    }
+
+
+    enum AttentionKind: String, Codable, Equatable {
+        case network, destination, authentication, space, source
     }
 
     let id: UUID
@@ -41,6 +49,10 @@ struct QueueItem: Identifiable, Equatable, Codable {
     /// Nil (the common case) keeps the original name. Optional also for decode
     /// compatibility with queues persisted before this existed.
     var customName: String?
+    var selectedFileIDs: Set<String>?
+    var attentionKind: AttentionKind?
+    var retryCount: Int?
+    var nextRetryAt: Date?
 
     init(
         id: UUID = UUID(),
@@ -52,7 +64,11 @@ struct QueueItem: Identifiable, Equatable, Codable {
         destinationURL: URL? = nil,
         asAudio: Bool? = nil,
         clipSection: String? = nil,
-        customName: String? = nil
+        customName: String? = nil,
+        selectedFileIDs: Set<String>? = nil,
+        attentionKind: AttentionKind? = nil,
+        retryCount: Int? = nil,
+        nextRetryAt: Date? = nil
     ) {
         self.id = id
         self.driveLink = driveLink
@@ -64,6 +80,10 @@ struct QueueItem: Identifiable, Equatable, Codable {
         self.asAudio = asAudio
         self.clipSection = clipSection
         self.customName = customName
+        self.selectedFileIDs = selectedFileIDs
+        self.attentionKind = attentionKind
+        self.retryCount = retryCount
+        self.nextRetryAt = nextRetryAt
     }
 
     var itemID: String { analysis.itemID }

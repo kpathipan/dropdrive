@@ -54,4 +54,13 @@ nonisolated enum FileCategoryClassifier {
         }
         return \.other
     }
+
+    static func category(mimeType: String, name: String) -> DriveLinkAnalysis.FolderItem.Category {
+        let keyPath = categorize(mimeType: mimeType, name: name)
+        if keyPath == \DriveLinkAnalysis.CategoryBreakdown.images { return .images }
+        if keyPath == \DriveLinkAnalysis.CategoryBreakdown.videos { return .videos }
+        if keyPath == \DriveLinkAnalysis.CategoryBreakdown.documents { return .documents }
+        if keyPath == \DriveLinkAnalysis.CategoryBreakdown.archives { return .archives }
+        return .other
+    }
 }

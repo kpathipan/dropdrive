@@ -125,7 +125,8 @@ final class DropDriveViewModel {
     /// Auto-retry on network drops: attempts already made per queue item, and the
     /// backoff before each retry. Cleared on success, pause, cancel, or removal.
     private var autoRetryAttempts: [UUID: Int] = [:]
-    private static let autoRetryDelays: [Double] = [5, 15, 45]
+    private static let autoRetryDelays: [Double] = [5, 15, 45, 120, 300]
+    @ObservationIgnored private var recoveryObserverTokens: [NSObjectProtocol] = []
 
     /// Set for 2 seconds after the queue finishes its last item, so the menu bar
     /// icon can flash a checkmark.
@@ -144,6 +145,7 @@ final class DropDriveViewModel {
         self.folderSelectionService = FolderSelectionService()
         self.selectedDestinationURL = DestinationStore.restore() ?? PreferencesStore.shared.defaultDownloadFolderURL
         checkForSavedQueue()
+        installRecoveryObservers()
     }
 
     init(
@@ -188,6 +190,36 @@ final class DropDriveViewModel {
 
     var canStartQueue: Bool {
         hasReadyItems && selectedDestinationURL != nil && !isQueueProcessing && !isSigningIn
+    }
+
+    var attentionItems: [QueueItem] {
+        queue.filter { item in
+            if item.status == .failed || item.status == .waiting { return true }
+            guard item.status == .ready, let destination = item.destinationURL else { return false }
+            return !FileManager.default.fileExists(atPath: destination.path)
+        }
+    }
+
+    private func installRecoveryObservers() {
+        let center = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didWakeNotification, NSWorkspace.didMountNotification] {
+            recoveryObserverTokens.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.recoverAvailableDestinations() }
+            })
+        }
+    }
+
+    private func recoverAvailableDestinations() {
+        capacityCache = nil
+        for index in queue.indices where queue[index].status == .waiting && queue[index].attentionKind == .destination {
+            guard let destination = queue[index].destinationURL,
+                  FileManager.default.fileExists(atPath: destination.path) else { continue }
+            queue[index].status = .ready
+            queue[index].attentionKind = nil
+            queue[index].nextRetryAt = nil
+        }
+        QueueStore.save(queue)
+        processQueueIfNeeded()
     }
 
     func preflight(for analysis: DriveLinkAnalysis) -> DestinationPreflight {
@@ -394,6 +426,25 @@ final class DropDriveViewModel {
         selectedDestinationURL = folderURL
         capacityCache = nil
         DestinationStore.save(folderURL)
+    }
+
+    func changeDestination(for queueItemID: UUID) {
+        Task {
+            guard let folderURL = await folderSelectionService.chooseDestinationFolder(),
+                  let index = queue.firstIndex(where: { $0.id == queueItemID }) else { return }
+            selectedDestinationURL = folderURL
+            queue[index].destinationURL = folderURL
+            if queue[index].status == .waiting, queue[index].attentionKind == .destination {
+                queue[index].status = .ready
+                queue[index].attentionKind = nil
+                queue[index].errorMessage = nil
+                queue[index].nextRetryAt = nil
+            }
+            capacityCache = nil
+            DestinationStore.save(folderURL)
+            QueueStore.save(queue)
+            processQueueIfNeeded()
+        }
     }
 
     // MARK: - Link analysis
@@ -604,6 +655,12 @@ final class DropDriveViewModel {
     /// a batch add from a multi-selection deep link, where a duplicate is simply
     /// skipped rather than surfaced as a prompt.
     private func handleSuccessfulAnalysis(_ analysis: DriveLinkAnalysis, trimmedLink: String, reportInline: Bool = true) {
+        if DestinationStore.destinationRule(forLink: trimmedLink) == nil,
+           let category = DestinationStore.category(for: analysis),
+           let categoryDestination = DestinationStore.destinationRule(forCategory: category) {
+            selectedDestinationURL = categoryDestination
+            capacityCache = nil
+        }
         if let existing = queue.first(where: { $0.itemID == analysis.itemID }) {
             guard reportInline else { return }
             if existing.status == .completed {
@@ -639,7 +696,12 @@ final class DropDriveViewModel {
     /// The user confirmed the analyzed link: queue it with its current
     /// destination. "Add to queue" intentionally does not start a network
     /// transfer; starting remains an explicit queue-level action.
-    func confirmAnalyzedDownload(asAudio: Bool = false, clipSection: String? = nil, customName: String? = nil) {
+    func confirmAnalyzedDownload(
+        asAudio: Bool = false,
+        clipSection: String? = nil,
+        customName: String? = nil,
+        selectedFileIDs: Set<String>? = nil
+    ) {
         guard case .analyzed(let analysis) = linkAnalysisState else { return }
         let trimmedLink = driveLink.trimmingCharacters(in: .whitespacesAndNewlines)
         enqueue(
@@ -647,7 +709,8 @@ final class DropDriveViewModel {
             driveLink: trimmedLink,
             asAudio: asAudio,
             clipSection: clipSection,
-            customName: Self.usableCustomName(customName, original: analysis.name)
+            customName: Self.usableCustomName(customName, original: analysis.name),
+            selectedFileIDs: selectedFileIDs
         )
         driveLink = ""
         linkAnalysisState = .idle
@@ -766,15 +829,17 @@ final class DropDriveViewModel {
         driveLink: String,
         asAudio: Bool = false,
         clipSection: String? = nil,
-        customName: String? = nil
+        customName: String? = nil,
+        selectedFileIDs: Set<String>? = nil
     ) {
         queue.append(QueueItem(
             driveLink: driveLink,
-            analysis: analysis,
+            analysis: analysis.selectingFolderItems(selectedFileIDs),
             destinationURL: selectedDestinationURL,
             asAudio: asAudio ? true : nil,
             clipSection: clipSection,
-            customName: customName
+            customName: customName,
+            selectedFileIDs: selectedFileIDs
         ))
         QueueStore.save(queue)
     }
@@ -903,7 +968,21 @@ final class DropDriveViewModel {
 
     private func startDownloading(_ item: QueueItem, destinationURL: URL) {
         guard let index = queue.firstIndex(where: { $0.id == item.id }) else { return }
+        guard FileManager.default.fileExists(atPath: destinationURL.path) else {
+            queue[index].status = .waiting
+            queue[index].attentionKind = .destination
+            queue[index].errorMessage = tr(
+                "Waiting for the destination drive to reconnect.",
+                "กำลังรอไดรฟ์ปลายทางเชื่อมต่ออีกครั้ง"
+            )
+            QueueStore.save(queue)
+            activeQueueItemID = nil
+            processQueueIfNeeded()
+            return
+        }
         queue[index].status = .downloading
+        queue[index].attentionKind = nil
+        queue[index].nextRetryAt = nil
         activeQueueItemID = item.id
         activeProgress = DownloadProgress(currentFileName: "Preparing…")
         QueueStore.save(queue)
@@ -919,7 +998,11 @@ final class DropDriveViewModel {
             destinationURL: destinationURL,
             resourceKey: GoogleDriveLinkParser.resourceKey(from: item.driveLink),
             resumeID: item.id,
-            customName: item.customName
+            customName: item.customName,
+            selectedFileIDs: item.selectedFileIDs,
+            selectedFolderItems: item.selectedFileIDs.map { selectedIDs in
+                item.analysis.folderItems?.filter { selectedIDs.contains($0.id) } ?? []
+            }
         )
 
         downloadTask = Task {
@@ -990,6 +1073,17 @@ final class DropDriveViewModel {
     private func scheduleAutoRetry(_ item: QueueItem, destinationURL: URL, attempt: Int) {
         autoRetryAttempts[item.id] = attempt
         let delay = Self.autoRetryDelays[attempt - 1]
+        if let index = queue.firstIndex(where: { $0.id == item.id }) {
+            queue[index].status = .waiting
+            queue[index].attentionKind = .network
+            queue[index].retryCount = attempt
+            queue[index].nextRetryAt = Date().addingTimeInterval(delay)
+            queue[index].errorMessage = tr(
+                "Connection lost — retrying automatically.",
+                "เน็ตหลุด — ระบบกำลังลองใหม่ให้อัตโนมัติ"
+            )
+            QueueStore.save(queue)
+        }
         activeProgress = DownloadProgress(
             currentFileName: tr(
                 "Connection lost — retrying in \(Int(delay))s (attempt \(attempt)/\(Self.autoRetryDelays.count))",
@@ -1030,6 +1124,11 @@ final class DropDriveViewModel {
         queue[index].status = status
         queue[index].resultURL = resultURL
         queue[index].errorMessage = errorMessage
+        if status == .completed || status == .cancelled {
+            queue[index].attentionKind = nil
+            queue[index].retryCount = nil
+            queue[index].nextRetryAt = nil
+        }
         activeQueueItemID = nil
         activeProgress = nil
         QueueStore.save(queue)
@@ -1075,7 +1174,7 @@ final class DropDriveViewModel {
             DownloadHistoryStore.shared.record(DownloadHistoryItem(
                 name: item.displayName, date: .now, status: .cancelled, driveLink: item.driveLink
             ))
-        case .ready, .downloading, .paused:
+        case .ready, .downloading, .paused, .waiting:
             break
         }
 
@@ -1153,9 +1252,13 @@ final class DropDriveViewModel {
 
     /// Retries only this item; the rest of the queue's order and state are untouched.
     func retryQueueItem(_ id: UUID) {
-        guard let index = queue.firstIndex(where: { $0.id == id }), queue[index].status == .failed else { return }
+        guard let index = queue.firstIndex(where: { $0.id == id }),
+              queue[index].status == .failed || queue[index].status == .waiting else { return }
         queue[index].status = .ready
         queue[index].errorMessage = nil
+        queue[index].attentionKind = nil
+        queue[index].retryCount = nil
+        queue[index].nextRetryAt = nil
         QueueStore.save(queue)
         processQueueIfNeeded()
     }
@@ -1189,7 +1292,8 @@ final class DropDriveViewModel {
             destinationURL: item.destinationURL ?? selectedDestinationURL,
             asAudio: item.asAudio,
             clipSection: item.clipSection,
-            customName: item.customName
+            customName: item.customName,
+            selectedFileIDs: item.selectedFileIDs
         ))
         QueueStore.save(queue)
     }
@@ -1256,8 +1360,10 @@ final class DropDriveViewModel {
     /// permanently "downloading", with no control able to start anything else.
     func restoreSavedQueue() {
         guard var saved = pendingRestoreQueue else { return }
-        for index in saved.indices where saved[index].status == .downloading || saved[index].status == .paused {
+        for index in saved.indices where saved[index].status == .downloading || saved[index].status == .paused || saved[index].status == .waiting {
             saved[index].status = .ready
+            saved[index].attentionKind = nil
+            saved[index].nextRetryAt = nil
         }
         let liveIDs = Set(queue.map(\.id))
         queue.append(contentsOf: saved.filter { !liveIDs.contains($0.id) })

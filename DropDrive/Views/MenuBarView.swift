@@ -2,17 +2,17 @@ import SwiftUI
 
 /// The whole app UI, shown as the menu bar extra's window. A narrow icon rail
 /// on the left switches the detail pane between the download queue, recent
-/// downloads, statistics, and settings without leaving the menu-bar surface.
+/// downloads, items needing attention, and settings without leaving the menu-bar surface.
 struct MenuBarView: View {
     enum Pane: String, CaseIterable, Identifiable {
         case queue
         case recent
-        case stats
+        case attention
         case settings
 
         /// Persistent bottom navigation. Settings stays a header action so the
         /// three everyday download destinations remain visually dominant.
-        static let primaryCases: [Pane] = [.queue, .recent, .stats]
+        static let primaryCases: [Pane] = [.queue, .recent, .attention]
 
         var id: String { rawValue }
 
@@ -20,7 +20,7 @@ struct MenuBarView: View {
             switch self {
             case .queue: "arrow.down.circle"
             case .recent: "clock.arrow.circlepath"
-            case .stats: "chart.bar"
+            case .attention: "exclamationmark.circle"
             case .settings: "gearshape"
             }
         }
@@ -29,7 +29,7 @@ struct MenuBarView: View {
             switch self {
             case .queue: tr("Queue", "คิวดาวน์โหลด")
             case .recent: tr("Recent", "ล่าสุด")
-            case .stats: tr("Statistics", "สถิติ")
+            case .attention: tr("Needs Attention", "ต้องตรวจสอบ")
             case .settings: tr("Settings", "การตั้งค่า")
             }
         }
@@ -61,11 +61,8 @@ struct MenuBarView: View {
         switch selectedPane {
         case .queue, .recent:
             raw = measuredHeight + Self.chromeAllowance
-        case .stats:
-            // The empty-state insight card needs a little more vertical room
-            // than the metric row; keeping it visible avoids a mystery card
-            // that looks clipped in the compact menu-bar window.
-            raw = 390
+        case .attention:
+            raw = measuredHeight + Self.chromeAllowance
         case .settings:
             raw = 500
         }
@@ -270,6 +267,14 @@ struct MenuBarView: View {
                                 .frame(width: 5, height: 5)
                                 .offset(x: 4, y: -3)
                         }
+                        if pane == .attention, !viewModel.attentionItems.isEmpty {
+                            Text("\(min(viewModel.attentionItems.count, 9))")
+                                .font(.system(size: 7, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 12, height: 12)
+                                .background(Circle().fill(.orange))
+                                .offset(x: 7, y: -6)
+                        }
                     }
                 if selectedPane == pane {
                     Text(pane.title)
@@ -305,8 +310,8 @@ struct MenuBarView: View {
             queuePane.transition(.opacity)
         case .recent:
             recentPane.transition(.opacity)
-        case .stats:
-            statsPane.transition(.opacity)
+        case .attention:
+            attentionPane.transition(.opacity)
         case .settings:
             settingsPane.transition(.opacity)
         }
@@ -550,12 +555,17 @@ struct MenuBarView: View {
             AnalyzedPromptView(
                 analysis: analysis,
                 destinationURL: viewModel.selectedDestinationURL,
-                preflight: viewModel.preflight(for: analysis),
+                preflight: viewModel.preflight,
                 sourceLink: viewModel.driveLink,
                 onChooseDestination: viewModel.chooseDestinationFolder,
                 onSelectDestination: viewModel.selectDestinationFolder,
-                onDownload: { asAudio, clipSection, customName in
-                    viewModel.confirmAnalyzedDownload(asAudio: asAudio, clipSection: clipSection, customName: customName)
+                onDownload: { asAudio, clipSection, customName, selectedFileIDs in
+                    viewModel.confirmAnalyzedDownload(
+                        asAudio: asAudio,
+                        clipSection: clipSection,
+                        customName: customName,
+                        selectedFileIDs: selectedFileIDs
+                    )
                 },
                 onCancel: viewModel.cancelAnalysis
             )
@@ -624,16 +634,82 @@ struct MenuBarView: View {
         }
     }
 
-    private var statsPane: some View {
+    private var attentionPane: some View {
         ScrollView {
-            StatisticsSection()
-                .padding(DDMetrics.contentInset)
+            VStack(alignment: .leading, spacing: 10) {
+                if viewModel.attentionItems.isEmpty {
+                    VStack(spacing: 9) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.dd(22))
+                            .foregroundStyle(DDTheme.success)
+                        Text(tr("Everything is ready", "ทุกอย่างพร้อมใช้งาน"))
+                            .font(.dd(13, .semibold))
+                        Text(tr(
+                            "Network drops and disconnected drives will appear here.",
+                            "เน็ตหลุดหรือไดรฟ์ถูกถอดจะแสดงที่นี่"
+                        ))
+                        .font(.dd(11))
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 28)
+                    .cardBackground()
+                } else {
+                    Text(tr("Needs Attention", "ต้องตรวจสอบ"))
+                        .font(.dd(15, .bold))
+                    ForEach(viewModel.attentionItems) { item in
+                        HStack(alignment: .top, spacing: 9) {
+                            Image(systemName: item.attentionKind == .destination ? "externaldrive.badge.exclamationmark" : "wifi.exclamationmark")
+                                .foregroundStyle(.orange)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(item.displayName)
+                                    .font(.dd(12, .semibold))
+                                    .lineLimit(1)
+                                Text(attentionMessage(for: item))
+                                    .font(.dd(11))
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer(minLength: 5)
+                            if item.status == .failed {
+                                Button(tr("Retry", "ลองใหม่")) { viewModel.retryQueueItem(item.id) }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                            } else if item.attentionKind == .destination {
+                                Button(tr("Change", "เปลี่ยน")) { viewModel.changeDestination(for: item.id) }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                            }
+                        }
+                        .padding(12)
+                        .cardBackground()
+                    }
+                }
+            }
+            .padding(DDMetrics.contentInset)
                 .background(
                     GeometryReader { proxy in
                         Color.clear.preference(key: ContentHeightKey.self, value: proxy.size.height)
                     }
                 )
         }
+    }
+
+    private func attentionMessage(for item: QueueItem) -> String {
+        if item.status == .waiting, item.attentionKind == .network {
+            if let date = item.nextRetryAt {
+                return tr(
+                    "Connection lost. Retrying automatically at \(date.formatted(date: .omitted, time: .shortened)).",
+                    "เน็ตหลุด ระบบจะลองใหม่อัตโนมัติเวลา \(date.formatted(date: .omitted, time: .shortened))"
+                )
+            }
+            return tr("Connection lost. Retrying automatically.", "เน็ตหลุด ระบบกำลังลองใหม่อัตโนมัติ")
+        }
+        if item.attentionKind == .destination {
+            return tr("Reconnect the destination drive or choose another folder.", "เชื่อมต่อไดรฟ์ปลายทาง หรือเลือกโฟลเดอร์ใหม่")
+        }
+        return item.errorMessage ?? tr("Retry this download.", "ลองดาวน์โหลดรายการนี้อีกครั้ง")
     }
 
 }

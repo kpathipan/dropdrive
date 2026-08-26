@@ -7,6 +7,41 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [6.17.0] - Selective, resilient downloads
+
+### Added
+- **Choose files inside a Google Drive folder before queueing it.** The review
+  card can select individual files or a whole category, and file count, size,
+  and required disk space update immediately.
+- **Selected folder downloads reuse the analysis manifest.** They start without
+  listing the Drive tree a second time, download only the chosen files, and
+  leave no empty folders or duplicate cache files behind.
+- **Needs Attention replaces Statistics in the primary tab bar.** Recoverable
+  network interruptions, disconnected NAS/external destinations, and terminal
+  failures are visible in one actionable place.
+- **Automatic destinations can be remembered by file type** as well as by
+  source. Source-specific rules remain the higher-priority choice.
+
+### Changed
+- **Network retry survives longer interruptions.** Backoff now extends through
+  five attempts, persists its visible state, and resumes unavailable
+  destinations after wake or volume reconnect.
+- **Statistics no longer occupy an everyday navigation tab.** Compact lifetime
+  totals remain available in Settings → About, stored only on this Mac.
+- **Large folder manifests stay memory-only and bounded to 20 hot links.** No
+  new on-disk cache is created.
+- **Release packaging prefers Developer ID and notarizes automatically when
+  credentials are available.** Development-signed updates retain the stable
+  Team-ID requirement and production Keychain namespace; ad-hoc publishing is
+  still refused.
+
+### Fixed
+- **A pasted link can be queued when a writable network destination reports
+  unknown free space instead of a literal zero.** Disk capacity is checked
+  again during transfer.
+- **The Settings experience remains entirely inside the menu-bar popover,**
+  including local statistics and updater controls.
+
 ## [6.16.3] - Reliable links, one compact surface
 
 ### Changed

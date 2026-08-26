@@ -36,6 +36,7 @@ struct PreferencesView: View {
     @State private var updates = UpdateService.shared
     @State private var customLimitMBps: Double = 1
     @State private var showingReleaseNotes = false
+    @State private var historyStore = DownloadHistoryStore.shared
     private let folderSelectionService: FolderSelectionServicing = FolderSelectionService()
 
     var body: some View {
@@ -181,6 +182,18 @@ struct PreferencesView: View {
 
     private var aboutTab: some View {
         Form {
+            Section {
+                let totals = historyStore.totals
+                LabeledContent(tr("Downloads", "ดาวน์โหลด"), value: "\(totals.completedCount)")
+                LabeledContent(tr("Files", "ไฟล์ทั้งหมด"), value: "\(totals.totalFiles)")
+                LabeledContent(tr("Downloaded", "ขนาดรวม"), value: Formatters.byteCount(totals.totalBytes))
+            } header: {
+                Text(tr("Local statistics", "สถิติในเครื่อง"))
+            } footer: {
+                Text(tr("Stored only on this Mac.", "เก็บเฉพาะใน Mac เครื่องนี้"))
+                    .foregroundStyle(.secondary)
+            }
+
             Section {
                 LabeledContent(tr("Version", "เวอร์ชัน"), value: appVersion)
                 if updates.isConfigured {

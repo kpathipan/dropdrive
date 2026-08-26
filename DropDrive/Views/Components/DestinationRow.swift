@@ -8,6 +8,7 @@ struct DestinationRow: View {
     let isLocked: Bool
     let showsLabel: Bool
     let sourceLink: String?
+    var category: DriveLinkAnalysis.FolderItem.Category? = nil
     let onChooseDestination: () -> Void
     let onSelectDestination: (URL) -> Void
 
@@ -74,6 +75,19 @@ struct DestinationRow: View {
                         } else {
                             Button(tr("Use this folder for \(source)", "ใช้โฟลเดอร์นี้สำหรับ \(source)")) {
                                 DestinationStore.setDestinationRule(destinationURL, forLink: sourceLink)
+                            }
+                        }
+                    }
+
+                    if let category {
+                        let label = DestinationStore.categoryLabel(category)
+                        if DestinationStore.destinationRule(forCategory: category) != nil {
+                            Button(tr("Stop using this folder for \(label)", "เลิกใช้โฟลเดอร์นี้สำหรับ\(label)")) {
+                                DestinationStore.removeDestinationRule(forCategory: category)
+                            }
+                        } else {
+                            Button(tr("Use this folder for \(label)", "ใช้โฟลเดอร์นี้สำหรับ\(label)")) {
+                                DestinationStore.setDestinationRule(destinationURL, forCategory: category)
                             }
                         }
                     }

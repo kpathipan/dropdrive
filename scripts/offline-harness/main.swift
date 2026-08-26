@@ -213,6 +213,10 @@ check("fileCount", analysis.fileCount ?? -1, expectedFiles)
 check("totalBytes", analysis.totalBytes ?? -1, expectedBytes)
 check("images in breakdown", analysis.categoryBreakdown?.images ?? -1, expectedFiles - duplicateNameIDs.count)
 check("documents in breakdown", analysis.categoryBreakdown?.documents ?? -1, duplicateNameIDs.count)
+check("folder manifest", analysis.folderItems?.count ?? -1, expectedFiles)
+let imageOnly = analysis.selectingFolderItems(Set(["root_f0", "a0_f0"]))
+check("selected analysis fileCount", imageOnly.fileCount ?? -1, 2)
+check("selected analysis bytes", imageOnly.totalBytes ?? -1, Int64(fileSize * 2))
 check("folder listings", counter.count("list"), 17)
 let sequentialFloor = 18 * 0.12
 pass("parallel scan", elapsed < sequentialFloor * 0.6,
@@ -292,6 +296,38 @@ check("each holds its own file's bytes, none overwritten", sameNameBytes.count, 
 check("suffixes assigned deterministically by id",
       sameName.map(\.lastPathComponent).joined(separator: ","),
       "invoice (2).pdf,invoice (3).pdf,invoice.pdf")
+
+// MARK: - 2b. Selective folder download
+
+print("--- selective folder download")
+let selectiveDestination = sandbox.appendingPathComponent("selective")
+try FileManager.default.createDirectory(at: selectiveDestination, withIntermediateDirectories: true)
+let selectiveIDs: Set<String> = ["root_f0", "a0_f0"]
+let selectiveMediaBefore = counter.count("media")
+let selectiveListingsBefore = counter.count("list")
+let selectedManifest = analysis.folderItems?.filter { selectiveIDs.contains($0.id) } ?? []
+let selectiveURL = try await service.download(
+    DownloadRequest(
+        driveLink: "x",
+        itemID: "root",
+        destinationURL: selectiveDestination,
+        resourceKey: nil,
+        resumeID: UUID(),
+        selectedFileIDs: selectiveIDs,
+        selectedFolderItems: selectedManifest
+    )
+) { _ in }
+let selectiveFiles = descendants(of: selectiveURL, skipsHidden: true).filter {
+    (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+}
+check("only selected files fetched", counter.count("media") - selectiveMediaBefore, selectiveIDs.count)
+check("selected files skip a second folder scan", counter.count("list") - selectiveListingsBefore, 0)
+check("only selected files written", selectiveFiles.count, selectiveIDs.count)
+let emptyDirectories = descendants(of: selectiveURL, skipsHidden: true).filter { url in
+    guard (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { return false }
+    return (try? FileManager.default.contentsOfDirectory(atPath: url.path).isEmpty) == true
+}
+check("no empty unselected folders left", emptyDirectories.count, 0)
 
 // MARK: - 3. Resume: an interrupted folder only re-fetches what's missing
 //

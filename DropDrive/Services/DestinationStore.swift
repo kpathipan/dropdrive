@@ -5,6 +5,7 @@ enum DestinationStore {
     private static let recentBookmarksKey = "recentDestinationBookmarks"
     private static let favoriteBookmarksKey = "favoriteDestinationBookmarks"
     private static let sourceRuleBookmarksKey = "destinationSourceRules"
+    private static let categoryRuleBookmarksKey = "destinationCategoryRules"
     private static let maximumRecentDestinations = 5
 
     static func save(_ url: URL) {
@@ -84,6 +85,56 @@ enum DestinationStore {
         case "facebook": return "Facebook"
         case "drive": return "Google Drive"
         default: return key
+        }
+    }
+
+    static func category(for analysis: DriveLinkAnalysis) -> DriveLinkAnalysis.FolderItem.Category? {
+        if analysis.isVideo == true { return .videos }
+        if analysis.type == .file {
+            return FileCategoryClassifier.category(mimeType: "", name: analysis.name)
+        }
+        guard let breakdown = analysis.categoryBreakdown else { return nil }
+        let populated: [(DriveLinkAnalysis.FolderItem.Category, Int)] = [
+            (.images, breakdown.images), (.videos, breakdown.videos),
+            (.documents, breakdown.documents), (.archives, breakdown.archives),
+            (.other, breakdown.other)
+        ].filter { $0.1 > 0 }
+        return populated.count == 1 ? populated[0].0 : nil
+    }
+
+    static func destinationRule(forCategory category: DriveLinkAnalysis.FolderItem.Category) -> URL? {
+        guard let rules = UserDefaults.standard.dictionary(forKey: categoryRuleBookmarksKey),
+              let bookmark = rules[category.rawValue] as? Data else { return nil }
+        var isStale = false
+        guard let url = try? URL(
+            resolvingBookmarkData: bookmark,
+            options: .withSecurityScope,
+            relativeTo: nil,
+            bookmarkDataIsStale: &isStale
+        ), SecurityScopedAccessManager.shared.retainAccess(to: url) else { return nil }
+        return url
+    }
+
+    static func setDestinationRule(_ url: URL, forCategory category: DriveLinkAnalysis.FolderItem.Category) {
+        guard let bookmark = try? url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil) else { return }
+        var rules = UserDefaults.standard.dictionary(forKey: categoryRuleBookmarksKey) ?? [:]
+        rules[category.rawValue] = bookmark
+        UserDefaults.standard.set(rules, forKey: categoryRuleBookmarksKey)
+    }
+
+    static func removeDestinationRule(forCategory category: DriveLinkAnalysis.FolderItem.Category) {
+        var rules = UserDefaults.standard.dictionary(forKey: categoryRuleBookmarksKey) ?? [:]
+        rules.removeValue(forKey: category.rawValue)
+        UserDefaults.standard.set(rules, forKey: categoryRuleBookmarksKey)
+    }
+
+    static func categoryLabel(_ category: DriveLinkAnalysis.FolderItem.Category) -> String {
+        switch category {
+        case .images: tr("images", "รูปภาพ")
+        case .videos: tr("videos", "วิดีโอ")
+        case .documents: tr("documents", "เอกสาร")
+        case .archives: tr("archives", "ไฟล์บีบอัด")
+        case .other: tr("other files", "ไฟล์อื่นๆ")
         }
     }
 

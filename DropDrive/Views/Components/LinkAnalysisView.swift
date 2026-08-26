@@ -261,11 +261,11 @@ struct BatchReviewView: View {
 struct AnalyzedPromptView: View {
     let analysis: DriveLinkAnalysis
     let destinationURL: URL?
-    let preflight: DestinationPreflight
+    let preflight: (DriveLinkAnalysis) -> DestinationPreflight
     let sourceLink: String
     let onChooseDestination: () -> Void
     let onSelectDestination: (URL) -> Void
-    let onDownload: (_ asAudio: Bool, _ clipSection: String?, _ customName: String?) -> Void
+    let onDownload: (_ asAudio: Bool, _ clipSection: String?, _ customName: String?, _ selectedFileIDs: Set<String>?) -> Void
     let onCancel: () -> Void
 
     /// The name to save under, editable before anything is queued. Seeded from
@@ -287,6 +287,12 @@ struct AnalyzedPromptView: View {
     @State private var trimEnabled = false
     @State private var trimStart = ""
     @State private var trimEnd = ""
+    @State private var selectedFolderFileIDs: Set<String>?
+    @State private var showsFolderFiles = false
+
+    private var effectiveAnalysis: DriveLinkAnalysis {
+        analysis.selectingFolderItems(selectedFolderFileIDs)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -332,10 +338,10 @@ struct AnalyzedPromptView: View {
                     nameRow
 
                     HStack(spacing: 4) {
-                        if let totalBytes = analysis.totalBytes {
+                        if let totalBytes = effectiveAnalysis.totalBytes {
                             Text(Formatters.byteCount(totalBytes))
                         }
-                        if let fileCount = analysis.fileCount {
+                        if let fileCount = effectiveAnalysis.fileCount {
                             Text(tr("· \(fileCount) \(fileCount == 1 ? "file" : "files")", "· \(fileCount) ไฟล์"))
                         }
                         if let ownerName = analysis.ownerName {
@@ -395,6 +401,10 @@ struct AnalyzedPromptView: View {
                 }
             }
 
+            if analysis.type == .folder, let items = analysis.folderItems, !items.isEmpty {
+                folderSelection(items)
+            }
+
             Divider()
 
             DestinationRow(
@@ -402,18 +412,19 @@ struct AnalyzedPromptView: View {
                 isLocked: false,
                 showsLabel: true,
                 sourceLink: sourceLink,
+                category: DestinationStore.category(for: effectiveAnalysis),
                 onChooseDestination: onChooseDestination,
                 onSelectDestination: onSelectDestination
             )
 
-            preflightView
+            preflightView(preflight(effectiveAnalysis))
 
             HStack(spacing: 10) {
                 Button(tr("Cancel", "ยกเลิก"), role: .cancel, action: onCancel)
                     .buttonStyle(.bordered)
 
                 Button {
-                    onDownload(asAudio, clipSection, customName)
+                    onDownload(asAudio, clipSection, customName, selectedFolderFileIDs)
                 } label: {
                     Label(
                         asAudio ? tr("Add MP3 to queue", "เพิ่ม MP3 เข้าคิว") : tr("Add to queue", "เพิ่มเข้าคิว"),
@@ -422,7 +433,7 @@ struct AnalyzedPromptView: View {
                     .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(trimEnabled && trimInvalid || !preflight.canQueue)
+                .disabled(trimEnabled && trimInvalid || !preflight(effectiveAnalysis).canQueue || effectiveAnalysis.fileCount == 0)
                 // Return confirms the card, carrying the format, trim and name
                 // chosen on it. The paste box deliberately no longer answers
                 // Return while this card is up: it can't see any of that.
@@ -445,7 +456,7 @@ struct AnalyzedPromptView: View {
         .onChange(of: analysis.name) { _, _ in seedNameIfUntouched() }
     }
 
-    private var preflightView: some View {
+    private func preflightView(_ preflight: DestinationPreflight) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 5) {
                 Image(systemName: analysis.isPublic ? "eye" : "lock.fill")
@@ -468,6 +479,113 @@ struct AnalyzedPromptView: View {
         .font(.dd(11))
         .foregroundStyle(.secondary)
         .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private func folderSelection(_ items: [DriveLinkAnalysis.FolderItem]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.16)) { showsFolderFiles.toggle() }
+                } label: {
+                    Label(
+                        tr("Choose files", "เลือกไฟล์"),
+                        systemImage: showsFolderFiles ? "chevron.down" : "chevron.right"
+                    )
+                    .font(.dd(11, .semibold))
+                }
+                .buttonStyle(.plain)
+
+                Spacer()
+                Text(tr(
+                    "\(effectiveAnalysis.fileCount ?? items.count) of \(items.count)",
+                    "\(effectiveAnalysis.fileCount ?? items.count) จาก \(items.count)"
+                ))
+                .font(.dd(11).monospacedDigit())
+                .foregroundStyle(.secondary)
+            }
+
+            if showsFolderFiles {
+                HStack(spacing: 6) {
+                    selectionChip(tr("All", "ทั้งหมด"), selected: selectedFolderFileIDs == nil) {
+                        selectedFolderFileIDs = nil
+                    }
+                    ForEach(DriveLinkAnalysis.FolderItem.Category.allCases, id: \.self) { category in
+                        let count = items.lazy.filter { $0.category == category }.count
+                        if count > 0 {
+                            selectionChip(categoryLabel(category), selected: selectedCategory(category, items: items)) {
+                                selectedFolderFileIDs = Set(items.lazy.filter { $0.category == category }.map(\.id))
+                            }
+                        }
+                    }
+                }
+
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(items) { item in
+                            Button { toggleFolderItem(item.id, allItems: items) } label: {
+                                HStack(spacing: 7) {
+                                    Image(systemName: isFolderItemSelected(item.id) ? "checkmark.circle.fill" : "circle")
+                                        .foregroundStyle(isFolderItemSelected(item.id) ? DDTheme.accent : Color.secondary)
+                                    Text(item.relativePath)
+                                        .font(.dd(11))
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                    Spacer(minLength: 6)
+                                    if let size = item.size {
+                                        Text(Formatters.byteCount(size))
+                                            .font(.dd(10).monospacedDigit())
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .padding(.vertical, 5)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .frame(maxHeight: 132)
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(DDTheme.rail))
+    }
+
+    private func selectionChip(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(title, action: action)
+            .font(.dd(10, .medium))
+            .buttonStyle(.plain)
+            .foregroundStyle(selected ? DDTheme.accent : Color.secondary)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(Capsule().fill(selected ? DDTheme.accentSoft : Color.secondary.opacity(0.08)))
+    }
+
+    private func isFolderItemSelected(_ id: String) -> Bool {
+        selectedFolderFileIDs?.contains(id) ?? true
+    }
+
+    private func toggleFolderItem(_ id: String, allItems: [DriveLinkAnalysis.FolderItem]) {
+        var selected = selectedFolderFileIDs ?? Set(allItems.map(\.id))
+        if selected.contains(id) { selected.remove(id) } else { selected.insert(id) }
+        selectedFolderFileIDs = selected.count == allItems.count ? nil : selected
+    }
+
+    private func selectedCategory(_ category: DriveLinkAnalysis.FolderItem.Category, items: [DriveLinkAnalysis.FolderItem]) -> Bool {
+        guard let selectedFolderFileIDs else { return false }
+        let categoryIDs = Set(items.lazy.filter { $0.category == category }.map(\.id))
+        return !categoryIDs.isEmpty && selectedFolderFileIDs == categoryIDs
+    }
+
+    private func categoryLabel(_ category: DriveLinkAnalysis.FolderItem.Category) -> String {
+        switch category {
+        case .images: tr("Images", "รูป")
+        case .videos: tr("Videos", "วิดีโอ")
+        case .documents: tr("Docs", "เอกสาร")
+        case .archives: tr("Archives", "ไฟล์บีบอัด")
+        case .other: tr("Other", "อื่นๆ")
+        }
     }
 
     // MARK: - Name

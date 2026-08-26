@@ -110,6 +110,7 @@ struct QueueView: View {
             case .downloading, .paused: downloading += 1
             case .ready: pending += 1
             case .completed: done += 1
+            case .waiting: pending += 1
             case .failed, .cancelled: break
             }
         }
@@ -574,6 +575,13 @@ private struct QueueRow: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 3)
                     .background(Capsule().fill(DDTheme.accentSoft))
+            case .waiting:
+                HStack(spacing: 4) {
+                    ProgressView().controlSize(.mini)
+                    Text(tr("waiting", "กำลังรอ"))
+                        .font(.dd(11))
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .font(.dd(13))
@@ -588,6 +596,7 @@ private struct QueueRow: View {
         case .failed: "Failed"
         case .cancelled: "Cancelled"
         case .paused: "Paused"
+        case .waiting: "Waiting to retry"
         }
     }
 }

@@ -40,6 +40,16 @@ nonisolated struct DriveFile: Decodable, Sendable {
         case id, name, mimeType, size, owners, shortcutDetails, resourceKey
     }
 
+    init(id: String, name: String, mimeType: String, size: Int64?, resourceKey: String?) {
+        self.id = id
+        self.name = name
+        self.mimeType = mimeType
+        self.size = size
+        self.ownerName = nil
+        self.shortcutDetails = nil
+        self.resourceKey = resourceKey
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
@@ -124,8 +134,10 @@ private actor AnalysisCache {
     static let shared = AnalysisCache()
 
     /// Bounded so a long-running session can't accumulate every link ever
-    /// pasted; folder analyses in particular hold a full category breakdown.
-    private static let capacity = 100
+    /// pasted; folder analyses now hold a selectable file manifest. Twenty hot
+    /// links keeps re-pastes instant without retaining large folder trees for
+    /// the lifetime of a menu-bar process.
+    private static let capacity = 20
 
     private var storage: [String: LinkAnalysisResult] = [:]
     private var insertionOrder: [String] = []
@@ -662,7 +674,7 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
             )
         }
 
-        let (fileCount, totalBytes, breakdown) = try await estimateFolderContents(folderID: metadata.id, credential: credential, resourceKeys: resourceKeys)
+        let (fileCount, totalBytes, breakdown, folderItems) = try await estimateFolderContents(folderID: metadata.id, credential: credential, resourceKeys: resourceKeys)
         return DriveLinkAnalysis(
             itemID: metadata.id,
             name: metadata.name,
@@ -672,7 +684,8 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
             totalBytes: totalBytes,
             fileCount: fileCount,
             ownerName: metadata.ownerName,
-            categoryBreakdown: breakdown
+            categoryBreakdown: breakdown,
+            folderItems: folderItems
         )
     }
 
@@ -685,35 +698,51 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
         folderID: String,
         credential: DriveCredential,
         resourceKeys: [String: String]
-    ) async throws -> (fileCount: Int, totalBytes: Int64, breakdown: DriveLinkAnalysis.CategoryBreakdown) {
+    ) async throws -> (fileCount: Int, totalBytes: Int64, breakdown: DriveLinkAnalysis.CategoryBreakdown, folderItems: [DriveLinkAnalysis.FolderItem]) {
         var count = 0
         var bytes: Int64 = 0
         var breakdown = DriveLinkAnalysis.CategoryBreakdown()
+        var folderItems: [DriveLinkAnalysis.FolderItem] = []
 
         // A folder reachable from itself through a shortcut would otherwise be
         // walked forever — the old depth-first version would at least have run
         // out of stack; this one would just never finish.
         var visited: Set<String> = [folderID]
-        var frontier: [FolderScan] = [FolderScan(id: folderID, resourceKeys: resourceKeys)]
+        var frontier: [FolderScan] = [FolderScan(id: folderID, resourceKeys: resourceKeys, relativePath: "")]
         while !frontier.isEmpty {
             var next: [FolderScan] = []
-            for resolved in try await scanLevel(frontier, credential: credential) {
+            let level = try await scanLevel(frontier, credential: credential)
+            for (folder, resolved) in zip(frontier, level) {
                 for (child, childKeys) in resolved {
                     if child.isFolder {
                         guard visited.insert(child.id).inserted else { continue }
-                        next.append(FolderScan(id: child.id, resourceKeys: childKeys))
+                        let path = [folder.relativePath, Self.sanitizedName(child.name)]
+                            .filter { !$0.isEmpty }.joined(separator: "/")
+                        next.append(FolderScan(id: child.id, resourceKeys: childKeys, relativePath: path))
                     } else if Self.isDownloadable(mimeType: child.mimeType) {
                         count += 1
                         bytes += child.size ?? 0
                         let category = FileCategoryClassifier.categorize(mimeType: child.mimeType, name: child.name)
                         breakdown[keyPath: category] += 1
+                        let relativePath = [folder.relativePath, Self.fileName(for: child)]
+                            .filter { !$0.isEmpty }.joined(separator: "/")
+                        folderItems.append(.init(
+                            id: child.id,
+                            name: Self.fileName(for: child),
+                            relativePath: relativePath,
+                            mimeType: child.mimeType,
+                            size: child.size,
+                            category: FileCategoryClassifier.category(mimeType: child.mimeType, name: child.name),
+                            resourceKey: childKeys[child.id] ?? child.resourceKey
+                        ))
                     }
                 }
             }
             frontier = next
         }
 
-        return (count, bytes, breakdown)
+        folderItems.sort { $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending }
+        return (count, bytes, breakdown, folderItems)
     }
 
     /// One folder queued for listing: its Drive ID, the resource keys reaching it,
@@ -722,6 +751,7 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
         let id: String
         let resourceKeys: [String: String]
         var localURL: URL?
+        var relativePath: String = ""
     }
 
     /// Lists every folder in one level of the tree concurrently and returns their
@@ -851,8 +881,41 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
         try FileManager.default.createDirectory(at: rootFolderURL, withIntermediateDirectories: true)
         Self.writeResumeMarker(itemID: request.itemID, in: rootFolderURL)
 
-        progress(DownloadProgress(currentFileName: "Scanning folder contents…"))
-        let plan = try await enumerate(folderID: request.itemID, into: rootFolderURL, credential: credential, resourceKeys: resourceKeys)
+        progress(DownloadProgress(currentFileName: request.selectedFolderItems == nil
+            ? "Scanning folder contents…"
+            : "Preparing selected files…"))
+        let plan: [PlanItem]
+        var downloadResourceKeys = resourceKeys
+        if let selectedFolderItems = request.selectedFolderItems {
+            var direct: [PlanItem] = []
+            direct.reserveCapacity(selectedFolderItems.count)
+            for item in selectedFolderItems {
+                let relativeDirectory = (item.relativePath as NSString).deletingLastPathComponent
+                let destinationFolder = relativeDirectory.isEmpty
+                    ? rootFolderURL
+                    : rootFolderURL.appendingPathComponent(relativeDirectory, isDirectory: true)
+                try FileManager.default.createDirectory(at: destinationFolder, withIntermediateDirectories: true)
+                if let resourceKey = item.resourceKey { downloadResourceKeys[item.id] = resourceKey }
+                direct.append(PlanItem(
+                    file: DriveFile(
+                        id: item.id,
+                        name: item.name,
+                        mimeType: item.mimeType,
+                        size: item.size,
+                        resourceKey: item.resourceKey
+                    ),
+                    destinationFolderURL: destinationFolder
+                ))
+            }
+            plan = Self.withUniqueLocalNames(direct)
+        } else {
+            let completePlan = try await enumerate(folderID: request.itemID, into: rootFolderURL, credential: credential, resourceKeys: resourceKeys)
+            if let selectedFileIDs = request.selectedFileIDs {
+                plan = completePlan.filter { selectedFileIDs.contains($0.file.id) }
+            } else {
+                plan = completePlan
+            }
+        }
 
         // Half-written files from a run that was killed rather than cancelled:
         // clear them so this attempt restarts those files cleanly.
@@ -899,7 +962,7 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
                         item.file,
                         into: item.destinationFolderURL,
                         credential: credential,
-                        resourceKeys: resourceKeys,
+                        resourceKeys: downloadResourceKeys,
                         resumeID: request.resumeID,
                         overrideBaseName: item.localName
                     ) { chunkSize in
@@ -920,6 +983,7 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
         }
 
         Self.clearResumeMarker(itemID: request.itemID, in: rootFolderURL)
+        Self.removeEmptyDirectories(in: rootFolderURL)
         return rootFolderURL
     }
 
@@ -950,6 +1014,22 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
         /// the whole plan so that the "is it already on disk?" check and the
         /// download itself can never disagree about it.
         var localName: String = ""
+    }
+
+    private static func removeEmptyDirectories(in root: URL) {
+        guard let enumerator = FileManager.default.enumerator(
+            at: root,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+        let directories = enumerator.compactMap { $0 as? URL }.filter { url in
+            (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+        }.sorted { $0.path.count > $1.path.count }
+        for directory in directories where directory != root {
+            if (try? FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty) == true {
+                try? FileManager.default.removeItem(at: directory)
+            }
+        }
     }
 
     /// Gives every planned file a name unique within its own folder.
@@ -1009,7 +1089,7 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
     ) async throws -> [PlanItem] {
         var items: [PlanItem] = []
         var visited: Set<String> = [folderID]
-        var frontier = [FolderScan(id: folderID, resourceKeys: resourceKeys, localURL: localFolderURL)]
+        var frontier = [FolderScan(id: folderID, resourceKeys: resourceKeys, localURL: localFolderURL, relativePath: "")]
 
         while !frontier.isEmpty {
             var next: [FolderScan] = []
@@ -1023,7 +1103,7 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
                         guard visited.insert(child.id).inserted else { continue }
                         let childURL = parentURL.appendingPathComponent(Self.sanitizedName(child.name), isDirectory: true)
                         try FileManager.default.createDirectory(at: childURL, withIntermediateDirectories: true)
-                        next.append(FolderScan(id: child.id, resourceKeys: childKeys, localURL: childURL))
+                        next.append(FolderScan(id: child.id, resourceKeys: childKeys, localURL: childURL, relativePath: ""))
                     } else if Self.isDownloadable(mimeType: child.mimeType) {
                         items.append(PlanItem(file: child, destinationFolderURL: parentURL))
                     }

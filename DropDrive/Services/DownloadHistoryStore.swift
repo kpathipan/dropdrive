@@ -18,7 +18,7 @@ final class DownloadHistoryStore {
     private(set) var items: [DownloadHistoryItem] = []
 
     /// Rollups the UI reads on every redraw — the header's "N today", the
-    /// Statistics pane's three totals. Derived once when the list changes
+    /// About pane's three local totals. Derived once when the list changes
     /// instead of re-filtering and re-reducing the whole history each time a
     /// progress tick redraws the window.
     struct Totals: Equatable {

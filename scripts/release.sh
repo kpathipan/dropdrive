@@ -51,6 +51,15 @@ echo "==> Building the DMG"
 DMG="dist/DropDrive-v$VERSION-adhoc.dmg"
 [ -f "$DMG" ] || { echo "error: expected $DMG, which the build did not produce" >&2; exit 1; }
 
+# Developer ID builds can be notarized for a normal drag-to-Applications first
+# launch. A free Apple Development identity is intentionally not submitted —
+# Apple rejects it — but it retains DropDrive's stable keychain identity.
+if security find-identity -v -p codesigning 2>/dev/null | grep -q 'Developer ID Application'; then
+  ./scripts/notarize-release.sh "$DMG"
+else
+  echo "==> Developer ID certificate not installed; keeping the stable development-signed update path"
+fi
+
 SHA=$(shasum -a 256 "$DMG" | cut -d' ' -f1)
 SIZE=$(du -h "$DMG" | cut -f1)
 echo "==> $DMG ($SIZE)"

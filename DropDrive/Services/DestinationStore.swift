@@ -5,7 +5,9 @@ enum DestinationStore {
     private static let recentBookmarksKey = "recentDestinationBookmarks"
     private static let favoriteBookmarksKey = "favoriteDestinationBookmarks"
     private static let sourceRuleBookmarksKey = "destinationSourceRules"
+    private static let sourceRulePathsKey = "destinationSourceRulePaths"
     private static let categoryRuleBookmarksKey = "destinationCategoryRules"
+    private static let categoryRulePathsKey = "destinationCategoryRulePaths"
     private static let maximumRecentDestinations = 5
 
     static func save(_ url: URL) {
@@ -46,17 +48,19 @@ enum DestinationStore {
     /// in from the review card, then that source consistently lands where they
     /// chose until the rule is removed.
     static func destinationRule(forLink link: String) -> URL? {
-        guard let key = sourceKey(for: link),
-              let rules = UserDefaults.standard.dictionary(forKey: sourceRuleBookmarksKey),
-              let bookmark = rules[key] as? Data
-        else { return nil }
+        guard let key = sourceKey(for: link) else { return nil }
+        let fallback = (UserDefaults.standard.dictionary(forKey: sourceRulePathsKey)?[key] as? String)
+            .map(URL.init(fileURLWithPath:))
+        guard let rules = UserDefaults.standard.dictionary(forKey: sourceRuleBookmarksKey),
+              let bookmark = rules[key] as? Data else { return fallback }
         var isStale = false
         guard let url = try? URL(
             resolvingBookmarkData: bookmark,
             options: .withSecurityScope,
             relativeTo: nil,
             bookmarkDataIsStale: &isStale
-        ), SecurityScopedAccessManager.shared.retainAccess(to: url) else { return nil }
+        ) else { return fallback }
+        _ = SecurityScopedAccessManager.shared.retainAccess(to: url)
         return url
     }
 
@@ -67,6 +71,9 @@ enum DestinationStore {
         var rules = UserDefaults.standard.dictionary(forKey: sourceRuleBookmarksKey) ?? [:]
         rules[key] = bookmark
         UserDefaults.standard.set(rules, forKey: sourceRuleBookmarksKey)
+        var paths = UserDefaults.standard.dictionary(forKey: sourceRulePathsKey) ?? [:]
+        paths[key] = url.path
+        UserDefaults.standard.set(paths, forKey: sourceRulePathsKey)
     }
 
     static func removeDestinationRule(forLink link: String) {
@@ -74,6 +81,9 @@ enum DestinationStore {
         var rules = UserDefaults.standard.dictionary(forKey: sourceRuleBookmarksKey) ?? [:]
         rules.removeValue(forKey: key)
         UserDefaults.standard.set(rules, forKey: sourceRuleBookmarksKey)
+        var paths = UserDefaults.standard.dictionary(forKey: sourceRulePathsKey) ?? [:]
+        paths.removeValue(forKey: key)
+        UserDefaults.standard.set(paths, forKey: sourceRulePathsKey)
     }
 
     static func sourceLabel(forLink link: String) -> String? {
@@ -103,15 +113,19 @@ enum DestinationStore {
     }
 
     static func destinationRule(forCategory category: DriveLinkAnalysis.FolderItem.Category) -> URL? {
+        let key = category.rawValue
+        let fallback = (UserDefaults.standard.dictionary(forKey: categoryRulePathsKey)?[key] as? String)
+            .map(URL.init(fileURLWithPath:))
         guard let rules = UserDefaults.standard.dictionary(forKey: categoryRuleBookmarksKey),
-              let bookmark = rules[category.rawValue] as? Data else { return nil }
+              let bookmark = rules[key] as? Data else { return fallback }
         var isStale = false
         guard let url = try? URL(
             resolvingBookmarkData: bookmark,
             options: .withSecurityScope,
             relativeTo: nil,
             bookmarkDataIsStale: &isStale
-        ), SecurityScopedAccessManager.shared.retainAccess(to: url) else { return nil }
+        ) else { return fallback }
+        _ = SecurityScopedAccessManager.shared.retainAccess(to: url)
         return url
     }
 
@@ -120,12 +134,18 @@ enum DestinationStore {
         var rules = UserDefaults.standard.dictionary(forKey: categoryRuleBookmarksKey) ?? [:]
         rules[category.rawValue] = bookmark
         UserDefaults.standard.set(rules, forKey: categoryRuleBookmarksKey)
+        var paths = UserDefaults.standard.dictionary(forKey: categoryRulePathsKey) ?? [:]
+        paths[category.rawValue] = url.path
+        UserDefaults.standard.set(paths, forKey: categoryRulePathsKey)
     }
 
     static func removeDestinationRule(forCategory category: DriveLinkAnalysis.FolderItem.Category) {
         var rules = UserDefaults.standard.dictionary(forKey: categoryRuleBookmarksKey) ?? [:]
         rules.removeValue(forKey: category.rawValue)
         UserDefaults.standard.set(rules, forKey: categoryRuleBookmarksKey)
+        var paths = UserDefaults.standard.dictionary(forKey: categoryRulePathsKey) ?? [:]
+        paths.removeValue(forKey: category.rawValue)
+        UserDefaults.standard.set(paths, forKey: categoryRulePathsKey)
     }
 
     static func categoryLabel(_ category: DriveLinkAnalysis.FolderItem.Category) -> String {
@@ -146,14 +166,19 @@ enum DestinationStore {
 
     private static func restoreBookmarks(forKey key: String) -> [URL] {
         guard let bookmarks = UserDefaults.standard.array(forKey: key) as? [Data] else { return [] }
-        return bookmarks.compactMap { bookmark in
+        let fallbackPaths = UserDefaults.standard.stringArray(forKey: "\(key).paths") ?? []
+        return bookmarks.enumerated().compactMap { index, bookmark in
             var isStale = false
             guard let url = try? URL(
                 resolvingBookmarkData: bookmark,
                 options: .withSecurityScope,
                 relativeTo: nil,
                 bookmarkDataIsStale: &isStale
-            ), SecurityScopedAccessManager.shared.retainAccess(to: url) else { return nil }
+            ) else {
+                guard fallbackPaths.indices.contains(index) else { return nil }
+                return URL(fileURLWithPath: fallbackPaths[index])
+            }
+            _ = SecurityScopedAccessManager.shared.retainAccess(to: url)
             return url
         }
     }
@@ -165,6 +190,7 @@ enum DestinationStore {
             relativeTo: nil
         ) }
         UserDefaults.standard.set(bookmarks, forKey: key)
+        UserDefaults.standard.set(urls.map(\.path), forKey: "\(key).paths")
     }
 
     private static func sourceKey(for link: String) -> String? {

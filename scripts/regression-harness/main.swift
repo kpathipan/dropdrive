@@ -25,5 +25,19 @@ let original = scratch.appendingPathComponent("link.txt")
 FileManager.default.createFile(atPath: original.path, contents: Data())
 check("rejected inputs keep a unique original", UniqueDestinationNaming.uniqueURL(for: original).lastPathComponent == "link (1).txt")
 
+let bookmarkTestKey = "DropDrive.regression.disconnectedBookmark.\(UUID().uuidString)"
+let rememberedPath = "/Volumes/Disconnected NAS/Downloads"
+UserDefaults.standard.set(Data([0, 1, 2, 3]), forKey: bookmarkTestKey)
+UserDefaults.standard.set(rememberedPath, forKey: "\(bookmarkTestKey).path")
+check(
+    "disconnected bookmark keeps its remembered path",
+    SecurityScopedBookmark.restore(forKey: bookmarkTestKey)?.path == rememberedPath
+)
+SecurityScopedBookmark.clear(forKey: bookmarkTestKey)
+check(
+    "bookmark clear also removes its path fallback",
+    UserDefaults.standard.object(forKey: "\(bookmarkTestKey).path") == nil
+)
+
 if failures > 0 { exit(1) }
 print("ALL PASS")

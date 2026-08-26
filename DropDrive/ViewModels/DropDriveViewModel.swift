@@ -211,6 +211,9 @@ final class DropDriveViewModel {
 
     private func recoverAvailableDestinations() {
         capacityCache = nil
+        if selectedDestinationURL == nil {
+            selectedDestinationURL = DestinationStore.restore() ?? PreferencesStore.shared.defaultDownloadFolderURL
+        }
         for index in queue.indices where queue[index].status == .waiting && queue[index].attentionKind == .destination {
             guard let destination = queue[index].destinationURL,
                   FileManager.default.fileExists(atPath: destination.path) else { continue }

@@ -10,6 +10,8 @@ xcrun swiftc -O \
   DropDrive/Utilities/DestinationCapacity.swift \
   DropDrive/Models/ExternalLinkReceipt.swift \
   DropDrive/Utilities/UniqueDestinationNaming.swift \
+  DropDrive/Utilities/SecurityScopedAccessManager.swift \
+  DropDrive/Utilities/SecurityScopedBookmark.swift \
   scripts/regression-harness/main.swift \
   -o "$OUT/regression-harness"
 

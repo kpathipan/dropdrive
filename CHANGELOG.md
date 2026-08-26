@@ -7,6 +7,15 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [6.17.1] - Remember disconnected destinations
+
+### Fixed
+- **A remembered NAS or external-drive destination no longer turns into “None”
+  while the volume is disconnected.** DropDrive keeps a non-sensitive path
+  fallback beside each security-scoped bookmark, shows the destination as
+  unavailable, and reacquires its scope when the volume mounts or the Mac
+  wakes. Existing bookmarks migrate automatically the next time they resolve.
+
 ## [6.17.0] - Selective, resilient downloads
 
 ### Added

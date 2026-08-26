@@ -117,22 +117,25 @@ struct DownloadFormView: View {
             guard !hasActiveCard, !isLocked else { return }
             isLinkFieldFocused = true
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshClipboardSuggestion()
+        }
     }
 
     private func pasteFromClipboard() {
-        if let text = NSPasteboard.general.string(forType: .string) {
-            driveLink = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let links = ClipboardLinkReader.links()
+        guard !links.isEmpty else {
+            clipboardHasSupportedLink = false
+            return
         }
+        driveLink = links.joined(separator: "\n")
+        clipboardHasSupportedLink = false
     }
 
     /// Reading the clipboard is local-only. The button is intentionally offered
     /// only when it contains a link DropDrive can recognise, rather than showing
     /// a generic paste affordance for every copied private note or password.
     private func refreshClipboardSuggestion() {
-        guard let text = NSPasteboard.general.string(forType: .string) else {
-            clipboardHasSupportedLink = false
-            return
-        }
-        clipboardHasSupportedLink = !SupportedLinkExtractor.links(from: text).isEmpty
+        clipboardHasSupportedLink = !ClipboardLinkReader.links().isEmpty
     }
 }

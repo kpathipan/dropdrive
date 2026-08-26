@@ -16,6 +16,16 @@ and this project follows [Semantic Versioning](https://semver.org/).
   shown as needing attention instead of being presented as complete. Native
   Google Docs exports, which do not provide MD5, keep their existing path.
 
+### Changed
+- **Clipboard capture is consistent across automatic pickup and the Paste
+  button.** Both accept URL and text clipboard formats, extract several links,
+  remove duplicates, and ignore unrelated clipboard text.
+- **The macOS Share menu can send several supported links in one action.** Drive
+  resource keys remain intact, and the app receives one compact batch.
+- **The global shortcut reports registration failure instead of advertising a
+  shortcut already claimed by another app.** Its key combination is now also
+  visible in the in-popover settings.
+
 ## [6.18.0] - Faster capture from anywhere
 
 ### Added

@@ -216,13 +216,7 @@ final class DropDriveViewModel {
         let pasteboard = NSPasteboard.general
         guard pasteboard.changeCount != lastImportedClipboardChangeCount else { return false }
 
-        let raw = [
-            pasteboard.string(forType: .string),
-            pasteboard.string(forType: .URL)
-        ]
-        .compactMap { $0 }
-        .joined(separator: "\n")
-        let links = SupportedLinkExtractor.links(from: raw)
+        let links = ClipboardLinkReader.links(from: pasteboard)
         guard !links.isEmpty else { return false }
 
         lastImportedClipboardChangeCount = pasteboard.changeCount

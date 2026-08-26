@@ -31,6 +31,25 @@ check("supported-link extraction preserves source order", mixedLinks.first?.cont
 check("supported-link extraction deduplicates video variants", mixedLinks.last?.contains("youtu") == true)
 check("Drive duplicate keeps its resource key", GoogleDriveLinkParser.resourceKey(from: mixedLinks[0]) == "better-key")
 
+let sharedLinks = ShareLinkExtractor.links(from: """
+Look at https://example.com/ignored
+https://drive.google.com/file/d/shared-drive/view?resourcekey=key&usp=sharing
+https://youtu.be/shared-video
+https://youtu.be/shared-video
+""")
+check("Share menu extracts several supported links", sharedLinks.count == 2)
+check("Share menu removes exact duplicates", sharedLinks.last == "https://youtu.be/shared-video")
+if let handoff = ShareLinkExtractor.deepLink(for: sharedLinks),
+   let handoffComponents = URLComponents(url: handoff, resolvingAgainstBaseURL: false) {
+    let handedOffLinks = (handoffComponents.queryItems ?? [])
+        .filter { $0.name == "url" }
+        .compactMap { $0.value }
+    check("Share menu sends repeated URL query items", handedOffLinks == sharedLinks)
+    check("Share menu preserves Drive resource keys", handedOffLinks.first?.contains("resourcekey=key&usp=sharing") == true)
+} else {
+    check("Share menu creates a valid handoff URL", false)
+}
+
 let scratch = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
 defer { try? FileManager.default.removeItem(at: scratch) }
 try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)

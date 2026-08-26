@@ -6,6 +6,7 @@ import Foundation
 /// (Show/Hide Dock) and common browser bookmark shortcuts.
 @MainActor
 final class GlobalShortcutService {
+    static let displayName = "⌃⌥D"
     private static let signature: OSType = 0x4444484B // "DDHK"
     private static let identifier: UInt32 = 1
 
@@ -13,7 +14,7 @@ final class GlobalShortcutService {
     private var eventHandler: EventHandlerRef?
     private let action: @MainActor () -> Void
 
-    init(action: @escaping @MainActor () -> Void) {
+    init?(action: @escaping @MainActor () -> Void) {
         self.action = action
 
         var eventType = EventTypeSpec(
@@ -21,7 +22,7 @@ final class GlobalShortcutService {
             eventKind: UInt32(kEventHotKeyPressed)
         )
         let pointer = Unmanaged.passUnretained(self).toOpaque()
-        InstallEventHandler(
+        let handlerStatus = InstallEventHandler(
             GetApplicationEventTarget(),
             { _, event, userData in
                 guard let event, let userData else { return OSStatus(eventNotHandledErr) }
@@ -52,9 +53,10 @@ final class GlobalShortcutService {
             pointer,
             &eventHandler
         )
+        guard handlerStatus == noErr else { return nil }
 
         let hotKeyID = EventHotKeyID(signature: Self.signature, id: Self.identifier)
-        RegisterEventHotKey(
+        let registrationStatus = RegisterEventHotKey(
             UInt32(kVK_ANSI_D),
             UInt32(controlKey | optionKey),
             hotKeyID,
@@ -62,6 +64,13 @@ final class GlobalShortcutService {
             0,
             &hotKey
         )
+        guard registrationStatus == noErr else {
+            if let eventHandler {
+                RemoveEventHandler(eventHandler)
+                self.eventHandler = nil
+            }
+            return nil
+        }
     }
 
     deinit {

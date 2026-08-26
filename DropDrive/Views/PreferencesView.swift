@@ -107,6 +107,24 @@ struct PreferencesView: View {
                     Label(tr("Launch DropDrive at login", "เปิด DropDrive อัตโนมัติตอนเข้าเครื่อง"), systemImage: "power")
                 }
             }
+
+            Section {
+                LabeledContent {
+                    Text(GlobalShortcutService.displayName)
+                        .font(.dd(12, .medium).monospaced())
+                        .foregroundStyle(.secondary)
+                } label: {
+                    Label(tr("Open DropDrive", "เปิด DropDrive"), systemImage: "keyboard")
+                }
+            } header: {
+                Text(tr("Keyboard Shortcut", "คีย์ลัด"))
+            } footer: {
+                Text(tr(
+                    "Works from any app and prepares supported links currently on the clipboard.",
+                    "ใช้ได้จากทุกแอป และเตรียมลิงก์ที่รองรับจากคลิปบอร์ดให้พร้อมวิเคราะห์"
+                ))
+                .foregroundStyle(.secondary)
+            }
         }
         .settingsFormStyle()
     }

@@ -43,7 +43,7 @@ final class StatusItemController: NSObject {
             button.action = #selector(handleClick)
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
             button.setAccessibilityLabel("DropDrive")
-            button.toolTip = tr("DropDrive · Control-Option-D", "DropDrive · Control-Option-D")
+            button.toolTip = "DropDrive · \(GlobalShortcutService.displayName)"
 
             let dropTarget = StatusItemDropTargetView(frame: button.bounds)
             dropTarget.autoresizingMask = [.width, .height]
@@ -68,6 +68,13 @@ final class StatusItemController: NSObject {
         Self.current = self
         globalShortcut = GlobalShortcutService { [weak self] in
             self?.showPopover()
+        }
+        if globalShortcut == nil {
+            statusItem.button?.toolTip = tr(
+                "DropDrive · global shortcut unavailable",
+                "DropDrive · คีย์ลัดถูกใช้งานโดยแอปอื่น"
+            )
+            dropTargetView?.toolTip = statusItem.button?.toolTip
         }
         observeState()
     }

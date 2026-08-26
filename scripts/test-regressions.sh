@@ -11,6 +11,7 @@ xcrun swiftc -O \
   DropDrive/Utilities/GoogleDriveLinkParser.swift \
   DropDrive/Utilities/LinkIdentity.swift \
   DropDrive/Utilities/SupportedLinkExtractor.swift \
+  DropDriveShare/ShareLinkExtractor.swift \
   DropDrive/Models/ExternalLinkReceipt.swift \
   DropDrive/Utilities/UniqueDestinationNaming.swift \
   DropDrive/Utilities/SecurityScopedAccessManager.swift \

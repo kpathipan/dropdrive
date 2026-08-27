@@ -5,7 +5,7 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [6.20.0] - Visual folder review
 
 ### Added
 - **Drive folders can be reviewed as a Gallery or a List at three remembered

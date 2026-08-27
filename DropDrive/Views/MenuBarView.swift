@@ -559,6 +559,7 @@ struct MenuBarView: View {
             AnalyzedPromptView(
                 analysis: analysis,
                 destinationURL: viewModel.selectedDestinationURL,
+                startsImmediately: viewModel.confirmationStartsImmediately,
                 preflight: viewModel.preflight,
                 sourceLink: viewModel.driveLink,
                 onChooseDestination: viewModel.chooseDestinationFolder,
@@ -582,6 +583,7 @@ struct MenuBarView: View {
             BatchReviewView(
                 items: items,
                 destinationURL: viewModel.selectedDestinationURL,
+                startsImmediately: viewModel.confirmationStartsImmediately,
                 onChooseDestination: viewModel.chooseDestinationFolder,
                 onSelectDestination: viewModel.selectDestinationFolder,
                 onToggle: viewModel.toggleBatchSelection,

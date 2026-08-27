@@ -37,6 +37,10 @@ nonisolated struct DriveLinkAnalysis: Equatable, Sendable, Codable {
         let category: Category
         let resourceKey: String?
         let md5Checksum: String?
+        /// Google-generated artwork for the file. The URL itself is short-lived;
+        /// `thumbnailVersion` is the stable cache invalidation signal.
+        let thumbnailLink: String?
+        let thumbnailVersion: String?
 
         init(
             id: String,
@@ -46,7 +50,9 @@ nonisolated struct DriveLinkAnalysis: Equatable, Sendable, Codable {
             size: Int64?,
             category: Category,
             resourceKey: String? = nil,
-            md5Checksum: String? = nil
+            md5Checksum: String? = nil,
+            thumbnailLink: String? = nil,
+            thumbnailVersion: String? = nil
         ) {
             self.id = id
             self.name = name
@@ -56,6 +62,8 @@ nonisolated struct DriveLinkAnalysis: Equatable, Sendable, Codable {
             self.category = category
             self.resourceKey = resourceKey
             self.md5Checksum = md5Checksum
+            self.thumbnailLink = thumbnailLink
+            self.thumbnailVersion = thumbnailVersion
         }
     }
 

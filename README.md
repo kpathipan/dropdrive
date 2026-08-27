@@ -1,16 +1,17 @@
 # DropDrive
 
-DropDrive is a native macOS download utility — paste a link, review exactly what it will save and where it will go, add it to a queue, then start when you are ready.
+DropDrive is a native macOS download utility — paste a link, review exactly what it will save and where it will go, then download now or add it behind an active transfer.
 
 ## Features
 
 - **Smart Link Analysis** — paste a Drive link and see what it is (file or folder, size, file count, owner, public/private) before downloading anything, including items behind a Drive "shortcut" or a `resourcekey`-protected link
+- **Visual folder review** — switch between Gallery and List at three sizes, see Google Drive thumbnails for photos/videos and native icons for other files, select only what you need, and press Space to preview
 - **Video downloads** — paste a TikTok / YouTube / Facebook / Instagram link instead and DropDrive downloads the video through bundled yt-dlp + ffmpeg (TikTok without the watermark, YouTube at full quality), with the same queue, progress, and history
 - **Paste many links** — paste a collection of links, review each result, deselect any you do not want, then add the selection to the queue in one step
 - Public links download without signing in; private links prompt for Google sign-in only when actually needed
 - Real progress reporting (bytes, speed, ETA) with cancel support; downloads **resume** after an interruption whenever the server allows it, and large files can download over **multiple concurrent connections**
 - Active transfers prevent idle sleep, and Google Drive files are verified against the source checksum when Drive provides one—without creating a second file copy
-- Optional **bandwidth limit**, and a queue that can be **paused/resumed** and **reordered** by drag-and-drop. Adding a link never starts a download by itself.
+- Optional **bandwidth limit**, and a queue that can be **paused/resumed** and **reordered** by drag-and-drop. Confirming an idle item starts it immediately; confirming while work is active adds it to the queue.
 - **Destinations** — remembers recent folders, lets you favorite them, and can save an explicit per-source rule (for example, use one folder for YouTube and another for Google Drive)
 - Destination collisions get a smart `(1)`, `(2)`… suffix instead of being overwritten
 - Recent download history, persisted across launches and **searchable**, with **Reveal in Finder** and **Copy Google Drive Link** on every entry, plus lightweight local download statistics in Preferences
@@ -19,7 +20,7 @@ DropDrive is a native macOS download utility — paste a link, review exactly wh
 - Send a link into DropDrive without copy/paste: a [Chrome extension](browser-extension/chrome), or the macOS **Share menu**
 - Native notifications on completion, with **Reveal in Finder** and **Open DropDrive** actions
 - **Menu-bar-first app** — the queue, history, items needing attention, and Settings all stay in one compact popover under the menu-bar icon
-- Keyboard controls: Control-Option-D opens DropDrive globally; Command-V pastes, Return analyzes/confirms, Command-O chooses a folder, and Space pauses/resumes the queue
+- Keyboard controls: Control-Option-D opens DropDrive globally; Command-V pastes, Return analyzes/confirms, Command-O chooses a folder, and Space previews a focused folder item or pauses/resumes the queue
 - Optional GitHub-based update check (notify-only — DropDrive never auto-downloads or auto-installs updates)
 
 ## Requirements

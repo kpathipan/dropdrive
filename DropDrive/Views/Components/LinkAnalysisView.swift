@@ -128,11 +128,12 @@ struct LinkAnalysisErrorView: View {
 }
 
 /// A pasted collection gets one deliberate review step. A single inaccessible
-/// link should never block its neighbours, and nothing starts until the user
-/// explicitly adds the selected rows to the queue.
+/// link never blocks its neighbours. Confirming starts the selected rows when
+/// idle, or appends them when another transfer is already waiting/running.
 struct BatchReviewView: View {
     let items: [BatchLinkReview]
     let destinationURL: URL?
+    let startsImmediately: Bool
     let onChooseDestination: () -> Void
     let onSelectDestination: (URL) -> Void
     let onToggle: (String) -> Void
@@ -152,7 +153,9 @@ struct BatchReviewView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(tr("Review links", "ตรวจสอบลิงก์"))
                         .font(.dd(13, .semibold))
-                    Text(tr("Choose what to add — downloads will not start yet.", "เลือกรายการที่จะเข้าคิว — ยังไม่เริ่มดาวน์โหลด"))
+                    Text(startsImmediately
+                         ? tr("Choose what to download now.", "เลือกรายการที่จะดาวน์โหลดตอนนี้")
+                         : tr("Choose what to add after the current download.", "เลือกรายการที่จะเพิ่มต่อจากงานปัจจุบัน"))
                         .font(.dd(11))
                         .foregroundStyle(.secondary)
                 }
@@ -184,8 +187,10 @@ struct BatchReviewView: View {
 
                 Button(action: onAdd) {
                     Label(
-                        tr("Add \(selectedCount) to queue", "เพิ่ม \(selectedCount) เข้าคิว"),
-                        systemImage: "plus.circle.fill"
+                        startsImmediately
+                            ? tr("Download \(selectedCount)", "ดาวน์โหลด \(selectedCount) รายการ")
+                            : tr("Add \(selectedCount) to queue", "เพิ่ม \(selectedCount) เข้าคิว"),
+                        systemImage: startsImmediately ? "arrow.down.circle.fill" : "plus.circle.fill"
                     )
                     .frame(maxWidth: .infinity)
                 }
@@ -261,6 +266,7 @@ struct BatchReviewView: View {
 struct AnalyzedPromptView: View {
     let analysis: DriveLinkAnalysis
     let destinationURL: URL?
+    let startsImmediately: Bool
     let preflight: (DriveLinkAnalysis) -> DestinationPreflight
     let sourceLink: String
     let onChooseDestination: () -> Void
@@ -427,8 +433,8 @@ struct AnalyzedPromptView: View {
                     onDownload(asAudio, clipSection, customName, selectedFolderFileIDs)
                 } label: {
                     Label(
-                        asAudio ? tr("Add MP3 to queue", "เพิ่ม MP3 เข้าคิว") : tr("Add to queue", "เพิ่มเข้าคิว"),
-                        systemImage: asAudio ? "music.note" : "plus.circle.fill"
+                        primaryActionTitle,
+                        systemImage: startsImmediately ? "arrow.down.circle.fill" : "plus.circle.fill"
                     )
                     .frame(maxWidth: .infinity)
                 }
@@ -454,6 +460,13 @@ struct AnalyzedPromptView: View {
         // already typed.
         .task(id: analysis.itemID) { seedNameIfUntouched() }
         .onChange(of: analysis.name) { _, _ in seedNameIfUntouched() }
+    }
+
+    private var primaryActionTitle: String {
+        if startsImmediately {
+            return asAudio ? tr("Download MP3", "ดาวน์โหลด MP3") : tr("Download", "ดาวน์โหลด")
+        }
+        return asAudio ? tr("Add MP3 to queue", "เพิ่ม MP3 เข้าคิว") : tr("Add to queue", "เพิ่มเข้าคิว")
     }
 
     private func preflightView(_ preflight: DestinationPreflight) -> some View {
@@ -506,86 +519,11 @@ struct AnalyzedPromptView: View {
             }
 
             if showsFolderFiles {
-                HStack(spacing: 6) {
-                    selectionChip(tr("All", "ทั้งหมด"), selected: selectedFolderFileIDs == nil) {
-                        selectedFolderFileIDs = nil
-                    }
-                    ForEach(DriveLinkAnalysis.FolderItem.Category.allCases, id: \.self) { category in
-                        let count = items.lazy.filter { $0.category == category }.count
-                        if count > 0 {
-                            selectionChip(categoryLabel(category), selected: selectedCategory(category, items: items)) {
-                                selectedFolderFileIDs = Set(items.lazy.filter { $0.category == category }.map(\.id))
-                            }
-                        }
-                    }
-                }
-
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(items) { item in
-                            Button { toggleFolderItem(item.id, allItems: items) } label: {
-                                HStack(spacing: 7) {
-                                    Image(systemName: isFolderItemSelected(item.id) ? "checkmark.circle.fill" : "circle")
-                                        .foregroundStyle(isFolderItemSelected(item.id) ? DDTheme.accent : Color.secondary)
-                                    Text(item.relativePath)
-                                        .font(.dd(11))
-                                        .lineLimit(1)
-                                        .truncationMode(.middle)
-                                    Spacer(minLength: 6)
-                                    if let size = item.size {
-                                        Text(Formatters.byteCount(size))
-                                            .font(.dd(10).monospacedDigit())
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                .padding(.vertical, 5)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-                .frame(maxHeight: 132)
+                FolderItemBrowser(items: items, selectedFileIDs: $selectedFolderFileIDs)
             }
         }
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(DDTheme.rail))
-    }
-
-    private func selectionChip(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(title, action: action)
-            .font(.dd(10, .medium))
-            .buttonStyle(.plain)
-            .foregroundStyle(selected ? DDTheme.accent : Color.secondary)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 4)
-            .background(Capsule().fill(selected ? DDTheme.accentSoft : Color.secondary.opacity(0.08)))
-    }
-
-    private func isFolderItemSelected(_ id: String) -> Bool {
-        selectedFolderFileIDs?.contains(id) ?? true
-    }
-
-    private func toggleFolderItem(_ id: String, allItems: [DriveLinkAnalysis.FolderItem]) {
-        var selected = selectedFolderFileIDs ?? Set(allItems.map(\.id))
-        if selected.contains(id) { selected.remove(id) } else { selected.insert(id) }
-        selectedFolderFileIDs = selected.count == allItems.count ? nil : selected
-    }
-
-    private func selectedCategory(_ category: DriveLinkAnalysis.FolderItem.Category, items: [DriveLinkAnalysis.FolderItem]) -> Bool {
-        guard let selectedFolderFileIDs else { return false }
-        let categoryIDs = Set(items.lazy.filter { $0.category == category }.map(\.id))
-        return !categoryIDs.isEmpty && selectedFolderFileIDs == categoryIDs
-    }
-
-    private func categoryLabel(_ category: DriveLinkAnalysis.FolderItem.Category) -> String {
-        switch category {
-        case .images: tr("Images", "รูป")
-        case .videos: tr("Videos", "วิดีโอ")
-        case .documents: tr("Docs", "เอกสาร")
-        case .archives: tr("Archives", "ไฟล์บีบอัด")
-        case .other: tr("Other", "อื่นๆ")
-        }
     }
 
     // MARK: - Name

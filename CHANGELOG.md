@@ -7,6 +7,22 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Drive folders can be reviewed as a Gallery or a List at three remembered
+  sizes.** Photos and videos use Google's existing thumbnails; documents,
+  audio, archives, and other files keep their native macOS file-type icons.
+- **Space previews the focused folder item before download.** The preview and
+  its thumbnail cache stay in memory, so browsing does not create duplicate
+  files or consume persistent storage.
+
+### Changed
+- **A confirmed item downloads immediately when no other transfer is waiting.**
+  If a download is active or already pending, the same action clearly changes
+  to Add to Queue instead.
+- **Choosing a destination temporarily folds the popover into the menu bar.**
+  DropDrive reopens after the macOS folder panel closes with the analyzed link,
+  file selection, and other review choices intact.
+
 ## [6.19.0] - Verified transfers and smoother capture
 
 ### Added

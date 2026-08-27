@@ -163,6 +163,17 @@ final class DropDriveViewModel {
 
     var isQueueProcessing: Bool { activeQueueItemID != nil }
 
+    /// The confirm card can speak in the action the user will actually see.
+    /// Completed/failed history rows do not make a queue; ready, paused,
+    /// waiting, or active work does.
+    var confirmationStartsImmediately: Bool {
+        guard !isQueueProcessing, !isQueuePaused else { return false }
+        return !queue.contains { item in
+            item.status == .ready || item.status == .downloading
+                || item.status == .paused || item.status == .waiting
+        }
+    }
+
     /// One pass over the queue instead of an intermediate array plus two
     /// reductions. Every one of the properties below used to build its own copy
     /// of `readyItems`, and the whole set is re-read on each SwiftUI redraw —
@@ -695,9 +706,9 @@ final class DropDriveViewModel {
         }
     }
 
-    /// The user confirmed the analyzed link: queue it with its current
-    /// destination. "Add to queue" intentionally does not start a network
-    /// transfer; starting remains an explicit queue-level action.
+    /// The queue remains the single download engine, but it stays an
+    /// implementation detail when nothing else is pending: a lone confirmed
+    /// item begins immediately. Existing work keeps the new item behind it.
     func confirmAnalyzedDownload(
         asAudio: Bool = false,
         clipSection: String? = nil,
@@ -705,6 +716,7 @@ final class DropDriveViewModel {
         selectedFileIDs: Set<String>? = nil
     ) {
         guard case .analyzed(let analysis) = linkAnalysisState else { return }
+        let startsImmediately = confirmationStartsImmediately
         let trimmedLink = driveLink.trimmingCharacters(in: .whitespacesAndNewlines)
         enqueue(
             analysis: analysis,
@@ -716,6 +728,7 @@ final class DropDriveViewModel {
         )
         driveLink = ""
         linkAnalysisState = .idle
+        if startsImmediately { startQueueDownloads() }
     }
 
     /// Checks Recent Downloads (which spans past app sessions), not just this
@@ -757,15 +770,19 @@ final class DropDriveViewModel {
     func addSelectedBatchToQueue() {
         guard case .batchReview(let items) = linkAnalysisState,
               selectedDestinationURL != nil else { return }
+        let startsImmediately = confirmationStartsImmediately
+        var addedAnyItem = false
         for item in items where item.isSelected {
             guard case .ready(let analysis) = item.result,
                   !queue.contains(where: { $0.itemID == analysis.itemID }),
                   !hasCompletedDownloadPreviously(itemID: analysis.itemID)
             else { continue }
             enqueue(analysis: analysis, driveLink: item.link)
+            addedAnyItem = true
         }
         driveLink = ""
         linkAnalysisState = .idle
+        if startsImmediately, addedAnyItem { startQueueDownloads() }
     }
 
     func retryAnalysis() {

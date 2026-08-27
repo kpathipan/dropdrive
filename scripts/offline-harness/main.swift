@@ -145,7 +145,9 @@ final class DriveStub: URLProtocol, @unchecked Sendable {
                     let id = "\(folderID)_f\(f)"
                     files.append(["id": id, "name": "\(id).jpg",
                                   "mimeType": "image/jpeg", "size": "\(fileSize)",
-                                  "md5Checksum": md5(for: id, size: fileSize)])
+                                  "md5Checksum": md5(for: id, size: fileSize),
+                                  "thumbnailLink": "https://lh3.googleusercontent.com/\(id)",
+                                  "thumbnailVersion": "1"])
                 }
                 // Drive identifies files by id, so one folder really can hold
                 // several files with identical names. Only the root carries
@@ -325,6 +327,9 @@ let selectiveMediaBefore = counter.count("media")
 let selectiveListingsBefore = counter.count("list")
 let selectedManifest = analysis.folderItems?.filter { selectiveIDs.contains($0.id) } ?? []
 pass("selected manifest keeps Drive checksums", selectedManifest.allSatisfy { $0.md5Checksum != nil })
+pass("folder manifest keeps Google thumbnails", selectedManifest.allSatisfy {
+    $0.thumbnailLink?.contains($0.id) == true && $0.thumbnailVersion == "1"
+})
 let selectiveURL = try await service.download(
     DownloadRequest(
         driveLink: "x",

@@ -9,8 +9,8 @@ import Observation
 /// Observation-driven so the idle menu-bar app does not wake twice a second.
 @MainActor
 final class StatusItemController: NSObject {
-    /// The live controller, so code that opens a modal panel can keep the
-    /// popover from dismissing underneath it.
+    /// The live controller, so a modal panel can fold and restore the existing
+    /// popover without rebuilding its SwiftUI state.
     private(set) static weak var current: StatusItemController?
 
     private let statusItem: NSStatusItem
@@ -19,12 +19,21 @@ final class StatusItemController: NSObject {
     private var globalShortcut: GlobalShortcutService?
     private var lastImageKey = ""
 
-    /// While a system panel (the folder chooser) is up it takes key focus, and a
-    /// `.transient` popover closes the instant that happens — taking the card
-    /// the user was working with away with it. Pinning switches the popover to
-    /// dismissing only when we say so, for the duration of that panel.
-    func setPopoverPinned(_ pinned: Bool) {
-        popover.behavior = pinned ? .applicationDefined : .transient
+    /// A folder panel needs the same part of the screen as this compact window.
+    /// Close the chrome but retain its SwiftUI controller/state, then restore it
+    /// after the panel finishes so the exact analysis card and selection return.
+    func hidePopoverForExternalPanel() -> Bool {
+        let wasShown = popover.isShown
+        if wasShown { popover.performClose(nil) }
+        return wasShown
+    }
+
+    func restorePopoverAfterExternalPanel(if wasShown: Bool) {
+        guard wasShown else { return }
+        Task { @MainActor [weak self] in
+            await Task.yield()
+            self?.showPopover(importClipboard: false)
+        }
     }
 
     override init() {

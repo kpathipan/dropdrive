@@ -271,7 +271,7 @@ struct AnalyzedPromptView: View {
     let sourceLink: String
     let onChooseDestination: () -> Void
     let onSelectDestination: (URL) -> Void
-    let onDownload: (_ asAudio: Bool, _ clipSection: String?, _ customName: String?, _ selectedFileIDs: Set<String>?) -> Void
+    let onDownload: (_ asAudio: Bool, _ clipSection: String?, _ customName: String?, _ selectedFileIDs: Set<String>?, _ quality: DriveLinkAnalysis.VideoQuality, _ subtitles: DriveLinkAnalysis.SubtitleMode, _ splitChapters: Bool, _ saveThumbnail: Bool, _ selectedMediaIndexes: Set<Int>?) -> Void
     let onCancel: () -> Void
 
     /// The name to save under, editable before anything is queued. Seeded from
@@ -289,6 +289,12 @@ struct AnalyzedPromptView: View {
 
     /// Video links can come down as the video itself or extracted MP3.
     @State private var asAudio = false
+    @State private var videoQuality: DriveLinkAnalysis.VideoQuality = .automatic
+    @State private var subtitleMode: DriveLinkAnalysis.SubtitleMode = .none
+    @State private var splitChapters = false
+    @State private var saveThumbnail = false
+    @State private var selectedMediaIndexes: Set<Int>?
+    @State private var mediaSnapshotStore = MediaCollectionSnapshotStore.shared
     /// Optional trim: only the "start–end" section is downloaded.
     @State private var trimEnabled = false
     @State private var trimStart = ""
@@ -363,46 +369,85 @@ struct AnalyzedPromptView: View {
             }
 
             if analysis.isVideo == true {
-                Picker(tr("Format", "รูปแบบ"), selection: $asAudio) {
-                    Label(tr("Video", "วิดีโอ"), systemImage: "play.rectangle").tag(false)
-                    Label("MP3", systemImage: "music.note").tag(true)
+                if !isTikTokPhotoPost {
+                    Picker(tr("Quality", "คุณภาพ"), selection: $videoQuality) {
+                        ForEach(DriveLinkAnalysis.VideoQuality.allCases, id: \.self) { quality in
+                            Text(quality.label + qualityEstimate(quality)).tag(quality)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .onChange(of: videoQuality) { _, quality in asAudio = quality == .mp3 }
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
 
-                Toggle(isOn: $trimEnabled.animation(.easeInOut(duration: 0.15))) {
-                    Text(tr("Trim to a section", "ตัดเฉพาะช่วง"))
+                if let details = analysis.videoDetails, details.isCollection {
+                    mediaCollectionSelection(details.mediaItems)
+                }
+
+                if !isTikTokPhotoPost,
+                   let details = analysis.videoDetails, !details.subtitleLanguages.isEmpty, videoQuality != .mp3 {
+                    HStack {
+                        Label(tr("Subtitles", "คำบรรยาย"), systemImage: "captions.bubble")
+                            .font(.dd(11))
+                        Spacer()
+                        Picker("", selection: $subtitleMode) {
+                            ForEach(DriveLinkAnalysis.SubtitleMode.allCases, id: \.self) { mode in
+                                Text(mode.label).tag(mode)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(maxWidth: 130)
+                    }
+                }
+
+                if !isTikTokPhotoPost,
+                   let chapters = analysis.videoDetails?.chapters, !chapters.isEmpty, videoQuality != .mp3 {
+                    Toggle(tr("Split into \(chapters.count) chapters", "แยกเป็น \(chapters.count) ตอน"), isOn: $splitChapters)
+                        .toggleStyle(.checkbox)
                         .font(.dd(11))
                 }
-                .toggleStyle(.checkbox)
 
-                if trimEnabled {
-                    HStack(spacing: 8) {
-                        TextField("0:00", text: $trimStart)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.dd(11).monospacedDigit())
-                            .frame(width: 64)
-                            .accessibilityLabel("Trim start time")
+                if !isTikTokPhotoPost {
+                    Toggle(tr("Save cover image", "บันทึกภาพหน้าปก"), isOn: $saveThumbnail)
+                        .toggleStyle(.checkbox)
+                        .font(.dd(11))
 
-                        Text("–").foregroundStyle(.secondary)
-
-                        TextField(analysis.durationSeconds.map(Self.timestamp(from:)) ?? "0:30", text: $trimEnd)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.dd(11).monospacedDigit())
-                            .frame(width: 64)
-                            .accessibilityLabel("Trim end time")
-
-                        Text(tr("min:sec", "นาที:วิ"))
+                    Toggle(isOn: $trimEnabled.animation(.easeInOut(duration: 0.15))) {
+                        Text(tr("Trim to a section", "ตัดเฉพาะช่วง"))
                             .font(.dd(11))
-                            .foregroundStyle(.secondary)
-
-                        Spacer(minLength: 0)
                     }
+                    .toggleStyle(.checkbox)
 
-                    if trimInvalid {
-                        Text(tr("End must be after start (e.g. 0:10 – 1:30).", "เวลาจบต้องมากกว่าเวลาเริ่ม (เช่น 0:10 – 1:30)"))
-                            .font(.dd(11))
-                            .foregroundStyle(.orange)
+                    if trimEnabled {
+                        if let duration = analysis.durationSeconds, duration > 0 {
+                            trimTimeline(duration: duration)
+                        }
+                        HStack(spacing: 8) {
+                            TextField("0:00", text: $trimStart)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.dd(11).monospacedDigit())
+                                .frame(width: 64)
+                                .accessibilityLabel("Trim start time")
+
+                            Text("–").foregroundStyle(.secondary)
+
+                            TextField(analysis.durationSeconds.map(Self.timestamp(from:)) ?? "0:30", text: $trimEnd)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.dd(11).monospacedDigit())
+                                .frame(width: 64)
+                                .accessibilityLabel("Trim end time")
+
+                            Text(tr("min:sec", "นาที:วิ"))
+                                .font(.dd(11))
+                                .foregroundStyle(.secondary)
+
+                            Spacer(minLength: 0)
+                        }
+
+                        if trimInvalid {
+                            Text(tr("End must be after start (e.g. 0:10 – 1:30).", "เวลาจบต้องมากกว่าเวลาเริ่ม (เช่น 0:10 – 1:30)"))
+                                .font(.dd(11))
+                                .foregroundStyle(.orange)
+                        }
                     }
                 }
             }
@@ -430,7 +475,17 @@ struct AnalyzedPromptView: View {
                     .buttonStyle(.bordered)
 
                 Button {
-                    onDownload(asAudio, clipSection, customName, selectedFolderFileIDs)
+                    onDownload(
+                        asAudio,
+                        clipSection,
+                        customName,
+                        selectedFolderFileIDs,
+                        videoQuality,
+                        subtitleMode,
+                        splitChapters,
+                        saveThumbnail,
+                        selectedMediaIndexes
+                    )
                 } label: {
                     Label(
                         primaryActionTitle,
@@ -439,7 +494,10 @@ struct AnalyzedPromptView: View {
                     .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(trimEnabled && trimInvalid || !preflight(effectiveAnalysis).canQueue || effectiveAnalysis.fileCount == 0)
+                .disabled(trimEnabled && trimInvalid
+                          || !preflight(effectiveAnalysis).canQueue
+                          || effectiveAnalysis.fileCount == 0
+                          || selectedMediaIndexes?.isEmpty == true)
                 // Return confirms the card, carrying the format, trim and name
                 // chosen on it. The paste box deliberately no longer answers
                 // Return while this card is up: it can't see any of that.
@@ -460,6 +518,131 @@ struct AnalyzedPromptView: View {
         // already typed.
         .task(id: analysis.itemID) { seedNameIfUntouched() }
         .onChange(of: analysis.name) { _, _ in seedNameIfUntouched() }
+        .onChange(of: trimEnabled) { _, enabled in
+            if enabled, trimEnd.isEmpty, let duration = analysis.durationSeconds {
+                trimEnd = Self.timestamp(from: duration)
+            }
+        }
+    }
+
+    private func qualityEstimate(_ quality: DriveLinkAnalysis.VideoQuality) -> String {
+        guard quality != .mp3,
+              let bytes = analysis.videoDetails?.estimatedBytesByQuality[quality.rawValue]
+        else { return "" }
+        return " · ~\(Formatters.byteCount(bytes))"
+    }
+
+    private var isTikTokPhotoPost: Bool {
+        analysis.videoDetails?.platform == "TikTok Photos"
+    }
+
+    private func trimTimeline(duration: Double) -> some View {
+        let start = min(Self.seconds(from: trimStart) ?? 0, duration)
+        let end = min(Self.seconds(from: trimEnd) ?? duration, duration)
+        return VStack(spacing: 4) {
+            GeometryReader { geometry in
+                let width = geometry.size.width
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.quaternary)
+                    Capsule()
+                        .fill(DDTheme.accent)
+                        .frame(width: max(2, width * max(0, end - start) / duration))
+                        .offset(x: width * start / duration)
+                }
+            }
+            .frame(height: 6)
+            HStack(spacing: 8) {
+                Slider(value: Binding(
+                    get: { start },
+                    set: { trimStart = Self.timestamp(from: min($0, max(0, end - 1))) }
+                ), in: 0...duration)
+                Slider(value: Binding(
+                    get: { end },
+                    set: { trimEnd = Self.timestamp(from: max($0, min(duration, start + 1))) }
+                ), in: 0...duration)
+            }
+            .controlSize(.mini)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(tr("Video trim timeline", "ไทม์ไลน์ตัดวิดีโอ"))
+    }
+
+    private func mediaCollectionSelection(_ items: [DriveLinkAnalysis.MediaItem]) -> some View {
+        let effectiveSelection = selectedMediaIndexes ?? Set(items.map(\.index))
+        let hasHistory = mediaSnapshotStore.hasHistory(collectionID: analysis.itemID)
+        let newIndexes = mediaSnapshotStore.newIndexes(collectionID: analysis.itemID, items: items)
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Button {
+                    selectedMediaIndexes = effectiveSelection.count == items.count ? [] : Set(items.map(\.index))
+                } label: {
+                    Image(systemName: effectiveSelection.count == items.count ? "checkmark.square.fill" : effectiveSelection.isEmpty ? "square" : "minus.square.fill")
+                    Text(tr("Select all", "เลือกทั้งหมด"))
+                }
+                .buttonStyle(.plain)
+                .font(.dd(11, .semibold))
+                Spacer()
+                Text(tr("\(effectiveSelection.count) of \(items.count)", "\(effectiveSelection.count) จาก \(items.count)"))
+                    .font(.dd(10).monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+
+            if hasHistory {
+                HStack(spacing: 5) {
+                    Label(tr("New \(newIndexes.count)", "ใหม่ \(newIndexes.count)"), systemImage: "sparkles")
+                        .foregroundStyle(newIndexes.isEmpty ? Color.secondary : DDTheme.success)
+                    Spacer()
+                    Button(tr("Select new", "เลือกเฉพาะใหม่")) {
+                        selectedMediaIndexes = newIndexes
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(DDTheme.accent)
+                    .disabled(newIndexes.isEmpty)
+                }
+                .font(.dd(10, .semibold))
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 7) {
+                    ForEach(items) { item in
+                        Button {
+                            var selection = effectiveSelection
+                            if selection.contains(item.index) { selection.remove(item.index) }
+                            else { selection.insert(item.index) }
+                            selectedMediaIndexes = selection
+                        } label: {
+                            ZStack(alignment: .topLeading) {
+                                AsyncImage(url: item.thumbnailURL.flatMap(URL.init(string:))) { phase in
+                                    if case .success(let image) = phase { image.resizable().scaledToFill() }
+                                    else { DDTheme.rail.overlay(Image(systemName: item.isImage ? "photo" : "play.rectangle")) }
+                                }
+                                .frame(width: 78, height: 54)
+                                .clipped()
+                                Image(systemName: effectiveSelection.contains(item.index) ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(effectiveSelection.contains(item.index) ? DDTheme.accent : .white)
+                                    .shadow(radius: 1)
+                                    .padding(4)
+                                if hasHistory {
+                                    Text(newIndexes.contains(item.index) ? tr("NEW", "ใหม่") : tr("DONE", "โหลดแล้ว"))
+                                        .font(.dd(7, .bold))
+                                        .foregroundStyle(newIndexes.contains(item.index) ? DDTheme.success : Color.secondary)
+                                        .padding(.horizontal, 4)
+                                        .padding(.vertical, 2)
+                                        .background(.ultraThinMaterial, in: Capsule())
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                                        .padding(3)
+                                }
+                            }
+                            .clipShape(RoundedRectangle(cornerRadius: 7))
+                        }
+                        .buttonStyle(.plain)
+                        .help(item.title)
+                    }
+                }
+            }
+        }
+        .padding(8)
+        .background(DDTheme.rail, in: RoundedRectangle(cornerRadius: 8))
     }
 
     private var primaryActionTitle: String {
@@ -519,7 +702,11 @@ struct AnalyzedPromptView: View {
             }
 
             if showsFolderFiles {
-                FolderItemBrowser(items: items, selectedFileIDs: $selectedFolderFileIDs)
+                FolderItemBrowser(
+                    folderID: analysis.itemID,
+                    items: items,
+                    selectedFileIDs: $selectedFolderFileIDs
+                )
             }
         }
         .padding(10)

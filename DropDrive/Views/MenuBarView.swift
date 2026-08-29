@@ -1,18 +1,18 @@
 import SwiftUI
 
 /// The whole app UI, shown as the menu bar extra's window. A narrow icon rail
-/// on the left switches the detail pane between the download queue, recent
-/// downloads, items needing attention, and settings without leaving the menu-bar surface.
+/// switches the detail pane between the download queue, recent downloads, and
+/// settings without leaving the menu-bar surface. Recoverable problems live in
+/// Settings and surface here only while action is actually needed.
 struct MenuBarView: View {
     enum Pane: String, CaseIterable, Identifiable {
         case queue
         case recent
-        case attention
         case settings
 
         /// Persistent bottom navigation. Settings stays a header action so the
         /// three everyday download destinations remain visually dominant.
-        static let primaryCases: [Pane] = [.queue, .recent, .attention]
+        static let primaryCases: [Pane] = [.queue, .recent]
 
         var id: String { rawValue }
 
@@ -20,7 +20,6 @@ struct MenuBarView: View {
             switch self {
             case .queue: "arrow.down.circle"
             case .recent: "clock.arrow.circlepath"
-            case .attention: "exclamationmark.circle"
             case .settings: "gearshape"
             }
         }
@@ -29,7 +28,6 @@ struct MenuBarView: View {
             switch self {
             case .queue: tr("Queue", "คิวดาวน์โหลด")
             case .recent: tr("Recent", "ล่าสุด")
-            case .attention: tr("Needs Attention", "ต้องตรวจสอบ")
             case .settings: tr("Settings", "การตั้งค่า")
             }
         }
@@ -60,8 +58,6 @@ struct MenuBarView: View {
         let raw: CGFloat
         switch selectedPane {
         case .queue, .recent:
-            raw = measuredHeight + Self.chromeAllowance
-        case .attention:
             raw = measuredHeight + Self.chromeAllowance
         case .settings:
             raw = 500
@@ -122,6 +118,10 @@ struct MenuBarView: View {
         .onReceive(NotificationCenter.default.publisher(for: .dropDriveShowQueue)) { _ in
             previousPrimaryPane = .queue
             selectedPane = .queue
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .dropDriveShowAttention)) { _ in
+            previousPrimaryPane = selectedPane == .settings ? previousPrimaryPane : selectedPane
+            selectedPane = .settings
         }
     }
 
@@ -271,14 +271,6 @@ struct MenuBarView: View {
                                 .frame(width: 5, height: 5)
                                 .offset(x: 4, y: -3)
                         }
-                        if pane == .attention, !viewModel.attentionItems.isEmpty {
-                            Text("\(min(viewModel.attentionItems.count, 9))")
-                                .font(.system(size: 7, weight: .bold))
-                                .foregroundStyle(.white)
-                                .frame(width: 12, height: 12)
-                                .background(Circle().fill(.orange))
-                                .offset(x: 7, y: -6)
-                        }
                     }
                 if selectedPane == pane {
                     Text(pane.title)
@@ -314,8 +306,6 @@ struct MenuBarView: View {
             queuePane.transition(.opacity)
         case .recent:
             recentPane.transition(.opacity)
-        case .attention:
-            attentionPane.transition(.opacity)
         case .settings:
             settingsPane.transition(.opacity)
         }
@@ -336,6 +326,14 @@ struct MenuBarView: View {
                 ScrollView {
                     VStack(spacing: 12) {
                         UpdateBanner()
+
+                        if !viewModel.attentionItems.isEmpty {
+                            attentionBanner
+                        }
+
+                        if let pending = viewModel.pendingDownloadStart {
+                            pendingStartBanner(pending)
+                        }
 
                         DownloadFormView(
                             driveLink: $viewModel.driveLink,
@@ -418,6 +416,75 @@ struct MenuBarView: View {
         }
         .animation(Self.springMotion, value: viewModel.linkAnalysisState)
         .animation(Self.springMotion, value: viewModel.queue)
+    }
+
+    private func pendingStartBanner(_ pending: PendingDownloadStart) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "clock.badge.checkmark")
+                .foregroundStyle(DDTheme.accent)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(pending.itemCount == 1
+                     ? tr("Download starts in 5 seconds", "จะเริ่มดาวน์โหลดใน 5 วินาที")
+                     : tr("\(pending.itemCount) downloads start in 5 seconds", "\(pending.itemCount) รายการจะเริ่มใน 5 วินาที"))
+                    .font(.dd(12, .semibold))
+                Text(tr("You can undo before any file is created.", "ยกเลิกได้ก่อนที่จะมีการสร้างไฟล์"))
+                    .font(.dd(10))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 4)
+            Button(tr("Undo", "เลิกทำ")) {
+                viewModel.undoPendingDownloadStart()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .padding(10)
+        .background(DDTheme.accent.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(DDTheme.accent.opacity(0.2), lineWidth: 1)
+        }
+    }
+
+    private var attentionBanner: some View {
+        Button {
+            withAnimation(Self.springMotion) {
+                previousPrimaryPane = .queue
+                selectedPane = .settings
+            }
+            Task { @MainActor in
+                await Task.yield()
+                NotificationCenter.default.post(name: .dropDriveShowAttention, object: nil)
+            }
+        } label: {
+            HStack(spacing: 9) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(tr("A download needs attention", "มีรายการดาวน์โหลดที่ต้องตรวจสอบ"))
+                        .font(.dd(11, .semibold))
+                    Text(tr(
+                        "Review \(viewModel.attentionItems.count) item(s) in Settings.",
+                        "เปิดดู \(viewModel.attentionItems.count) รายการในการตั้งค่า"
+                    ))
+                    .font(.dd(10))
+                    .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.right")
+                    .font(.dd(9, .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(11)
+            .contentShape(Rectangle())
+            .background(Color.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(Color.orange.opacity(0.28), lineWidth: 0.7)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(tr("Open downloads needing attention", "เปิดรายการดาวน์โหลดที่ต้องตรวจสอบ"))
     }
 
     private var headerStatus: String {
@@ -564,12 +631,17 @@ struct MenuBarView: View {
                 sourceLink: viewModel.driveLink,
                 onChooseDestination: viewModel.chooseDestinationFolder,
                 onSelectDestination: viewModel.selectDestinationFolder,
-                onDownload: { asAudio, clipSection, customName, selectedFileIDs in
+                onDownload: { asAudio, clipSection, customName, selectedFileIDs, quality, subtitles, splitChapters, saveThumbnail, selectedMediaIndexes in
                     viewModel.confirmAnalyzedDownload(
                         asAudio: asAudio,
                         clipSection: clipSection,
                         customName: customName,
-                        selectedFileIDs: selectedFileIDs
+                        selectedFileIDs: selectedFileIDs,
+                        videoQuality: quality,
+                        subtitleMode: subtitles,
+                        splitChapters: splitChapters,
+                        saveThumbnail: saveThumbnail,
+                        selectedMediaIndexes: selectedMediaIndexes
                     )
                 },
                 onCancel: viewModel.cancelAnalysis
@@ -638,84 +710,6 @@ struct MenuBarView: View {
                 )
             }
         }
-    }
-
-    private var attentionPane: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 10) {
-                if viewModel.attentionItems.isEmpty {
-                    VStack(spacing: 9) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.dd(22))
-                            .foregroundStyle(DDTheme.success)
-                        Text(tr("Everything is ready", "ทุกอย่างพร้อมใช้งาน"))
-                            .font(.dd(13, .semibold))
-                        Text(tr(
-                            "Network drops and disconnected drives will appear here.",
-                            "เน็ตหลุดหรือไดรฟ์ถูกถอดจะแสดงที่นี่"
-                        ))
-                        .font(.dd(11))
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 28)
-                    .cardBackground()
-                } else {
-                    Text(tr("Needs Attention", "ต้องตรวจสอบ"))
-                        .font(.dd(15, .bold))
-                    ForEach(viewModel.attentionItems) { item in
-                        HStack(alignment: .top, spacing: 9) {
-                            Image(systemName: item.attentionKind == .destination ? "externaldrive.badge.exclamationmark" : "wifi.exclamationmark")
-                                .foregroundStyle(.orange)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(item.displayName)
-                                    .font(.dd(12, .semibold))
-                                    .lineLimit(1)
-                                Text(attentionMessage(for: item))
-                                    .font(.dd(11))
-                                    .foregroundStyle(.secondary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            Spacer(minLength: 5)
-                            if item.status == .failed {
-                                Button(tr("Retry", "ลองใหม่")) { viewModel.retryQueueItem(item.id) }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
-                            } else if item.attentionKind == .destination {
-                                Button(tr("Change", "เปลี่ยน")) { viewModel.changeDestination(for: item.id) }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
-                            }
-                        }
-                        .padding(12)
-                        .cardBackground()
-                    }
-                }
-            }
-            .padding(DDMetrics.contentInset)
-                .background(
-                    GeometryReader { proxy in
-                        Color.clear.preference(key: ContentHeightKey.self, value: proxy.size.height)
-                    }
-                )
-        }
-    }
-
-    private func attentionMessage(for item: QueueItem) -> String {
-        if item.status == .waiting, item.attentionKind == .network {
-            if let date = item.nextRetryAt {
-                return tr(
-                    "Connection lost. Retrying automatically at \(date.formatted(date: .omitted, time: .shortened)).",
-                    "เน็ตหลุด ระบบจะลองใหม่อัตโนมัติเวลา \(date.formatted(date: .omitted, time: .shortened))"
-                )
-            }
-            return tr("Connection lost. Retrying automatically.", "เน็ตหลุด ระบบกำลังลองใหม่อัตโนมัติ")
-        }
-        if item.attentionKind == .destination {
-            return tr("Reconnect the destination drive or choose another folder.", "เชื่อมต่อไดรฟ์ปลายทาง หรือเลือกโฟลเดอร์ใหม่")
-        }
-        return item.errorMessage ?? tr("Retry this download.", "ลองดาวน์โหลดรายการนี้อีกครั้ง")
     }
 
 }

@@ -18,6 +18,7 @@ final class StatusItemController: NSObject {
     private var dropTargetView: StatusItemDropTargetView?
     private var globalShortcut: GlobalShortcutService?
     private var lastImageKey = ""
+    private var lastTitle = ""
 
     /// A folder panel needs the same part of the screen as this compact window.
     /// Close the chrome but retain its SwiftUI controller/state, then restore it
@@ -68,6 +69,11 @@ final class StatusItemController: NSObject {
             }
             dropTarget.onDrop = { [weak self] links in
                 self?.receiveDroppedLinks(links)
+            }
+            dropTarget.onDestinationDrop = { [weak self] folderURL in
+                DropDriveViewModel.shared.selectDestinationFolder(folderURL)
+                self?.showPopover(importClipboard: false)
+                NotificationCenter.default.post(name: .dropDriveShowQueue, object: nil)
             }
             dropTarget.toolTip = button.toolTip
             button.addSubview(dropTarget)
@@ -145,6 +151,14 @@ final class StatusItemController: NSObject {
             // before selecting the pane.
             await Task.yield()
             NotificationCenter.default.post(name: .dropDriveShowSettings, object: nil)
+        }
+    }
+
+    func showAttention() {
+        showPopover(importClipboard: false)
+        Task { @MainActor in
+            await Task.yield()
+            NotificationCenter.default.post(name: .dropDriveShowAttention, object: nil)
         }
     }
 
@@ -238,6 +252,7 @@ final class StatusItemController: NSObject {
 
     private func refreshIcon() {
         let state = currentState()
+        let title = menuBarProgressTitle()
         let key: String
         switch state {
         case .idle: key = "idle"
@@ -246,14 +261,21 @@ final class StatusItemController: NSObject {
         case .failed: key = "failed"
         case .progress(let f): key = "p\(f)"
         }
-        guard key != lastImageKey else { return }
-        lastImageKey = key
-        statusItem.button?.image = Self.image(for: state)
+        if key != lastImageKey {
+            lastImageKey = key
+            statusItem.button?.image = Self.image(for: state)
+        }
+        if title != lastTitle {
+            lastTitle = title
+            statusItem.button?.title = title
+            statusItem.button?.imagePosition = title.isEmpty ? .imageOnly : .imageLeading
+        }
     }
 
     private func observeState() {
         withObservationTracking {
             _ = currentState()
+            _ = menuBarProgressTitle()
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 self?.refreshIcon()
@@ -261,6 +283,24 @@ final class StatusItemController: NSObject {
             }
         }
         refreshIcon()
+    }
+
+    private func menuBarProgressTitle() -> String {
+        guard PreferencesStore.shared.showMenuBarProgress,
+              DropDriveViewModel.shared.isQueueProcessing,
+              let progress = DropDriveViewModel.shared.activeProgress else { return "" }
+
+        var parts: [String] = []
+        if let fraction = progress.fractionCompleted {
+            parts.append("\(Int((fraction * 100).rounded()))%")
+        }
+        if let eta = progress.etaSeconds, let remaining = Formatters.remainingTime(eta) {
+            parts.append(remaining)
+        }
+        if parts.isEmpty, progress.bytesPerSecond > 0 {
+            parts.append(Formatters.transferSpeed(progress.bytesPerSecond))
+        }
+        return parts.prefix(2).joined(separator: " · ")
     }
 
     private static func image(for state: IconState) -> NSImage {
@@ -375,6 +415,7 @@ private final class StatusItemDropTargetView: NSView {
     var onClick: ((Bool) -> Void)?
     var onHighlight: ((Bool) -> Void)?
     var onDrop: (([String]) -> Void)?
+    var onDestinationDrop: ((URL) -> Void)?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -404,7 +445,8 @@ private final class StatusItemDropTargetView: NSView {
     }
 
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        let acceptsDrop = !Self.links(from: sender.draggingPasteboard).isEmpty
+        let acceptsDrop = Self.destinationFolder(from: sender.draggingPasteboard) != nil
+            || !Self.links(from: sender.draggingPasteboard).isEmpty
         onHighlight?(acceptsDrop)
         return acceptsDrop ? .copy : []
     }
@@ -415,10 +457,24 @@ private final class StatusItemDropTargetView: NSView {
 
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
         onHighlight?(false)
+        if let folderURL = Self.destinationFolder(from: sender.draggingPasteboard) {
+            onDestinationDrop?(folderURL)
+            return true
+        }
         let links = Self.links(from: sender.draggingPasteboard)
         guard !links.isEmpty else { return false }
         onDrop?(links)
         return true
+    }
+
+    private static func destinationFolder(from pasteboard: NSPasteboard) -> URL? {
+        let urls = (pasteboard.readObjects(forClasses: [NSURL.self]) as? [NSURL])?
+            .map { $0 as URL } ?? []
+        return urls.first { url in
+            guard url.isFileURL,
+                  url.pathExtension.caseInsensitiveCompare("webloc") != .orderedSame else { return false }
+            return (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+        }
     }
 
     private static func links(from pasteboard: NSPasteboard) -> [String] {

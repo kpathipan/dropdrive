@@ -50,6 +50,12 @@ struct QueueItem: Identifiable, Equatable, Codable {
     /// compatibility with queues persisted before this existed.
     var customName: String?
     var selectedFileIDs: Set<String>?
+    var videoQuality: DriveLinkAnalysis.VideoQuality?
+    var subtitleMode: DriveLinkAnalysis.SubtitleMode?
+    var splitChapters: Bool?
+    var saveThumbnail: Bool?
+    /// 1-based extractor positions. Nil means the complete playlist/carousel.
+    var selectedMediaIndexes: Set<Int>?
     var attentionKind: AttentionKind?
     var retryCount: Int?
     var nextRetryAt: Date?
@@ -66,6 +72,11 @@ struct QueueItem: Identifiable, Equatable, Codable {
         clipSection: String? = nil,
         customName: String? = nil,
         selectedFileIDs: Set<String>? = nil,
+        videoQuality: DriveLinkAnalysis.VideoQuality? = nil,
+        subtitleMode: DriveLinkAnalysis.SubtitleMode? = nil,
+        splitChapters: Bool? = nil,
+        saveThumbnail: Bool? = nil,
+        selectedMediaIndexes: Set<Int>? = nil,
         attentionKind: AttentionKind? = nil,
         retryCount: Int? = nil,
         nextRetryAt: Date? = nil
@@ -81,6 +92,11 @@ struct QueueItem: Identifiable, Equatable, Codable {
         self.clipSection = clipSection
         self.customName = customName
         self.selectedFileIDs = selectedFileIDs
+        self.videoQuality = videoQuality
+        self.subtitleMode = subtitleMode
+        self.splitChapters = splitChapters
+        self.saveThumbnail = saveThumbnail
+        self.selectedMediaIndexes = selectedMediaIndexes
         self.attentionKind = attentionKind
         self.retryCount = retryCount
         self.nextRetryAt = nextRetryAt

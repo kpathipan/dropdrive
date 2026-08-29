@@ -28,7 +28,7 @@ nonisolated enum LinkIdentity {
         }
 
         if host == "tiktok.com" || host.hasSuffix(".tiktok.com"),
-           let marker = pathParts.firstIndex(of: "video"),
+           let marker = pathParts.firstIndex(where: { ["video", "photo"].contains($0) }),
            pathParts.indices.contains(marker + 1) {
             return "video:tiktok:\(pathParts[marker + 1])"
         }

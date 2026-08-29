@@ -1,5 +1,9 @@
 import SwiftUI
 
+private enum SettingsTab: Hashable {
+    case general, transfers, appearance, about
+}
+
 private enum BandwidthPreset: Hashable {
     case unlimited
     case megabytesPerSecond(Int)
@@ -37,21 +41,27 @@ struct PreferencesView: View {
     @State private var customLimitMBps: Double = 1
     @State private var showingReleaseNotes = false
     @State private var historyStore = DownloadHistoryStore.shared
+    @State private var viewModel = DropDriveViewModel.shared
+    @State private var selectedTab: SettingsTab = .general
     private let folderSelectionService: FolderSelectionServicing = FolderSelectionService()
 
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             generalTab
                 .tabItem { Label(tr("General", "ทั่วไป"), systemImage: "gearshape") }
+                .tag(SettingsTab.general)
 
             transferTab
                 .tabItem { Label(tr("Downloads", "ดาวน์โหลด"), systemImage: "arrow.down.circle") }
+                .tag(SettingsTab.transfers)
 
             appearanceTab
                 .tabItem { Label(tr("Appearance", "หน้าตา"), systemImage: "paintbrush") }
+                .tag(SettingsTab.appearance)
 
             aboutTab
                 .tabItem { Label(tr("About", "เกี่ยวกับ"), systemImage: "info.circle") }
+                .tag(SettingsTab.about)
         }
         .padding(.top, 8)
         .task {
@@ -60,6 +70,9 @@ struct PreferencesView: View {
                let stored = preferences.bandwidthLimitBytesPerSecond {
                 customLimitMBps = stored / 1_048_576
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .dropDriveShowAttention)) { _ in
+            selectedTab = .transfers
         }
     }
 
@@ -159,6 +172,9 @@ struct PreferencesView: View {
                 Toggle(isOn: $preferences.preferCompatibleVideo) {
                     Label(tr("Keep videos playable on Mac (H.264/MP4)", "ให้วิดีโอเปิดได้บน Mac (H.264/MP4)"), systemImage: "play.rectangle")
                 }
+                Toggle(isOn: $preferences.showMenuBarProgress) {
+                    Label(tr("Show live progress in the menu bar", "แสดงความคืบหน้าบนเมนูบาร์"), systemImage: "menubar.rectangle")
+                }
             } header: {
                 Text(tr("Video", "วิดีโอ"))
             } footer: {
@@ -168,8 +184,87 @@ struct PreferencesView: View {
                 ))
                 .foregroundStyle(.secondary)
             }
+
+            Section {
+                if viewModel.attentionItems.isEmpty {
+                    Label(tr("Everything is ready", "ทุกอย่างพร้อมใช้งาน"), systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(DDTheme.success)
+                } else {
+                    ForEach(viewModel.attentionItems) { item in
+                        attentionRow(item)
+                    }
+                }
+            } header: {
+                HStack {
+                    Text(tr("Needs Attention", "ต้องตรวจสอบ"))
+                    if !viewModel.attentionItems.isEmpty {
+                        Text("\(viewModel.attentionItems.count)")
+                            .font(.dd(9, .bold).monospacedDigit())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(.orange))
+                    }
+                }
+            } footer: {
+                Text(tr(
+                    "Connection drops retry automatically. Disconnected drives continue as soon as they return.",
+                    "เน็ตหลุดจะลองใหม่อัตโนมัติ และงานจะทำต่อทันทีเมื่อไดรฟ์กลับมา"
+                ))
+                .foregroundStyle(.secondary)
+            }
         }
         .settingsFormStyle()
+    }
+
+    private func attentionRow(_ item: QueueItem) -> some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: item.attentionKind == .destination
+                  ? "externaldrive.badge.exclamationmark"
+                  : "wifi.exclamationmark")
+                .foregroundStyle(.orange)
+                .frame(width: 18)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.displayName)
+                    .font(.dd(11, .semibold))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text(attentionMessage(for: item))
+                    .font(.dd(10))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 6) {
+                    if item.attentionKind == .network || item.status == .failed {
+                        Button(tr("Retry now", "ลองใหม่ตอนนี้")) { viewModel.retryQueueItem(item.id) }
+                            .controlSize(.small)
+                    }
+                    if item.attentionKind == .destination {
+                        Button(tr("Change destination", "เปลี่ยนปลายทาง")) { viewModel.changeDestination(for: item.id) }
+                            .controlSize(.small)
+                    }
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(.vertical, 3)
+    }
+
+    private func attentionMessage(for item: QueueItem) -> String {
+        if item.attentionKind == .destination {
+            return tr(
+                "Waiting for the drive to reconnect. It will continue automatically.",
+                "กำลังรอไดรฟ์เชื่อมต่อกลับมา แล้วจะทำต่ออัตโนมัติ"
+            )
+        }
+        if item.attentionKind == .network, let date = item.nextRetryAt {
+            return tr(
+                "Connection lost. Retrying at \(date.formatted(date: .omitted, time: .shortened)).",
+                "เน็ตหลุด จะลองใหม่เวลา \(date.formatted(date: .omitted, time: .shortened))"
+            )
+        }
+        return item.errorMessage ?? tr("Retry this download.", "ลองดาวน์โหลดรายการนี้อีกครั้ง")
     }
 
     private var appearanceTab: some View {

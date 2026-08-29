@@ -9,6 +9,12 @@ struct QueueSummary {
     let estimatedSeconds: Double?
 }
 
+struct PendingDownloadStart: Equatable {
+    let itemIDs: Set<UUID>
+    let itemCount: Int
+    let deadline: Date
+}
+
 /// The local destination check shown before an item reaches the queue. The
 /// exact same reserve is enforced again at start time, so this is informative
 /// without becoming a second source of truth.
@@ -101,6 +107,7 @@ final class DropDriveViewModel {
     var highlightedQueueItemID: UUID?
     var showLargeDownloadWarning = false
     var isQueuePaused = false
+    var pendingDownloadStart: PendingDownloadStart?
 
     var pendingRestoreQueue: [QueueItem]?
     private var hasAskedAboutRestore = false
@@ -120,6 +127,7 @@ final class DropDriveViewModel {
     /// would rebuild the card underneath it.
     private var isChoosingDestination = false
     private var highlightTask: Task<Void, Never>?
+    private var pendingStartTask: Task<Void, Never>?
     private var isPausingActiveItem = false
     /// Prevents the same clipboard contents from being re-imported every time
     /// the popover is reopened after the user has handled or cleared them.
@@ -128,6 +136,10 @@ final class DropDriveViewModel {
     /// Auto-retry on network drops: attempts already made per queue item, and the
     /// backoff before each retry. Cleared on success, pause, cancel, or removal.
     private var autoRetryAttempts: [UUID: Int] = [:]
+    /// Suppresses one banner per retry attempt. A row may back off five times,
+    /// but the user only needs one notification until it genuinely recovers or
+    /// they explicitly retry it.
+    private var notifiedAttentionItemIDs: Set<UUID> = []
     private static let autoRetryDelays: [Double] = [5, 15, 45, 120, 300]
     @ObservationIgnored private var recoveryObserverTokens: [NSObjectProtocol] = []
 
@@ -255,6 +267,7 @@ final class DropDriveViewModel {
             queue[index].status = .ready
             queue[index].attentionKind = nil
             queue[index].nextRetryAt = nil
+            clearAttention(for: queue[index].id)
         }
         QueueStore.save(queue)
         processQueueIfNeeded()
@@ -478,6 +491,7 @@ final class DropDriveViewModel {
                 queue[index].attentionKind = nil
                 queue[index].errorMessage = nil
                 queue[index].nextRetryAt = nil
+                clearAttention(for: queue[index].id)
             }
             capacityCache = nil
             DestinationStore.save(folderURL)
@@ -713,22 +727,32 @@ final class DropDriveViewModel {
         asAudio: Bool = false,
         clipSection: String? = nil,
         customName: String? = nil,
-        selectedFileIDs: Set<String>? = nil
+        selectedFileIDs: Set<String>? = nil,
+        videoQuality: DriveLinkAnalysis.VideoQuality = .automatic,
+        subtitleMode: DriveLinkAnalysis.SubtitleMode = .none,
+        splitChapters: Bool = false,
+        saveThumbnail: Bool = false,
+        selectedMediaIndexes: Set<Int>? = nil
     ) {
         guard case .analyzed(let analysis) = linkAnalysisState else { return }
         let startsImmediately = confirmationStartsImmediately
         let trimmedLink = driveLink.trimmingCharacters(in: .whitespacesAndNewlines)
-        enqueue(
+        let itemID = enqueue(
             analysis: analysis,
             driveLink: trimmedLink,
             asAudio: asAudio,
             clipSection: clipSection,
             customName: Self.usableCustomName(customName, original: analysis.name),
-            selectedFileIDs: selectedFileIDs
+            selectedFileIDs: selectedFileIDs,
+            videoQuality: videoQuality,
+            subtitleMode: subtitleMode,
+            splitChapters: splitChapters,
+            saveThumbnail: saveThumbnail,
+            selectedMediaIndexes: selectedMediaIndexes
         )
         driveLink = ""
         linkAnalysisState = .idle
-        if startsImmediately { startQueueDownloads() }
+        if startsImmediately { scheduleDownloadStart(for: [itemID]) }
     }
 
     /// Checks Recent Downloads (which spans past app sessions), not just this
@@ -772,17 +796,19 @@ final class DropDriveViewModel {
               selectedDestinationURL != nil else { return }
         let startsImmediately = confirmationStartsImmediately
         var addedAnyItem = false
+        var newItemIDs = Set<UUID>()
         for item in items where item.isSelected {
             guard case .ready(let analysis) = item.result,
                   !queue.contains(where: { $0.itemID == analysis.itemID }),
                   !hasCompletedDownloadPreviously(itemID: analysis.itemID)
             else { continue }
-            enqueue(analysis: analysis, driveLink: item.link)
+            let itemID = enqueue(analysis: analysis, driveLink: item.link)
+            newItemIDs.insert(itemID)
             addedAnyItem = true
         }
         driveLink = ""
         linkAnalysisState = .idle
-        if startsImmediately, addedAnyItem { startQueueDownloads() }
+        if startsImmediately, addedAnyItem { scheduleDownloadStart(for: newItemIDs) }
     }
 
     func retryAnalysis() {
@@ -792,14 +818,14 @@ final class DropDriveViewModel {
     func confirmDuplicateRedownload() {
         guard case .duplicateCompleted(let analysis) = linkAnalysisState else { return }
         let trimmedLink = driveLink.trimmingCharacters(in: .whitespacesAndNewlines)
-        enqueue(analysis: analysis, driveLink: trimmedLink)
+        let itemID = enqueue(analysis: analysis, driveLink: trimmedLink)
         driveLink = ""
         linkAnalysisState = .idle
         // Same as confirming a fresh link: "Download Again" is a download
         // instruction, and leaving it merely queued meant the user had to go
         // press "Download All" afterwards to make anything happen.
         if !isQueueProcessing {
-            startQueueDownloads()
+            scheduleDownloadStart(for: [itemID])
         }
     }
 
@@ -843,24 +869,74 @@ final class DropDriveViewModel {
         return trimmed
     }
 
+    @discardableResult
     private func enqueue(
         analysis: DriveLinkAnalysis,
         driveLink: String,
         asAudio: Bool = false,
         clipSection: String? = nil,
         customName: String? = nil,
-        selectedFileIDs: Set<String>? = nil
-    ) {
-        queue.append(QueueItem(
+        selectedFileIDs: Set<String>? = nil,
+        videoQuality: DriveLinkAnalysis.VideoQuality? = nil,
+        subtitleMode: DriveLinkAnalysis.SubtitleMode? = nil,
+        splitChapters: Bool? = nil,
+        saveThumbnail: Bool? = nil,
+        selectedMediaIndexes: Set<Int>? = nil
+    ) -> UUID {
+        let item = QueueItem(
             driveLink: driveLink,
             analysis: analysis.selectingFolderItems(selectedFileIDs),
             destinationURL: selectedDestinationURL,
             asAudio: asAudio ? true : nil,
             clipSection: clipSection,
             customName: customName,
-            selectedFileIDs: selectedFileIDs
-        ))
+            selectedFileIDs: selectedFileIDs,
+            videoQuality: videoQuality,
+            subtitleMode: subtitleMode,
+            splitChapters: splitChapters,
+            saveThumbnail: saveThumbnail,
+            selectedMediaIndexes: selectedMediaIndexes
+        )
+        queue.append(item)
         QueueStore.save(queue)
+        return item.id
+    }
+
+    /// Keeps a fresh, otherwise-immediate download reversible for a brief grace
+    /// period. Nothing has touched the network or destination yet, so Undo is
+    /// instant and never leaves a partial file behind.
+    private func scheduleDownloadStart(for itemIDs: Set<UUID>) {
+        guard !itemIDs.isEmpty else { return }
+        pendingStartTask?.cancel()
+        pendingDownloadStart = PendingDownloadStart(
+            itemIDs: itemIDs,
+            itemCount: itemIDs.count,
+            deadline: Date().addingTimeInterval(5)
+        )
+        pendingStartTask = Task {
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
+            pendingDownloadStart = nil
+            pendingStartTask = nil
+            startQueueDownloads()
+        }
+    }
+
+    func undoPendingDownloadStart() {
+        guard let pendingDownloadStart else { return }
+        pendingStartTask?.cancel()
+        pendingStartTask = nil
+        self.pendingDownloadStart = nil
+        for id in pendingDownloadStart.itemIDs {
+            guard let item = queue.first(where: { $0.id == id }), item.status == .ready else { continue }
+            removeQueueItem(id)
+        }
+    }
+
+    private func cancelPendingStartWithoutRemovingItems() {
+        pendingStartTask?.cancel()
+        pendingStartTask = nil
+        pendingDownloadStart = nil
     }
 
     /// Breathing room on top of the download itself, so a download can never take
@@ -896,6 +972,7 @@ final class DropDriveViewModel {
     }
 
     func startQueueDownloads() {
+        cancelPendingStartWithoutRemovingItems()
         guard canStartQueue else { return }
         if let message = diskSpaceShortfall() {
             // A real panel, not a popover-attached alert — see SystemAlert.
@@ -995,6 +1072,7 @@ final class DropDriveViewModel {
                 "กำลังรอไดรฟ์ปลายทางเชื่อมต่ออีกครั้ง"
             )
             QueueStore.save(queue)
+            notifyAttentionIfNeeded(for: queue[index])
             activeQueueItemID = nil
             processQueueIfNeeded()
             return
@@ -1031,6 +1109,9 @@ final class DropDriveViewModel {
                 let resultURL = try await downloadService.download(request) { progress in
                     Task { @MainActor [self] in
                         self.activeProgress = progress
+                        if progress.bytesDownloaded > 0 || progress.completedFiles > 0 {
+                            self.clearAttention(for: item.id)
+                        }
                     }
                 }
                 try Task.checkCancellation()
@@ -1070,10 +1151,19 @@ final class DropDriveViewModel {
                     destination: destinationURL,
                     asAudio: item.asAudio == true,
                     clipSection: item.clipSection,
-                    customName: item.customName
+                    customName: item.customName,
+                    quality: item.videoQuality ?? (item.asAudio == true ? .mp3 : .automatic),
+                    subtitleMode: item.subtitleMode ?? .none,
+                    splitChapters: item.splitChapters == true,
+                    saveThumbnail: item.saveThumbnail == true,
+                    selectedMediaIndexes: item.selectedMediaIndexes,
+                    collectionCount: item.analysis.videoDetails?.mediaItems.count ?? 0
                 ) { progress in
                     Task { @MainActor [self] in
                         self.activeProgress = progress
+                        if progress.bytesDownloaded > 0 {
+                            self.clearAttention(for: item.id)
+                        }
                     }
                 }
                 try Task.checkCancellation()
@@ -1106,6 +1196,7 @@ final class DropDriveViewModel {
                 "เน็ตหลุด — ระบบกำลังลองใหม่ให้อัตโนมัติ"
             )
             QueueStore.save(queue)
+            notifyAttentionIfNeeded(for: queue[index])
         }
         activeProgress = DownloadProgress(
             currentFileName: tr(
@@ -1151,6 +1242,7 @@ final class DropDriveViewModel {
             queue[index].attentionKind = nil
             queue[index].retryCount = nil
             queue[index].nextRetryAt = nil
+            clearAttention(for: id)
         }
         activeQueueItemID = nil
         activeProgress = nil
@@ -1163,6 +1255,17 @@ final class DropDriveViewModel {
 
         switch status {
         case .completed:
+            DriveFolderSnapshotStore.shared.recordCompletedFolder(
+                item.analysis,
+                selectedIDs: item.selectedFileIDs
+            )
+            if let mediaItems = item.analysis.videoDetails?.mediaItems, mediaItems.count > 1 {
+                MediaCollectionSnapshotStore.shared.recordCompleted(
+                    collectionID: item.analysis.itemID,
+                    items: mediaItems,
+                    selectedIndexes: item.selectedMediaIndexes
+                )
+            }
             if let resultURL {
                 if PreferencesStore.shared.openFinderWhenComplete {
                     NSWorkspace.shared.activateFileViewerSelecting([resultURL])
@@ -1282,6 +1385,7 @@ final class DropDriveViewModel {
         queue[index].attentionKind = nil
         queue[index].retryCount = nil
         queue[index].nextRetryAt = nil
+        clearAttention(for: id)
         QueueStore.save(queue)
         processQueueIfNeeded()
     }
@@ -1297,6 +1401,19 @@ final class DropDriveViewModel {
         QueueStore.save(queue)
         ResumeEnvelopeStore.clear(for: id)
         autoRetryAttempts[id] = nil
+        clearAttention(for: id)
+    }
+
+    private func notifyAttentionIfNeeded(for item: QueueItem) {
+        guard let kind = item.attentionKind,
+              kind == .network || kind == .destination,
+              notifiedAttentionItemIDs.insert(item.id).inserted else { return }
+        NotificationService.notifyAttention(itemID: item.id, name: item.displayName, kind: kind)
+    }
+
+    private func clearAttention(for id: UUID) {
+        notifiedAttentionItemIDs.remove(id)
+        NotificationService.clearAttention(itemID: id)
     }
 
     func clearCompletedQueueItems() {

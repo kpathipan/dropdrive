@@ -67,6 +67,7 @@ final class ServicesProvider: NSObject {
 extension Notification.Name {
     static let dropDriveShowSettings = Notification.Name("DropDrive.showSettings")
     static let dropDriveShowQueue = Notification.Name("DropDrive.showQueue")
+    static let dropDriveShowAttention = Notification.Name("DropDrive.showAttention")
 }
 
 @main

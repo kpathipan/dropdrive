@@ -34,6 +34,7 @@ nonisolated struct DriveFile: Decodable, Sendable {
     let shortcutDetails: ShortcutDetails?
     let resourceKey: String?
     let md5Checksum: String?
+    let modifiedTime: String?
     let thumbnailLink: String?
     let thumbnailVersion: String?
 
@@ -41,7 +42,7 @@ nonisolated struct DriveFile: Decodable, Sendable {
     var isShortcut: Bool { mimeType == "application/vnd.google-apps.shortcut" }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, mimeType, size, owners, shortcutDetails, resourceKey, md5Checksum,
+        case id, name, mimeType, size, owners, shortcutDetails, resourceKey, md5Checksum, modifiedTime,
              thumbnailLink, thumbnailVersion
     }
 
@@ -52,6 +53,7 @@ nonisolated struct DriveFile: Decodable, Sendable {
         size: Int64?,
         resourceKey: String?,
         md5Checksum: String? = nil,
+        modifiedTime: String? = nil,
         thumbnailLink: String? = nil,
         thumbnailVersion: String? = nil
     ) {
@@ -63,6 +65,7 @@ nonisolated struct DriveFile: Decodable, Sendable {
         self.shortcutDetails = nil
         self.resourceKey = resourceKey
         self.md5Checksum = md5Checksum
+        self.modifiedTime = modifiedTime
         self.thumbnailLink = thumbnailLink
         self.thumbnailVersion = thumbnailVersion
     }
@@ -82,6 +85,7 @@ nonisolated struct DriveFile: Decodable, Sendable {
         shortcutDetails = try container.decodeIfPresent(ShortcutDetails.self, forKey: .shortcutDetails)
         resourceKey = try container.decodeIfPresent(String.self, forKey: .resourceKey)
         md5Checksum = try container.decodeIfPresent(String.self, forKey: .md5Checksum)
+        modifiedTime = try container.decodeIfPresent(String.self, forKey: .modifiedTime)
         thumbnailLink = try container.decodeIfPresent(String.self, forKey: .thumbnailLink)
         thumbnailVersion = try container.decodeIfPresent(String.self, forKey: .thumbnailVersion)
     }
@@ -574,8 +578,8 @@ private final class DownloadTaskCoordinator: NSObject, URLSessionDownloadDelegat
 
 nonisolated struct GoogleDriveDownloadService: DownloadServicing {
     private static let apiBase = "https://www.googleapis.com/drive/v3/files"
-    private static let metadataFields = "id,name,mimeType,size,md5Checksum,thumbnailLink,thumbnailVersion,owners(displayName),shortcutDetails(targetId,targetMimeType,targetResourceKey),resourceKey"
-    private static let listFields = "nextPageToken, files(id, name,mimeType,size,md5Checksum,thumbnailLink,thumbnailVersion,shortcutDetails(targetId,targetMimeType,targetResourceKey),resourceKey)"
+    private static let metadataFields = "id,name,mimeType,size,md5Checksum,modifiedTime,thumbnailLink,thumbnailVersion,owners(displayName),shortcutDetails(targetId,targetMimeType,targetResourceKey),resourceKey"
+    private static let listFields = "nextPageToken, files(id, name,mimeType,size,md5Checksum,modifiedTime,thumbnailLink,thumbnailVersion,shortcutDetails(targetId,targetMimeType,targetResourceKey),resourceKey)"
 
     /// Multi-part ranged downloads only pay off past this size; below it the extra
     /// round trips (probe + N connection setups) aren't worth it.
@@ -758,6 +762,7 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
                             category: FileCategoryClassifier.category(mimeType: child.mimeType, name: child.name),
                             resourceKey: childKeys[child.id] ?? child.resourceKey,
                             md5Checksum: child.md5Checksum,
+                            modifiedTime: child.modifiedTime,
                             thumbnailLink: child.thumbnailLink,
                             thumbnailVersion: child.thumbnailVersion
                         ))

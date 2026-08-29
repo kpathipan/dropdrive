@@ -71,5 +71,54 @@ check(
     UserDefaults.standard.object(forKey: "\(bookmarkTestKey).path") == nil
 )
 
+let selectableItems = [
+    DriveLinkAnalysis.FolderItem(
+        id: "one", name: "one.mp4", relativePath: "one.mp4", mimeType: "video/mp4",
+        size: 100, category: .videos, md5Checksum: "a"
+    ),
+    DriveLinkAnalysis.FolderItem(
+        id: "two", name: "two.pdf", relativePath: "two.pdf", mimeType: "application/pdf",
+        size: 200, category: .documents, md5Checksum: "b"
+    )
+]
+let folderAnalysis = DriveLinkAnalysis(
+    itemID: "folder", name: "Folder", type: .folder, isPublic: true,
+    requiresAuthentication: false, totalBytes: 300, fileCount: 2, ownerName: nil,
+    categoryBreakdown: nil, folderItems: selectableItems
+)
+check("untouched folder selection keeps every file", folderAnalysis.selectingFolderItems(nil).fileCount == 2)
+check("empty folder selection means zero files", folderAnalysis.selectingFolderItems([]).fileCount == 0)
+check("individual folder selection uses selected bytes", folderAnalysis.selectingFolderItems(["two"]).totalBytes == 200)
+
+let mediaDetails = DriveLinkAnalysis.VideoDetails(
+    platform: "Youtube", availableHeights: [1080, 720],
+    estimatedBytesByQuality: ["p720": 10_000], subtitleLanguages: ["en"],
+    chapters: [.init(id: "c1", title: "Intro", startTime: 0, endTime: 10)],
+    mediaItems: [
+        .init(id: "m1", index: 1, title: "One", thumbnailURL: nil, durationSeconds: 10, isImage: false),
+        .init(id: "m2", index: 2, title: "Two", thumbnailURL: nil, durationSeconds: 12, isImage: false)
+    ]
+)
+let mediaAnalysis = DriveLinkAnalysis(
+    itemID: "playlist", name: "Playlist", type: .file, isPublic: true,
+    requiresAuthentication: false, totalBytes: nil, fileCount: nil, ownerName: nil,
+    categoryBreakdown: nil, isVideo: true, videoDetails: mediaDetails
+)
+let queueItem = QueueItem(
+    driveLink: "https://youtube.com/playlist?list=test", analysis: mediaAnalysis,
+    videoQuality: .p720, subtitleMode: .embedded, splitChapters: true,
+    saveThumbnail: true, selectedMediaIndexes: [2]
+)
+let queueRoundTrip = try JSONDecoder().decode(QueueItem.self, from: JSONEncoder().encode(queueItem))
+check("video quality survives queue persistence", queueRoundTrip.videoQuality == .p720)
+check("subtitle mode survives queue persistence", queueRoundTrip.subtitleMode == .embedded)
+check(
+    "TikTok photo URLs deduplicate by post ID",
+    LinkIdentity.videoItemID(for: "https://www.tiktok.com/@creator/photo/7527319704663362829?share_id=one")
+        == LinkIdentity.videoItemID(for: "https://m.tiktok.com/@creator/photo/7527319704663362829")
+)
+check("playlist selection survives queue persistence", queueRoundTrip.selectedMediaIndexes == [2])
+check("playlist metadata remains a collection", queueRoundTrip.analysis.videoDetails?.isCollection == true)
+
 if failures > 0 { exit(1) }
 print("ALL PASS")

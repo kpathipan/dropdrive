@@ -13,6 +13,9 @@ xcrun swiftc -O \
   DropDrive/Utilities/SupportedLinkExtractor.swift \
   DropDriveShare/ShareLinkExtractor.swift \
   DropDrive/Models/ExternalLinkReceipt.swift \
+  DropDrive/Models/DriveLinkAnalysis.swift \
+  DropDrive/Models/QueueItem.swift \
+  DropDrive/Services/AppLanguage.swift \
   DropDrive/Utilities/UniqueDestinationNaming.swift \
   DropDrive/Utilities/SecurityScopedAccessManager.swift \
   DropDrive/Utilities/SecurityScopedBookmark.swift \

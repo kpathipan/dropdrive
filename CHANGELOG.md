@@ -5,6 +5,50 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.21.0] - Smarter media collections
+
+### Added
+- **Folder selection now starts with everything selected and uses familiar
+  checkboxes.** Clear Select All to choose individual files; large folders gain
+  search without adding controls to small ones.
+- **Drive folders and media collections remember what was downloaded.** New and
+  changed items are marked on the next visit, with a one-click Select New action.
+- **Media links have richer download choices.** Choose Auto, highest, 1080p,
+  720p, small, or MP3; keep subtitles, chapters, cover art, and metadata; or trim
+  a precise section before downloading.
+- **Playlists and carousel posts can be reviewed item by item.** TikTok photo
+  posts download as their ordered original images plus a selectable soundtrack,
+  while Instagram and other supported collections keep their native items.
+- **Files can be dragged from the review card directly into Finder.** Dropping a
+  Finder folder onto the menu-bar icon also makes it the active destination.
+- **A five-second Undo window appears before a new download starts.** No output
+  file is created until that window closes.
+- **Optional live progress in the menu bar** shows percentage and ETA without
+  opening DropDrive.
+
+### Changed
+- **Needs Attention no longer occupies a main navigation tab.** It lives inside
+  Settings and appears automatically only when a network interruption or missing
+  destination actually needs action.
+- **Media output is validated before completion.** Videos are checked for
+  playback and converted to Mac-friendly H.264 only when the source codec needs
+  it; collection items are verified individually.
+- **Folder and collection snapshots are small and bounded.** They speed up repeat
+  review without retaining thumbnails, media files, or unbounded cache data.
+
+### Fixed
+- **A pasted link no longer reaches a review card with an unusable Download
+  button.** Idle work starts directly, while an active transfer changes the same
+  action to Add to Queue.
+- **TikTok links keep working when the normal watch page presents an anti-bot
+  challenge.** Video posts use the public embed fallback and photo posts use the
+  public player metadata path.
+- **Trimmed online videos keep certificate verification enabled** while bundled
+  ffmpeg uses the macOS trust store, avoiding failed section downloads.
+- **Updates retain the production Keychain namespace and stable signed app
+  identity,** so replacing an existing version does not create a second app or
+  ask for the login password again.
+
 ## [6.20.0] - Visual folder review
 
 ### Added

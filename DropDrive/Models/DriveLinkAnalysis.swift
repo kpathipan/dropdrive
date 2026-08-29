@@ -1,6 +1,59 @@
 import Foundation
 
 nonisolated struct DriveLinkAnalysis: Equatable, Sendable, Codable {
+    nonisolated enum VideoQuality: String, Equatable, Sendable, Codable, CaseIterable {
+        case automatic, highest, p1080, p720, small, mp3
+
+        @MainActor var label: String {
+            switch self {
+            case .automatic: tr("Auto", "อัตโนมัติ")
+            case .highest: tr("Highest", "สูงสุด")
+            case .p1080: "1080p"
+            case .p720: "720p"
+            case .small: tr("Small", "ไฟล์เล็ก")
+            case .mp3: "MP3"
+            }
+        }
+    }
+
+    nonisolated enum SubtitleMode: String, Equatable, Sendable, Codable, CaseIterable {
+        case none, separate, embedded
+
+        @MainActor var label: String {
+            switch self {
+            case .none: tr("None", "ไม่มี")
+            case .separate: tr("SRT file", "ไฟล์ SRT")
+            case .embedded: tr("Embed", "ฝังในวิดีโอ")
+            }
+        }
+    }
+
+    nonisolated struct Chapter: Identifiable, Equatable, Sendable, Codable {
+        let id: String
+        let title: String
+        let startTime: Double
+        let endTime: Double?
+    }
+
+    nonisolated struct MediaItem: Identifiable, Equatable, Sendable, Codable {
+        let id: String
+        let index: Int
+        let title: String
+        let thumbnailURL: String?
+        let durationSeconds: Double?
+        let isImage: Bool
+    }
+
+    nonisolated struct VideoDetails: Equatable, Sendable, Codable {
+        let platform: String?
+        let availableHeights: [Int]
+        let estimatedBytesByQuality: [String: Int64]
+        let subtitleLanguages: [String]
+        let chapters: [Chapter]
+        let mediaItems: [MediaItem]
+
+        var isCollection: Bool { mediaItems.count > 1 }
+    }
     nonisolated enum ItemType: String, Equatable, Sendable, Codable {
         case file
         case folder
@@ -37,6 +90,9 @@ nonisolated struct DriveLinkAnalysis: Equatable, Sendable, Codable {
         let category: Category
         let resourceKey: String?
         let md5Checksum: String?
+        /// Drive's source revision timestamp. Native Google files do not expose
+        /// MD5, so this is their lightweight changed-since-last-download signal.
+        let modifiedTime: String?
         /// Google-generated artwork for the file. The URL itself is short-lived;
         /// `thumbnailVersion` is the stable cache invalidation signal.
         let thumbnailLink: String?
@@ -51,6 +107,7 @@ nonisolated struct DriveLinkAnalysis: Equatable, Sendable, Codable {
             category: Category,
             resourceKey: String? = nil,
             md5Checksum: String? = nil,
+            modifiedTime: String? = nil,
             thumbnailLink: String? = nil,
             thumbnailVersion: String? = nil
         ) {
@@ -62,6 +119,7 @@ nonisolated struct DriveLinkAnalysis: Equatable, Sendable, Codable {
             self.category = category
             self.resourceKey = resourceKey
             self.md5Checksum = md5Checksum
+            self.modifiedTime = modifiedTime
             self.thumbnailLink = thumbnailLink
             self.thumbnailVersion = thumbnailVersion
         }
@@ -84,6 +142,7 @@ nonisolated struct DriveLinkAnalysis: Equatable, Sendable, Codable {
     /// confirm card's preview and the trim field hints.
     var thumbnailURL: String?
     var durationSeconds: Double?
+    var videoDetails: VideoDetails?
 
     init(
         itemID: String,
@@ -98,7 +157,8 @@ nonisolated struct DriveLinkAnalysis: Equatable, Sendable, Codable {
         folderItems: [FolderItem]? = nil,
         isVideo: Bool? = nil,
         thumbnailURL: String? = nil,
-        durationSeconds: Double? = nil
+        durationSeconds: Double? = nil,
+        videoDetails: VideoDetails? = nil
     ) {
         self.itemID = itemID
         self.name = name
@@ -113,6 +173,7 @@ nonisolated struct DriveLinkAnalysis: Equatable, Sendable, Codable {
         self.isVideo = isVideo
         self.thumbnailURL = thumbnailURL
         self.durationSeconds = durationSeconds
+        self.videoDetails = videoDetails
     }
 
     /// Returns the same analysis narrowed to the selected folder files. Nil
@@ -146,7 +207,8 @@ nonisolated struct DriveLinkAnalysis: Equatable, Sendable, Codable {
             folderItems: folderItems,
             isVideo: copy.isVideo,
             thumbnailURL: copy.thumbnailURL,
-            durationSeconds: copy.durationSeconds
+            durationSeconds: copy.durationSeconds,
+            videoDetails: copy.videoDetails
         )
     }
 }

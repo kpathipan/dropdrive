@@ -589,6 +589,7 @@ struct MenuBarView: View {
         case .analyzed(let analysis):
             AnalyzedPromptView(
                 analysis: analysis,
+                isDuplicate: false,
                 destinationURL: viewModel.selectedDestinationURL,
                 startsImmediately: viewModel.confirmationStartsImmediately,
                 preflight: viewModel.preflight,
@@ -631,11 +632,31 @@ struct MenuBarView: View {
         case .duplicateActive:
             LinkDuplicateActiveView()
         case .duplicateCompleted(let analysis):
-            DuplicateCompletedPromptView(
+            AnalyzedPromptView(
                 analysis: analysis,
-                onDownloadAgain: viewModel.confirmDuplicateRedownload,
+                isDuplicate: true,
+                destinationURL: viewModel.selectedDestinationURL,
+                startsImmediately: viewModel.confirmationStartsImmediately,
+                preflight: viewModel.preflight,
+                sourceLink: viewModel.driveLink,
+                onChooseDestination: viewModel.chooseDestinationFolder,
+                onSelectDestination: viewModel.selectDestinationFolder,
+                onDownload: { asAudio, clipSection, customName, selectedFileIDs, quality, subtitles, splitChapters, saveThumbnail, selectedMediaIndexes in
+                    viewModel.confirmDuplicateRedownload(
+                        asAudio: asAudio,
+                        clipSection: clipSection,
+                        customName: customName,
+                        selectedFileIDs: selectedFileIDs,
+                        videoQuality: quality,
+                        subtitleMode: subtitles,
+                        splitChapters: splitChapters,
+                        saveThumbnail: saveThumbnail,
+                        selectedMediaIndexes: selectedMediaIndexes
+                    )
+                },
                 onCancel: viewModel.cancelAnalysis
             )
+            .id(analysis.itemID)
         }
     }
 
@@ -660,7 +681,11 @@ struct MenuBarView: View {
                                 pasteboard.setString(item.driveLink, forType: .string)
                             },
                             onRemoveItem: { historyStore.remove($0) },
-                            onClearHistory: { historyStore.clear() }
+                            onClearHistory: {
+                                historyStore.clear()
+                                DriveFolderSnapshotStore.shared.clear()
+                                MediaCollectionSnapshotStore.shared.clear()
+                            }
                         )
                     }
                 }
@@ -714,8 +739,8 @@ private struct HeaderAccountButton: View {
         .accessibilityLabel(account.map { "Account: \($0.name)" } ?? "Connect Google Drive")
         .popover(isPresented: $showPopover, arrowEdge: .bottom) {
             // The popover chrome is drawn by AppKit in the SYSTEM appearance,
-            // but its SwiftUI content inherits the main window's forced-light
-            // environment — black text on a dark popover. Resolve the actual
+            // but its SwiftUI content can inherit the presenting hierarchy's
+            // forced-light environment — black text on a dark popover. Resolve the actual
             // system appearance and pin the content to it explicitly.
             popoverContent
                 .colorScheme(systemColorScheme)

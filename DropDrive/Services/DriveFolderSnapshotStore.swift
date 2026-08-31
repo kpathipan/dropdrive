@@ -93,6 +93,11 @@ final class DriveFolderSnapshotStore {
         trimAndSave()
     }
 
+    func clear() {
+        snapshots = [:]
+        if let url = Self.storageURL { try? FileManager.default.removeItem(at: url) }
+    }
+
     private func trimAndSave() {
         if snapshots.count > Self.maximumFolders {
             let keep = snapshots.sorted { $0.value.updatedAt > $1.value.updatedAt }

@@ -16,12 +16,12 @@ DropDrive is a native macOS download utility — paste a link, review exactly wh
 - Destination collisions get a smart `(1)`, `(2)`… suffix instead of being overwritten
 - Recent download history, persisted across launches and **searchable**, with **Reveal in Finder** and **Copy Google Drive Link** on every entry, plus lightweight local download statistics in Preferences
 - Duplicate-download detection across sessions, not just the current one
-- Paste links in the field, open DropDrive to pick up a copied link, drag links onto the menu-bar icon, or use the macOS Share menu, Chrome extension, or right-click Service
-- Send a link into DropDrive without copy/paste: a [Chrome extension](browser-extension/chrome), or the macOS **Share menu**
+- Paste links in the field, open DropDrive to pick up a copied link, drag links onto the menu-bar icon, or use the macOS Share menu or right-click Service
+- Send a link into DropDrive without copy/paste through the macOS **Share menu**, the right-click Service, or the optional iCloud phone inbox
 - Native notifications on completion, with **Reveal in Finder** and **Open DropDrive** actions
 - **Menu-bar-first app** — the queue, history, and Settings stay in one compact popover; recoverable items appear under Settings → Needs Attention only when action is required
 - Keyboard controls: Control-Option-D opens DropDrive globally; Command-V pastes, Return analyzes/confirms, Command-O chooses a folder, and Space previews a focused folder item or pauses/resumes the queue
-- Optional GitHub-based update check (notify-only — DropDrive never auto-downloads or auto-installs updates)
+- GitHub-based update checks with a user-confirmed in-app download, signature verification, replacement, and relaunch
 
 ## Requirements
 
@@ -30,9 +30,11 @@ DropDrive is a native macOS download utility — paste a link, review exactly wh
 
 ## Installing
 
-Download the latest DMG from the project's Releases, open it, and drag
-DropDrive.app to Applications. See [CHANGELOG.md](CHANGELOG.md) for what's
-in each version.
+For the first installation, download the latest DMG from the project's
+[Releases](https://github.com/kpathipan/dropdrive/releases/latest), open it,
+and drag DropDrive.app to Applications. After that, use **Settings → About →
+Check for updates** so the existing app is replaced in place without creating a
+second copy. See [CHANGELOG.md](CHANGELOG.md) for what's in each version.
 
 ## Building
 
@@ -47,7 +49,7 @@ in each version.
 
 - SwiftUI, MVVM, `@Observable` view models (macOS 14 Observation framework)
 - `Services/` — Google Sign-In, Drive API access, downloading, notifications, preferences, update checking
-- `ViewModels/` — `DropDriveViewModel` drives the main window's state machine
+- `ViewModels/` — `DropDriveViewModel` drives the menu-bar popover's state machine
 - `Views/` — SwiftUI views, kept presentation-only
 
 ## Privacy

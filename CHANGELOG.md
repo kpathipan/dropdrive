@@ -5,6 +5,23 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.23.0] - Flexible repeat downloads and cleaner maintenance
+
+### Changed
+- **Repeated video downloads keep the full review card.** Choose MP3, video
+  quality, subtitles, chapters, cover art, trimming, and collection items before
+  downloading the same link again.
+- **Clear History now clears remembered download state too.** Lifetime totals,
+  duplicate detection, and folder or collection snapshots reset together with
+  the visible history list.
+
+### Fixed
+- **TikTok's original-rendition parser is clean under current Swift concurrency
+  checks** while retaining its trusted-host validation and watermark-free
+  fallback.
+- **Release builds now advance their build number automatically** and use a
+  standard signed DMG filename without the misleading ad-hoc suffix.
+
 ## [6.22.0] - Faster starts and clean TikTok downloads
 
 ### Added

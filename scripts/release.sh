@@ -37,8 +37,16 @@ if [ -n "$(git status --porcelain)" ]; then
   exit 1
 fi
 
-echo "==> Setting version to $VERSION"
+CURRENT_BUILD=$(grep -m1 'CURRENT_PROJECT_VERSION' DropDrive.xcodeproj/project.pbxproj | sed -E 's/.*= ([0-9]+);/\1/')
+if [[ ! "$CURRENT_BUILD" =~ ^[0-9]+$ ]]; then
+  echo "error: could not read CURRENT_PROJECT_VERSION" >&2
+  exit 1
+fi
+NEXT_BUILD=$((CURRENT_BUILD + 1))
+
+echo "==> Setting version to $VERSION (build $NEXT_BUILD)"
 sed -i '' "s/MARKETING_VERSION = [0-9.]*;/MARKETING_VERSION = $VERSION;/g" DropDrive.xcodeproj/project.pbxproj
+sed -i '' "s/CURRENT_PROJECT_VERSION = [0-9]*;/CURRENT_PROJECT_VERSION = $NEXT_BUILD;/g" DropDrive.xcodeproj/project.pbxproj
 git add DropDrive.xcodeproj/project.pbxproj
 git commit -qm "Release v$VERSION" || true
 
@@ -48,7 +56,7 @@ echo "==> Building the DMG"
 ./scripts/test-regressions.sh
 ./scripts/build-dmg.sh >/dev/null
 
-DMG="dist/DropDrive-v$VERSION-adhoc.dmg"
+DMG="dist/DropDrive-v$VERSION.dmg"
 [ -f "$DMG" ] || { echo "error: expected $DMG, which the build did not produce" >&2; exit 1; }
 
 # Developer ID builds can be notarized for a normal drag-to-Applications first

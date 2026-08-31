@@ -1,52 +1,54 @@
 # Privacy
 
-DropDrive is a local macOS app. This document describes exactly what it
-does and doesn't do with your data, based on what's actually in the code —
-not a generic privacy policy template.
+DropDrive is a local macOS app with no advertising, analytics, telemetry,
+crash-reporting SDK, or DropDrive-operated backend. This document reflects the
+current application rather than a generic policy template.
 
-## What DropDrive sends over the network
+## Network connections
 
-- **Google Drive API / Google Sign-In** (`googleapis.com`) — used to sign
-  you in and to read metadata and file contents for links you paste. Only
-  the `drive.readonly` OAuth scope is requested; DropDrive cannot modify,
-  delete, or upload anything to your Drive.
-- **GitHub Releases API** (`api.github.com`) — optional. DropDrive can
-  check for a newer release and show a local notification if one exists.
-  It never downloads or installs anything automatically. This feature is
-  currently inert (no repository is configured in this build).
+DropDrive connects only when needed for features you use:
 
-DropDrive has no analytics, telemetry, or crash-reporting SDKs, and no
-backend server of its own. Downloaded file contents go directly from
-Google's servers to the folder you choose — they never pass through any
-DropDrive-operated infrastructure, because none exists.
+- **Google Drive and Google Sign-In** — reads metadata and file contents for
+  Drive links. The app requests the read-only Drive scope and cannot modify,
+  delete, or upload files in your Drive.
+- **TikTok, YouTube, Facebook, and Instagram** — reads public metadata,
+  thumbnails, and media for links you submit. Media travels directly from the
+  platform or its content-delivery network to your chosen folder.
+- **GitHub Releases** — checks for DropDrive updates. An update is downloaded
+  and installed only after you press the update button; its checksum,
+  architecture, and code signature are verified before replacement.
+- **iCloud Drive phone inbox** — when enabled, macOS syncs small link files from
+  the DropDrive folder in your iCloud Drive. DropDrive itself does not operate
+  an iCloud server.
 
-## What's stored on your Mac
+Downloaded content never passes through DropDrive-operated infrastructure,
+because no such infrastructure exists.
 
-All of the following stays local, in this app's own sandboxed storage
-(`UserDefaults` and Keychain) — none of it is transmitted anywhere except
-where noted above:
+## Data stored on your Mac
 
-- Your Google account's name, email, and profile image URL (for display in
-  the toolbar), and your OAuth token (managed by Google's Sign-In SDK, kept
-  in the Keychain)
-- Your last-used and default download folders, as security-scoped
-  bookmarks (so DropDrive can keep write access after you restart it)
-- Recent download history: file/folder names, timestamps, status, and the
-  Drive links you downloaded — not file contents
-- Your Preferences toggles (open Finder on completion, play a sound,
-  launch at login)
+DropDrive stores only what is needed to keep the app useful between launches:
+
+- Google account display details and an OAuth session managed by Google Sign-In;
+  the credential is kept in macOS Keychain.
+- Destination folders as security-scoped bookmarks, plus download, appearance,
+  bandwidth, notification, phone inbox, and launch-at-login preferences.
+- The pending queue, the 50 most recent history rows, bounded duplicate
+  identifiers and lifetime totals, and bounded folder/collection fingerprints
+  used to mark downloaded, new, or changed items. It does not retain a second
+  copy of downloaded media.
+- Small temporary resume, analysis, thumbnail, and tool-cache data. Completed
+  or abandoned temporary data is removed automatically.
 
 ## Your controls
 
-- **Disconnect** (toolbar account menu) revokes DropDrive's local session
-  and clears cached Drive access. To fully revoke access from Google's
-  side, use "Manage Connection" in the same menu.
-- **Clear History** (Recent Downloads) deletes the local download history
-  list. It does not delete the downloaded files themselves.
-- Preferences can be reset by turning off the relevant toggle at any time.
+- **Disconnect** clears the saved local Google session. **Manage Connection**
+  opens Google's controls when you want to revoke access on Google's side.
+- **Clear History** removes visible history, lifetime totals, duplicate memory,
+  and folder/collection download markers. It never deletes downloaded files.
+- Preferences can be changed or disabled at any time in the menu-bar Settings.
 
 ## App Sandbox
 
-DropDrive runs inside the macOS App Sandbox and can only read/write files
-in folders you explicitly choose via the system file picker — it has no
-broad filesystem access.
+DropDrive runs inside the macOS App Sandbox. It can write to folders selected
+through the system picker and to its own sandbox/iCloud inbox; it does not have
+unrestricted filesystem access.

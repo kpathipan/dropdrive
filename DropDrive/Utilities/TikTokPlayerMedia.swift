@@ -33,11 +33,16 @@ enum TikTokPlayerMedia {
             guard let address = profile["play_addr"] as? [String: Any],
                   let rawURLs = address["url_list"] as? [String]
             else { continue }
-            if let url = rawURLs.compactMap(trustedMediaURL).first { return url }
+            for rawURL in rawURLs {
+                if let url = trustedMediaURL(rawURL) { return url }
+            }
         }
 
         let fallbackURLs = videoInfo["url_list"] as? [String] ?? []
-        return fallbackURLs.compactMap(trustedMediaURL).first
+        for rawURL in fallbackURLs {
+            if let url = trustedMediaURL(rawURL) { return url }
+        }
+        return nil
     }
 
     private static func number(_ value: Any?) -> Int? {

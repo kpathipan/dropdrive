@@ -47,9 +47,8 @@ struct DestinationPreflight: Equatable {
 @MainActor
 @Observable
 final class DropDriveViewModel {
-    /// The main window and the menu bar extra both need to reflect the same live
-    /// queue/progress state, not two independent download engines — shared the same
-    /// way DownloadHistoryStore/PreferencesStore are.
+    /// The menu-bar UI, Services, Share extension, and deep links all feed the
+    /// same live queue/progress state rather than independent download engines.
     static let shared = DropDriveViewModel()
 
     private static let assumedDownloadRateBytesPerSecond: Double = 5_000_000 // conservative ~5 MB/s estimate for the ETA shown before starting
@@ -339,15 +338,14 @@ final class DropDriveViewModel {
     }
 
     /// Entry point for every URL the app is opened with: Google Sign-In's OAuth
-    /// callback, or `dropdrive://download?url=<Drive link>` from the Chrome
-    /// extension or Share Extension — both of which hand off a
-    /// link the same way rather than talking to the app directly. The host segment
+    /// callback, or `dropdrive://download?url=<supported link>` from the Share
+    /// extension and other integrations. The host segment
     /// isn't actually inspected below, so any `dropdrive://<host>?url=...` works,
     /// but `download` is the one canonical form every integration emits.
     ///
-    /// A multi-selection in the Chrome extension arrives as several `url` query
-    /// items on the same deep link (`?url=A&url=B&url=C`) rather than a second
-    /// endpoint — still the one `dropdrive://download?url=` form, just repeated.
+    /// A multi-selection arrives as several `url` query items on the same deep
+    /// link (`?url=A&url=B&url=C`) rather than a second endpoint — still the one
+    /// `dropdrive://download?url=` form, just repeated.
     func handleIncomingURL(_ url: URL) {
         guard url.scheme?.caseInsensitiveCompare("dropdrive") == .orderedSame else {
             return
@@ -721,6 +719,32 @@ final class DropDriveViewModel {
         selectedMediaIndexes: Set<Int>? = nil
     ) {
         guard case .analyzed(let analysis) = linkAnalysisState else { return }
+        confirmDownload(
+            analysis: analysis,
+            asAudio: asAudio,
+            clipSection: clipSection,
+            customName: customName,
+            selectedFileIDs: selectedFileIDs,
+            videoQuality: videoQuality,
+            subtitleMode: subtitleMode,
+            splitChapters: splitChapters,
+            saveThumbnail: saveThumbnail,
+            selectedMediaIndexes: selectedMediaIndexes
+        )
+    }
+
+    private func confirmDownload(
+        analysis: DriveLinkAnalysis,
+        asAudio: Bool,
+        clipSection: String?,
+        customName: String?,
+        selectedFileIDs: Set<String>?,
+        videoQuality: DriveLinkAnalysis.VideoQuality,
+        subtitleMode: DriveLinkAnalysis.SubtitleMode,
+        splitChapters: Bool,
+        saveThumbnail: Bool,
+        selectedMediaIndexes: Set<Int>?
+    ) {
         let startsImmediately = confirmationStartsImmediately
         let trimmedLink = driveLink.trimmingCharacters(in: .whitespacesAndNewlines)
         enqueue(
@@ -799,18 +823,30 @@ final class DropDriveViewModel {
         scheduleAnalysis()
     }
 
-    func confirmDuplicateRedownload() {
+    func confirmDuplicateRedownload(
+        asAudio: Bool = false,
+        clipSection: String? = nil,
+        customName: String? = nil,
+        selectedFileIDs: Set<String>? = nil,
+        videoQuality: DriveLinkAnalysis.VideoQuality = .automatic,
+        subtitleMode: DriveLinkAnalysis.SubtitleMode = .none,
+        splitChapters: Bool = false,
+        saveThumbnail: Bool = false,
+        selectedMediaIndexes: Set<Int>? = nil
+    ) {
         guard case .duplicateCompleted(let analysis) = linkAnalysisState else { return }
-        let trimmedLink = driveLink.trimmingCharacters(in: .whitespacesAndNewlines)
-        enqueue(analysis: analysis, driveLink: trimmedLink)
-        driveLink = ""
-        linkAnalysisState = .idle
-        // Same as confirming a fresh link: "Download Again" is a download
-        // instruction, and leaving it merely queued meant the user had to go
-        // press "Download All" afterwards to make anything happen.
-        if !isQueueProcessing {
-            startQueueDownloads()
-        }
+        confirmDownload(
+            analysis: analysis,
+            asAudio: asAudio,
+            clipSection: clipSection,
+            customName: customName,
+            selectedFileIDs: selectedFileIDs,
+            videoQuality: videoQuality,
+            subtitleMode: subtitleMode,
+            splitChapters: splitChapters,
+            saveThumbnail: saveThumbnail,
+            selectedMediaIndexes: selectedMediaIndexes
+        )
     }
 
     /// The download button / Return key: confirms an already-analyzed link, or

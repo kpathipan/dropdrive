@@ -4,10 +4,10 @@ Thanks for your interest in improving DropDrive.
 
 ## Before you start
 
-This project doesn't have a public issue tracker or contribution workflow set
-up yet. If you'd like to contribute, please open an issue first to discuss
-what you'd like to change — this avoids wasted effort on pull requests that
-might not fit the project's direction.
+Before starting a substantial change, open a
+[GitHub issue](https://github.com/kpathipan/dropdrive/issues) to discuss it.
+This avoids spending time on a pull request that does not fit the project's
+direction.
 
 ## Development setup
 
@@ -39,9 +39,9 @@ Use the bug report issue template and include:
 
 ## Security
 
-If you find a security issue (e.g. related to credential handling or the
-sandboxed file access), please do not open a public issue — see
-[SECURITY policy / contact information to be added].
+If you find a security issue (for example, involving credentials or sandboxed
+file access), do not open a public issue. Report it through a
+[private GitHub security advisory](https://github.com/kpathipan/dropdrive/security/advisories/new).
 
 ## Privacy
 

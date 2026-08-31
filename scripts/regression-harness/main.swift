@@ -131,6 +131,18 @@ check(
 )
 check("playlist selection survives queue persistence", queueRoundTrip.selectedMediaIndexes == [2])
 check("playlist metadata remains a collection", queueRoundTrip.analysis.videoDetails?.isCollection == true)
+let repeatedMP3 = QueueItem(
+    driveLink: "https://www.tiktok.com/@creator/video/1234567890123456789",
+    analysis: mediaAnalysis,
+    asAudio: true,
+    videoQuality: .mp3
+)
+let repeatedMP3RoundTrip = try JSONDecoder().decode(
+    QueueItem.self,
+    from: JSONEncoder().encode(repeatedMP3)
+)
+check("repeat download keeps the MP3 choice", repeatedMP3RoundTrip.asAudio == true)
+check("repeat download keeps MP3 quality", repeatedMP3RoundTrip.videoQuality == .mp3)
 
 let tikTokPlayerFixture = Data("""
 {

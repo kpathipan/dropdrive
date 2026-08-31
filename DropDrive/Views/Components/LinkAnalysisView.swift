@@ -265,6 +265,7 @@ struct BatchReviewView: View {
 /// folder can't be changed at this point. It's shown where the decision is made.
 struct AnalyzedPromptView: View {
     let analysis: DriveLinkAnalysis
+    let isDuplicate: Bool
     let destinationURL: URL?
     let startsImmediately: Bool
     let preflight: (DriveLinkAnalysis) -> DestinationPreflight
@@ -308,6 +309,27 @@ struct AnalyzedPromptView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if isDuplicate {
+                Label {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(tr("Already downloaded", "เคยดาวน์โหลดแล้ว"))
+                            .font(.dd(12, .semibold))
+                        Text(tr(
+                            "Choose the format you want, then download it again.",
+                            "เลือกรูปแบบที่ต้องการ แล้วดาวน์โหลดอีกครั้งได้เลย"
+                        ))
+                        .font(.dd(10))
+                        .foregroundStyle(.secondary)
+                    }
+                } icon: {
+                    Image(systemName: "arrow.clockwise.circle.fill")
+                        .foregroundStyle(DDTheme.accent)
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(DDTheme.accent.opacity(0.09), in: RoundedRectangle(cornerRadius: 9))
+            }
+
             if analysis.isVideo == true, let thumbnail = analysis.thumbnailURL, let url = URL(string: thumbnail) {
                 AsyncImage(url: url) { phase in
                     if case .success(let image) = phase {
@@ -647,7 +669,13 @@ struct AnalyzedPromptView: View {
 
     private var primaryActionTitle: String {
         if startsImmediately {
+            if isDuplicate {
+                return asAudio ? tr("Download MP3 Again", "ดาวน์โหลด MP3 อีกครั้ง") : tr("Download Again", "ดาวน์โหลดอีกครั้ง")
+            }
             return asAudio ? tr("Download MP3", "ดาวน์โหลด MP3") : tr("Download", "ดาวน์โหลด")
+        }
+        if isDuplicate {
+            return asAudio ? tr("Add MP3 Again to Queue", "เพิ่ม MP3 เข้าคิวอีกครั้ง") : tr("Add Again to Queue", "เพิ่มเข้าคิวอีกครั้ง")
         }
         return asAudio ? tr("Add MP3 to queue", "เพิ่ม MP3 เข้าคิว") : tr("Add to queue", "เพิ่มเข้าคิว")
     }
@@ -855,80 +883,5 @@ struct AnalyzedPromptView: View {
             return String(format: "%d:%02d:%02d", total / 3600, (total % 3600) / 60, total % 60)
         }
         return String(format: "%d:%02d", total / 60, total % 60)
-    }
-}
-
-/// Shown when a pasted link matches an item that already completed this session,
-/// asking whether to queue a fresh copy of it.
-struct DuplicateCompletedPromptView: View {
-    let analysis: DriveLinkAnalysis
-    let onDownloadAgain: () -> Void
-    let onCancel: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                Image(systemName: analysis.type == .folder ? "folder.fill" : "doc.fill")
-                    .font(.dd(22))
-                    .foregroundStyle(Color.accentColor)
-                    .frame(width: 28)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(analysis.name)
-                        .font(.dd(13, .semibold))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-
-                    Text(tr("You've already downloaded this", "เคยดาวน์โหลดรายการนี้แล้ว"))
-                        .font(.dd(11))
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer(minLength: 8)
-            }
-
-            Divider()
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 16) {
-                    if let totalBytes = analysis.totalBytes {
-                        detail(Formatters.byteCount(totalBytes), icon: "internaldrive")
-                    } else {
-                        detail(tr("Size unknown", "ไม่ทราบขนาด"), icon: "internaldrive")
-                    }
-
-                    if let fileCount = analysis.fileCount {
-                        detail(tr("\(fileCount) \(fileCount == 1 ? "file" : "files")", "\(fileCount) ไฟล์"), icon: "doc.on.doc")
-                    }
-                }
-
-                if let ownerName = analysis.ownerName {
-                    detail(tr("Owned by \(ownerName)", "เจ้าของ: \(ownerName)"), icon: "person.crop.circle")
-                }
-            }
-            .font(.dd(11))
-            .foregroundStyle(.secondary)
-
-            Text(tr("Download again?", "ดาวน์โหลดอีกครั้ง?"))
-                .font(.dd(13, .medium))
-
-            HStack(spacing: 10) {
-                Button(tr("Cancel", "ยกเลิก"), role: .cancel, action: onCancel)
-                    .buttonStyle(.bordered)
-
-                Button(action: onDownloadAgain) {
-                    Label(tr("Download Again", "ดาวน์โหลดอีกครั้ง"), systemImage: "arrow.down.circle.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-            }
-        }
-        .padding(16)
-        .cardBackground()
-        .transition(.opacity.combined(with: .move(edge: .top)))
-    }
-
-    private func detail(_ text: String, icon: String) -> some View {
-        Label(text, systemImage: icon)
     }
 }

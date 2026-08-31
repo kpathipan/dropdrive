@@ -1,8 +1,8 @@
 import Foundation
 import Observation
 
-/// Shared across the main window and the menu bar extra, so both reflect the same
-/// history without needing a common view hierarchy.
+/// Shared by the menu-bar history and Settings totals so both surfaces reflect
+/// the same local records without duplicating state.
 @MainActor
 @Observable
 final class DownloadHistoryStore {
@@ -101,7 +101,12 @@ final class DownloadHistoryStore {
 
     func clear() {
         items = []
+        lifetime = LifetimeTotals()
+        completedIdentities = []
+        refreshTotals()
         save()
+        saveLifetime()
+        saveIdentities()
     }
 
     private func refreshTotals() {

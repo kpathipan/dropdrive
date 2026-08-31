@@ -63,7 +63,7 @@ echo "==> Rebuilding $VERSION with update checking enabled"
 ./scripts/test-performance-improvements.sh
 ./scripts/test-regressions.sh
 ./scripts/build-dmg.sh >/dev/null
-DMG="dist/DropDrive-v$VERSION-adhoc.dmg"
+DMG="dist/DropDrive-v$VERSION.dmg"
 [ -f "$DMG" ] || { echo "error: expected $DMG" >&2; exit 1; }
 
 SHA=$(shasum -a 256 "$DMG" | cut -d' ' -f1)

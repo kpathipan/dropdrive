@@ -48,6 +48,11 @@ final class MediaCollectionSnapshotStore {
         trimAndSave()
     }
 
+    func clear() {
+        snapshots = [:]
+        if let url = Self.storageURL { try? FileManager.default.removeItem(at: url) }
+    }
+
     private func trimAndSave() {
         if snapshots.count > Self.maximumCollections {
             snapshots = Dictionary(uniqueKeysWithValues: snapshots

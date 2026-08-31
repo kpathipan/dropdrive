@@ -9,12 +9,6 @@ struct QueueSummary {
     let estimatedSeconds: Double?
 }
 
-struct PendingDownloadStart: Equatable {
-    let itemIDs: Set<UUID>
-    let itemCount: Int
-    let deadline: Date
-}
-
 /// The local destination check shown before an item reaches the queue. The
 /// exact same reserve is enforced again at start time, so this is informative
 /// without becoming a second source of truth.
@@ -58,7 +52,6 @@ final class DropDriveViewModel {
     /// way DownloadHistoryStore/PreferencesStore are.
     static let shared = DropDriveViewModel()
 
-    private static let largeDownloadThresholdBytes: Int64 = 1_073_741_824 // 1 GB
     private static let assumedDownloadRateBytesPerSecond: Double = 5_000_000 // conservative ~5 MB/s estimate for the ETA shown before starting
     private static let batchAnalysisConcurrency = 4
 
@@ -105,9 +98,7 @@ final class DropDriveViewModel {
     var activeQueueItemID: UUID?
     var activeProgress: DownloadProgress?
     var highlightedQueueItemID: UUID?
-    var showLargeDownloadWarning = false
     var isQueuePaused = false
-    var pendingDownloadStart: PendingDownloadStart?
 
     var pendingRestoreQueue: [QueueItem]?
     private var hasAskedAboutRestore = false
@@ -127,7 +118,6 @@ final class DropDriveViewModel {
     /// would rebuild the card underneath it.
     private var isChoosingDestination = false
     private var highlightTask: Task<Void, Never>?
-    private var pendingStartTask: Task<Void, Never>?
     private var isPausingActiveItem = false
     /// Prevents the same clipboard contents from being re-imported every time
     /// the popover is reopened after the user has handled or cleared them.
@@ -301,10 +291,6 @@ final class DropDriveViewModel {
             hasNameCollision: FileManager.default.fileExists(atPath: candidate.path),
             canQueue: canQueue
         )
-    }
-
-    var isLargeDownload: Bool {
-        queueSummary.totalBytes > Self.largeDownloadThresholdBytes
     }
 
     func restoreLogin() {
@@ -737,7 +723,7 @@ final class DropDriveViewModel {
         guard case .analyzed(let analysis) = linkAnalysisState else { return }
         let startsImmediately = confirmationStartsImmediately
         let trimmedLink = driveLink.trimmingCharacters(in: .whitespacesAndNewlines)
-        let itemID = enqueue(
+        enqueue(
             analysis: analysis,
             driveLink: trimmedLink,
             asAudio: asAudio,
@@ -752,7 +738,7 @@ final class DropDriveViewModel {
         )
         driveLink = ""
         linkAnalysisState = .idle
-        if startsImmediately { scheduleDownloadStart(for: [itemID]) }
+        if startsImmediately { startQueueDownloads() }
     }
 
     /// Checks Recent Downloads (which spans past app sessions), not just this
@@ -796,19 +782,17 @@ final class DropDriveViewModel {
               selectedDestinationURL != nil else { return }
         let startsImmediately = confirmationStartsImmediately
         var addedAnyItem = false
-        var newItemIDs = Set<UUID>()
         for item in items where item.isSelected {
             guard case .ready(let analysis) = item.result,
                   !queue.contains(where: { $0.itemID == analysis.itemID }),
                   !hasCompletedDownloadPreviously(itemID: analysis.itemID)
             else { continue }
-            let itemID = enqueue(analysis: analysis, driveLink: item.link)
-            newItemIDs.insert(itemID)
+            enqueue(analysis: analysis, driveLink: item.link)
             addedAnyItem = true
         }
         driveLink = ""
         linkAnalysisState = .idle
-        if startsImmediately, addedAnyItem { scheduleDownloadStart(for: newItemIDs) }
+        if startsImmediately, addedAnyItem { startQueueDownloads() }
     }
 
     func retryAnalysis() {
@@ -818,14 +802,14 @@ final class DropDriveViewModel {
     func confirmDuplicateRedownload() {
         guard case .duplicateCompleted(let analysis) = linkAnalysisState else { return }
         let trimmedLink = driveLink.trimmingCharacters(in: .whitespacesAndNewlines)
-        let itemID = enqueue(analysis: analysis, driveLink: trimmedLink)
+        enqueue(analysis: analysis, driveLink: trimmedLink)
         driveLink = ""
         linkAnalysisState = .idle
         // Same as confirming a fresh link: "Download Again" is a download
         // instruction, and leaving it merely queued meant the user had to go
         // press "Download All" afterwards to make anything happen.
         if !isQueueProcessing {
-            scheduleDownloadStart(for: [itemID])
+            startQueueDownloads()
         }
     }
 
@@ -902,43 +886,6 @@ final class DropDriveViewModel {
         return item.id
     }
 
-    /// Keeps a fresh, otherwise-immediate download reversible for a brief grace
-    /// period. Nothing has touched the network or destination yet, so Undo is
-    /// instant and never leaves a partial file behind.
-    private func scheduleDownloadStart(for itemIDs: Set<UUID>) {
-        guard !itemIDs.isEmpty else { return }
-        pendingStartTask?.cancel()
-        pendingDownloadStart = PendingDownloadStart(
-            itemIDs: itemIDs,
-            itemCount: itemIDs.count,
-            deadline: Date().addingTimeInterval(5)
-        )
-        pendingStartTask = Task {
-            try? await Task.sleep(for: .seconds(5))
-            guard !Task.isCancelled else { return }
-            pendingDownloadStart = nil
-            pendingStartTask = nil
-            startQueueDownloads()
-        }
-    }
-
-    func undoPendingDownloadStart() {
-        guard let pendingDownloadStart else { return }
-        pendingStartTask?.cancel()
-        pendingStartTask = nil
-        self.pendingDownloadStart = nil
-        for id in pendingDownloadStart.itemIDs {
-            guard let item = queue.first(where: { $0.id == id }), item.status == .ready else { continue }
-            removeQueueItem(id)
-        }
-    }
-
-    private func cancelPendingStartWithoutRemovingItems() {
-        pendingStartTask?.cancel()
-        pendingStartTask = nil
-        pendingDownloadStart = nil
-    }
-
     /// Breathing room on top of the download itself, so a download can never take
     /// the volume to its last byte (macOS gets unhappy well before zero).
     private static let maximumDiskSpaceHeadroomBytes: Int64 = 2 * 1024 * 1024 * 1024
@@ -972,7 +919,6 @@ final class DropDriveViewModel {
     }
 
     func startQueueDownloads() {
-        cancelPendingStartWithoutRemovingItems()
         guard canStartQueue else { return }
         if let message = diskSpaceShortfall() {
             // A real panel, not a popover-attached alert — see SystemAlert.
@@ -985,11 +931,7 @@ final class DropDriveViewModel {
             if openFolder { revealDestinationForCleanup() }
             return
         }
-        if isLargeDownload {
-            showLargeDownloadWarning = true
-        } else {
-            processQueueIfNeeded()
-        }
+        processQueueIfNeeded()
     }
 
     /// Opens the destination in Finder so the user can clear space right away.
@@ -1040,15 +982,6 @@ final class DropDriveViewModel {
             "This download is \(knownText), but the destination disk only has \(freeText) free. Free up some space first.",
             "งานนี้ขนาด \(knownText) แต่ดิสก์ปลายทางเหลือ \(freeText) กรุณาเคลียร์พื้นที่ก่อน"
         )
-    }
-
-    func confirmLargeDownloadAndStart() {
-        showLargeDownloadWarning = false
-        processQueueIfNeeded()
-    }
-
-    func cancelLargeDownloadWarning() {
-        showLargeDownloadWarning = false
     }
 
     private func processQueueIfNeeded() {

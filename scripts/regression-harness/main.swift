@@ -89,6 +89,18 @@ let folderAnalysis = DriveLinkAnalysis(
 check("untouched folder selection keeps every file", folderAnalysis.selectingFolderItems(nil).fileCount == 2)
 check("empty folder selection means zero files", folderAnalysis.selectingFolderItems([]).fileCount == 0)
 check("individual folder selection uses selected bytes", folderAnalysis.selectingFolderItems(["two"]).totalBytes == 200)
+let folderIDs: Set<String> = ["one", "two"]
+let clearedFolderSelection: Set<String>? = []
+let oneFileSelection = FolderSelectionSemantics.toggling(
+    id: "one",
+    selectedIDs: clearedFolderSelection,
+    allIDs: folderIDs
+)
+check("one file can be selected after clearing Select All", oneFileSelection == ["one"])
+check(
+    "selecting the final file returns the compact all-files state",
+    FolderSelectionSemantics.toggling(id: "two", selectedIDs: oneFileSelection, allIDs: folderIDs) == nil
+)
 
 let mediaDetails = DriveLinkAnalysis.VideoDetails(
     platform: "Youtube", availableHeights: [1080, 720],
@@ -119,6 +131,34 @@ check(
 )
 check("playlist selection survives queue persistence", queueRoundTrip.selectedMediaIndexes == [2])
 check("playlist metadata remains a collection", queueRoundTrip.analysis.videoDetails?.isCollection == true)
+
+let tikTokPlayerFixture = Data("""
+{
+  "items": [{
+    "video_info": {
+      "profiles": [
+        {"bitrate": 900, "play_addr": {"width": 480, "height": 854, "url_list": ["https://v3.tiktokcdn.com/small.mp4"]}},
+        {"bitrate": 2200, "play_addr": {"width": 576, "height": 1024, "url_list": ["https://v3.tiktokcdn.com/original.mp4"]}}
+      ]
+    }
+  }]
+}
+""".utf8)
+check(
+    "TikTok player picks the highest-bitrate original rendition",
+    TikTokPlayerMedia.watermarkFreeVideoURL(from: tikTokPlayerFixture, quality: .automatic)?.lastPathComponent == "original.mp4"
+)
+check(
+    "TikTok small quality respects the short-edge cap",
+    TikTokPlayerMedia.watermarkFreeVideoURL(from: tikTokPlayerFixture, quality: .small)?.lastPathComponent == "small.mp4"
+)
+let untrustedTikTokFixture = Data("""
+{"items":[{"video_info":{"url_list":["https://example.com/not-tiktok.mp4"]}}]}
+""".utf8)
+check(
+    "TikTok player rejects an untrusted media host",
+    TikTokPlayerMedia.watermarkFreeVideoURL(from: untrustedTikTokFixture, quality: .automatic) == nil
+)
 
 if failures > 0 { exit(1) }
 print("ALL PASS")

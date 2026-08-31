@@ -4,15 +4,11 @@ struct QueueView: View {
     let queue: [QueueItem]
     let summary: QueueSummary
     let canStartQueue: Bool
-    let isLargeDownload: Bool
-    let showLargeDownloadWarning: Bool
     let activeProgress: DownloadProgress?
     let highlightedItemID: UUID?
     let canPauseQueue: Bool
     let canResumeQueue: Bool
     let onStartQueue: () -> Void
-    let onConfirmLargeDownload: () -> Void
-    let onCancelLargeDownload: () -> Void
     let onRemove: (UUID) -> Void
     let onRetry: (UUID) -> Void
     let onCancelActive: () -> Void
@@ -29,9 +25,7 @@ struct QueueView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if showLargeDownloadWarning {
-                largeDownloadWarningCard
-            } else if canStartQueue {
+            if canStartQueue {
                 summaryCard
             }
 
@@ -153,37 +147,6 @@ struct QueueView: View {
         Label(text, systemImage: icon)
     }
 
-    private var largeDownloadWarningCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.dd(18))
-                    .foregroundStyle(.orange)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(tr("Large Download", "ดาวน์โหลดขนาดใหญ่"))
-                        .font(.dd(13, .semibold))
-                    Text(tr("This will download \(Formatters.byteCount(summary.totalBytes)).", "จะดาวน์โหลดทั้งหมด \(Formatters.byteCount(summary.totalBytes))"))
-                        .font(.dd(11))
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer(minLength: 8)
-            }
-
-            HStack(spacing: 10) {
-                Button(tr("Cancel", "ยกเลิก"), role: .cancel, action: onCancelLargeDownload)
-                    .buttonStyle(.bordered)
-
-                Button(tr("Continue", "ดำเนินการต่อ"), action: onConfirmLargeDownload)
-                    .buttonStyle(.borderedProminent)
-                    .frame(maxWidth: .infinity)
-            }
-        }
-        .padding(16)
-        .cardBackground()
-        .accessibilityElement(children: .contain)
-    }
 }
 
 private struct QueueRow: View {

@@ -340,13 +340,11 @@ struct VideoDownloadService: Sendable {
         }
 
         // TikTok's normal watch page is sometimes replaced by its WAF challenge
-        // before yt-dlp can read the post. The public embed page carries the
-        // same media URL but does not use that challenge. Keep the ordinary
-        // extractor as the first choice (it has richer metadata and formats),
-        // then retry this narrowly-scoped fallback only when that extraction
-        // fails. `--playlist-items 1` is intentional: TikTok's embed markup
-        // lists the same video twice for its player, and yt-dlp sees that as a
-        // two-item HTML5 playlist.
+        // before yt-dlp can read the post. TikTok's player API still exposes the
+        // original, unbranded rendition, while the public embed page exposes a
+        // visibly watermarked copy. Keep the ordinary extractor first, then use
+        // the player rendition. The embed page is safe only for MP3 extraction,
+        // where its visible watermark is discarded with the video track.
         func retryTikTokEmbed(after error: Error) async throws -> String {
             guard let embedURL = await Self.tikTokEmbedURL(for: link) else { throw error }
 
@@ -354,16 +352,42 @@ struct VideoDownloadService: Sendable {
             if let outputIndex = fallbackArguments.firstIndex(of: "-o"),
                fallbackArguments.indices.contains(outputIndex + 1) {
                 // The generic embed extractor calls every item "TikTok Embed"
-                // and reports its extension as `unknown_video` even though the
-                // payload is MP4. Preserve the title the user confirmed and pin
-                // the real container extension; otherwise trimmed clips make
-                // ffmpeg fail because it cannot infer an output muxer.
+                // and reports its video extension as `unknown_video`. Pin MP4
+                // for video so trimmed clips have a muxer; audio extraction must
+                // keep a dynamic extension so yt-dlp can finish as a real MP3.
                 let fallbackTitle = customName ?? title
-                fallbackArguments[outputIndex + 1] = "\(Self.escapedForOutputTemplate(fallbackTitle))\(clipSuffix).mp4"
+                let fallbackExtension = audioOnly ? "%(ext)s" : "mp4"
+                fallbackArguments[outputIndex + 1] = "\(Self.escapedForOutputTemplate(fallbackTitle))\(clipSuffix).\(fallbackExtension)"
             }
             fallbackArguments += ["--playlist-items", "1", embedURL.absoluteString]
             finalPath.value = nil
             return try await Self.run(arguments: fallbackArguments, onProgressLine: handleLine)
+        }
+
+        func retryTikTokWithoutWatermark(after originalError: Error) async throws -> String {
+            if let playerURL = await Self.tikTokWatermarkFreeVideoURL(for: link, quality: quality) {
+                finalPath.value = nil
+                do {
+                    return try await Self.run(
+                        arguments: arguments + [
+                            "--add-header", "Referer:https://www.tiktok.com/",
+                            playerURL.absoluteString
+                        ],
+                        onProgressLine: handleLine
+                    )
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    if audioOnly { return try await retryTikTokEmbed(after: error) }
+                }
+            } else if audioOnly {
+                return try await retryTikTokEmbed(after: originalError)
+            }
+
+            throw VideoError(message: tr(
+                "TikTok didn't provide an original watermark-free video. Try again in a moment.",
+                "TikTok ยังไม่ส่งวิดีโอต้นฉบับแบบไม่มีลายน้ำมาให้ ลองอีกครั้งในอีกสักครู่"
+            ))
         }
 
         var output: String
@@ -392,7 +416,7 @@ struct VideoDownloadService: Sendable {
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch {
-                    output = try await retryTikTokEmbed(after: error)
+                    output = try await retryTikTokWithoutWatermark(after: error)
                 }
             }
         } else {
@@ -401,7 +425,7 @@ struct VideoDownloadService: Sendable {
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
-                output = try await retryTikTokEmbed(after: error)
+                output = try await retryTikTokWithoutWatermark(after: error)
             }
         }
 
@@ -615,6 +639,24 @@ struct VideoDownloadService: Sendable {
         let authorInfo = item["author_info"] as? [String: Any]
         let author = (authorInfo?["nickname"] as? String) ?? (authorInfo?["unique_id"] as? String)
         return TikTokPhotoPost(id: postID, title: title, author: author, items: remoteItems)
+    }
+
+    private static func tikTokWatermarkFreeVideoURL(
+        for link: String,
+        quality: DriveLinkAnalysis.VideoQuality
+    ) async -> URL? {
+        guard let postID = await tikTokPostID(for: link),
+              let endpoint = URL(string: "https://www.tiktok.com/player/api/v1/items?item_ids=\(postID)&language=en")
+        else { return nil }
+
+        var request = URLRequest(url: endpoint)
+        request.timeoutInterval = 10
+        request.setValue("https://www.tiktok.com/player/v1/\(postID)", forHTTPHeaderField: "Referer")
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode)
+        else { return nil }
+        return TikTokPlayerMedia.watermarkFreeVideoURL(from: data, quality: quality)
     }
 
     private static func analysis(for post: TikTokPhotoPost, link: String) -> DriveLinkAnalysis {

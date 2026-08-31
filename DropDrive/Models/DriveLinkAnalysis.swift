@@ -11,7 +11,7 @@ nonisolated struct DriveLinkAnalysis: Equatable, Sendable, Codable {
             case .p1080: "1080p"
             case .p720: "720p"
             case .small: tr("Small", "ไฟล์เล็ก")
-            case .mp3: "MP3"
+            case .mp3: tr("MP3 audio", "เสียง MP3")
             }
         }
     }
@@ -216,6 +216,29 @@ nonisolated struct DriveLinkAnalysis: Equatable, Sendable, Codable {
 nonisolated enum LinkAnalysisResult: Equatable, Sendable {
     case success(DriveLinkAnalysis)
     case needsAuthentication
+}
+
+/// Nil is the compact persisted spelling for "every file"; an empty set means
+/// none. Keeping the transition in one pure helper prevents a cleared master
+/// checkbox from trapping the browser at zero selected items.
+nonisolated enum FolderSelectionSemantics {
+    static func effectiveSelection(
+        selectedIDs: Set<String>?,
+        allIDs: Set<String>
+    ) -> Set<String> {
+        selectedIDs.map { $0.intersection(allIDs) } ?? allIDs
+    }
+
+    static func toggling(
+        id: String,
+        selectedIDs: Set<String>?,
+        allIDs: Set<String>
+    ) -> Set<String>? {
+        var selection = effectiveSelection(selectedIDs: selectedIDs, allIDs: allIDs)
+        if selection.contains(id) { selection.remove(id) }
+        else if allIDs.contains(id) { selection.insert(id) }
+        return selection == allIDs ? nil : selection
+    }
 }
 
 enum LinkAnalysisState: Equatable {

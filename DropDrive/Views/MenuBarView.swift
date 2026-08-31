@@ -331,10 +331,6 @@ struct MenuBarView: View {
                             attentionBanner
                         }
 
-                        if let pending = viewModel.pendingDownloadStart {
-                            pendingStartBanner(pending)
-                        }
-
                         DownloadFormView(
                             driveLink: $viewModel.driveLink,
                             destinationURL: viewModel.selectedDestinationURL,
@@ -354,15 +350,11 @@ struct MenuBarView: View {
                                 queue: viewModel.queue,
                                 summary: viewModel.queueSummary,
                                 canStartQueue: viewModel.canStartQueue,
-                                isLargeDownload: viewModel.isLargeDownload,
-                                showLargeDownloadWarning: viewModel.showLargeDownloadWarning,
                                 activeProgress: viewModel.activeProgress,
                                 highlightedItemID: viewModel.highlightedQueueItemID,
                                 canPauseQueue: viewModel.canPauseQueue,
                                 canResumeQueue: viewModel.canResumeQueue,
                                 onStartQueue: viewModel.startQueueDownloads,
-                                onConfirmLargeDownload: viewModel.confirmLargeDownloadAndStart,
-                                onCancelLargeDownload: viewModel.cancelLargeDownloadWarning,
                                 onRemove: viewModel.removeQueueItem,
                                 onRetry: viewModel.retryQueueItem,
                                 onCancelActive: viewModel.cancelActiveDownload,
@@ -416,34 +408,6 @@ struct MenuBarView: View {
         }
         .animation(Self.springMotion, value: viewModel.linkAnalysisState)
         .animation(Self.springMotion, value: viewModel.queue)
-    }
-
-    private func pendingStartBanner(_ pending: PendingDownloadStart) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: "clock.badge.checkmark")
-                .foregroundStyle(DDTheme.accent)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(pending.itemCount == 1
-                     ? tr("Download starts in 5 seconds", "จะเริ่มดาวน์โหลดใน 5 วินาที")
-                     : tr("\(pending.itemCount) downloads start in 5 seconds", "\(pending.itemCount) รายการจะเริ่มใน 5 วินาที"))
-                    .font(.dd(12, .semibold))
-                Text(tr("You can undo before any file is created.", "ยกเลิกได้ก่อนที่จะมีการสร้างไฟล์"))
-                    .font(.dd(10))
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 4)
-            Button(tr("Undo", "เลิกทำ")) {
-                viewModel.undoPendingDownloadStart()
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-        }
-        .padding(10)
-        .background(DDTheme.accent.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
-        .overlay {
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(DDTheme.accent.opacity(0.2), lineWidth: 1)
-        }
     }
 
     private var attentionBanner: some View {

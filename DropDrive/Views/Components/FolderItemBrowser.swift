@@ -106,13 +106,22 @@ struct FolderItemBrowser: View {
     }
 
     private var selectedCount: Int {
-        selectedFileIDs?.count ?? items.count
+        effectiveSelectedIDs.count
+    }
+
+    private var allItemIDs: Set<String> { Set(items.map(\.id)) }
+
+    private var effectiveSelectedIDs: Set<String> {
+        FolderSelectionSemantics.effectiveSelection(
+            selectedIDs: selectedFileIDs,
+            allIDs: allItemIDs
+        )
     }
 
     private var selectedBytes: Int64 {
-        let selected = selectedFileIDs
+        let selected = effectiveSelectedIDs
         return items.reduce(0) { total, item in
-            guard selected?.contains(item.id) ?? true else { return total }
+            guard selected.contains(item.id) else { return total }
             return total + (item.size ?? 0)
         }
     }
@@ -385,10 +394,17 @@ struct FolderItemBrowser: View {
             .help(item.relativePath)
 
             VStack(spacing: 4) {
-                Image(systemName: selected ? "checkmark.square.fill" : "square")
-                    .font(.dd(12, .semibold))
-                    .foregroundStyle(selected ? DDTheme.accent : Color.white)
-                    .shadow(color: .black.opacity(0.35), radius: 1)
+                Button { selectAndFocus(item) } label: {
+                    Image(systemName: selected ? "checkmark.square.fill" : "square")
+                        .font(.dd(12, .semibold))
+                        .foregroundStyle(selected ? DDTheme.accent : Color.white)
+                        .shadow(color: .black.opacity(0.35), radius: 1)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(selected
+                    ? tr("Deselect \(item.name)", "ยกเลิกการเลือก \(item.name)")
+                    : tr("Select \(item.name)", "เลือก \(item.name)"))
 
                 Button { preview(item) } label: {
                     Image(systemName: "eye.fill")
@@ -504,10 +520,11 @@ struct FolderItemBrowser: View {
     private func selectAndFocus(_ item: DriveLinkAnalysis.FolderItem) {
         focusedItemID = item.id
         browserFocused = true
-        var selected = selectedFileIDs ?? Set(items.map(\.id))
-        if selected.contains(item.id) { selected.remove(item.id) }
-        else { selected.insert(item.id) }
-        selectedFileIDs = selected.count == items.count ? nil : selected
+        selectedFileIDs = FolderSelectionSemantics.toggling(
+            id: item.id,
+            selectedIDs: selectedFileIDs,
+            allIDs: allItemIDs
+        )
     }
 
     private func preview(_ item: DriveLinkAnalysis.FolderItem) {
@@ -517,7 +534,7 @@ struct FolderItemBrowser: View {
     }
 
     private func isSelected(_ id: String) -> Bool {
-        selectedFileIDs?.contains(id) ?? true
+        effectiveSelectedIDs.contains(id)
     }
 
     private var focusedItem: DriveLinkAnalysis.FolderItem? {

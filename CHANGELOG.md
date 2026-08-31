@@ -5,6 +5,27 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.22.0] - Faster starts and clean TikTok downloads
+
+### Added
+- **TikTok videos can be saved as MP3.** Audio is extracted locally with the
+  bundled media engine and verified before the download is marked complete.
+
+### Changed
+- **Downloads start immediately after confirmation.** The five-second countdown
+  and Undo banner are gone; available destination space is still checked before
+  and during every transfer.
+- **Large downloads no longer show an extra warning.** DropDrive interrupts only
+  when the destination actually lacks enough free space.
+
+### Fixed
+- **TikTok video fallback is watermark-free again.** When TikTok blocks the
+  normal extractor, DropDrive uses the original rendition from TikTok's player
+  service and never silently substitutes the branded embed copy.
+- **Individual folder files remain selectable after clearing Select All.** The
+  gallery checkbox is now a real control, and selection semantics are covered by
+  regression tests.
+
 ## [6.21.0] - Smarter media collections
 
 ### Added

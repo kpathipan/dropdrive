@@ -5,6 +5,31 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.24.0] - Multiple Google Drive accounts
+
+### Added
+- **Connect several Google accounts at the same time.** The compact account hub
+  keeps the default profile photo in the menu bar, shows the connected-account
+  count, and lets you add, remove, or choose a default account in place.
+- **Private Drive links automatically use an account with access.** DropDrive
+  remembers the successful account per Drive item, then reuses it for analysis,
+  thumbnails, previews, and the actual download.
+- **Clear recovery when no connected account has permission.** Add another
+  account, open the item in Drive, check access again, or cancel directly from
+  the review card.
+
+### Changed
+- **Existing Google sessions migrate to per-account Keychain storage.** The
+  previous single-account login is preserved during the upgrade, while each new
+  account receives an isolated credential entry that can be removed separately.
+- **Private review cards identify the account being used** without adding more
+  permanent controls to the menu-bar window.
+
+### Fixed
+- **Private links refresh immediately after Google sign-in.** A completed OAuth
+  hand-off no longer leaves the old sign-in prompt on screen or require a second
+  click before the link can be downloaded.
+
 ## [6.23.0] - Flexible repeat downloads and cleaner maintenance
 
 ### Changed

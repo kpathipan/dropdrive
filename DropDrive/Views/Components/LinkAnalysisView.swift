@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct LinkAnalyzingView: View {
@@ -81,6 +82,68 @@ struct LinkNeedsConnectionView: View {
         .padding(16)
         .cardBackground()
         .transition(.opacity)
+    }
+}
+
+struct LinkNoAccountAccessView: View {
+    let link: String
+    let accountCount: Int
+    let isSigningIn: Bool
+    let onAddAccount: () -> Void
+    let onRetry: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            Label {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(tr("No connected account can access this", "ไม่มีบัญชีที่เชื่อมต่อเข้าถึงรายการนี้ได้"))
+                        .font(.dd(12, .semibold))
+                    Text(tr(
+                        "Checked \(accountCount) account(s). Add another account or request access in Google Drive.",
+                        "ตรวจแล้ว \(accountCount) บัญชี — เพิ่มบัญชีอื่นหรือขอสิทธิ์ใน Google Drive"
+                    ))
+                    .font(.dd(10))
+                    .foregroundStyle(.secondary)
+                }
+            } icon: {
+                Image(systemName: "person.2.slash.fill").foregroundStyle(.orange)
+            }
+
+            HStack(spacing: 12) {
+                Button {
+                    guard let url = URL(string: link) else { return }
+                    NSWorkspace.shared.open(url)
+                } label: {
+                    Label(tr("Open Drive", "เปิดใน Drive"), systemImage: "arrow.up.right.square")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(DDTheme.accent)
+
+                Button(tr("Check again", "ตรวจอีกครั้ง"), action: onRetry)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(DDTheme.accent)
+
+                Spacer()
+            }
+            .font(.dd(10, .medium))
+
+            HStack(spacing: 7) {
+                Button(tr("Cancel", "ยกเลิก"), role: .cancel, action: onCancel)
+                    .buttonStyle(.bordered)
+
+                Button(action: onAddAccount) {
+                    Text(isSigningIn ? tr("Connecting…", "กำลังเชื่อมต่อ…") : tr("Add account", "เพิ่มบัญชี"))
+                        .frame(maxWidth: .infinity)
+                }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isSigningIn)
+            }
+            .controlSize(.small)
+        }
+        .padding(16)
+        .cardBackground()
+        .transition(.opacity.combined(with: .move(edge: .top)))
     }
 }
 
@@ -231,6 +294,8 @@ struct BatchReviewView: View {
             .accessibilityLabel("\(item.isSelected ? "Selected" : "Not selected"), \(analysis.name)")
         case .needsConnection:
             unavailableRow(item.link, icon: "lock.fill", message: tr("Sign in required", "ต้องลงชื่อเข้าใช้"))
+        case .noAccountAccess:
+            unavailableRow(item.link, icon: "person.2.slash.fill", message: tr("No connected account has access", "ไม่มีบัญชีที่เชื่อมต่อมีสิทธิ์"))
         case .unavailable(let message):
             unavailableRow(item.link, icon: "exclamationmark.triangle.fill", message: message)
         }
@@ -265,6 +330,7 @@ struct BatchReviewView: View {
 /// folder can't be changed at this point. It's shown where the decision is made.
 struct AnalyzedPromptView: View {
     let analysis: DriveLinkAnalysis
+    let accessAccount: GoogleAccount?
     let isDuplicate: Bool
     let destinationURL: URL?
     let startsImmediately: Bool
@@ -685,9 +751,16 @@ struct AnalyzedPromptView: View {
             HStack(spacing: 5) {
                 Image(systemName: analysis.isPublic ? "eye" : "lock.fill")
                     .foregroundStyle(analysis.isPublic ? Color.secondary : Color.orange)
-                Text(analysis.isPublic
-                     ? tr("Public link", "ลิงก์สาธารณะ")
-                     : tr("Private — uses your Google access", "ส่วนตัว — ใช้สิทธิ์ Google ของคุณ"))
+                if analysis.isPublic {
+                    Text(tr("Public link", "ลิงก์สาธารณะ"))
+                } else if let accessAccount {
+                    GoogleAccountAvatar(account: accessAccount, size: 16)
+                    Text(tr("Accessed with \(accessAccount.email)", "เข้าถึงด้วย \(accessAccount.email)"))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                } else {
+                    Text(tr("Private — uses a connected Google account", "ส่วนตัว — ใช้บัญชี Google ที่เชื่อมต่อ"))
+                }
             }
 
             HStack(spacing: 5) {

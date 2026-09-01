@@ -102,6 +102,43 @@ check(
     FolderSelectionSemantics.toggling(id: "two", selectedIDs: oneFileSelection, allIDs: folderIDs) == nil
 )
 
+let privateFolderAnalysis = DriveLinkAnalysis(
+    itemID: "private-folder", name: "Private Folder", type: .folder, isPublic: false,
+    requiresAuthentication: true, totalBytes: 100, fileCount: 1, ownerName: nil,
+    categoryBreakdown: nil,
+    folderItems: [
+        .init(
+            id: "private-file", name: "private.mp4", relativePath: "private.mp4",
+            mimeType: "video/mp4", size: 100, category: .videos,
+            accessAccountID: "account-2"
+        )
+    ],
+    accessAccountID: "account-2"
+)
+let privateFolderRoundTrip = try JSONDecoder().decode(
+    DriveLinkAnalysis.self,
+    from: JSONEncoder().encode(privateFolderAnalysis)
+)
+check("Drive analysis remembers the account with access", privateFolderRoundTrip.accessAccountID == "account-2")
+check(
+    "folder files remember the same access account",
+    privateFolderRoundTrip.folderItems?.first?.accessAccountID == "account-2"
+)
+
+var legacyAnalysisObject = try JSONSerialization.jsonObject(
+    with: JSONEncoder().encode(privateFolderAnalysis)
+) as! [String: Any]
+legacyAnalysisObject.removeValue(forKey: "accessAccountID")
+if var legacyItems = legacyAnalysisObject["folderItems"] as? [[String: Any]] {
+    for index in legacyItems.indices { legacyItems[index].removeValue(forKey: "accessAccountID") }
+    legacyAnalysisObject["folderItems"] = legacyItems
+}
+let legacyAnalysis = try JSONDecoder().decode(
+    DriveLinkAnalysis.self,
+    from: JSONSerialization.data(withJSONObject: legacyAnalysisObject)
+)
+check("saved analyses from older versions still decode", legacyAnalysis.accessAccountID == nil)
+
 let mediaDetails = DriveLinkAnalysis.VideoDetails(
     platform: "Youtube", availableHeights: [1080, 720],
     estimatedBytesByQuality: ["p720": 10_000], subtitleLanguages: ["en"],

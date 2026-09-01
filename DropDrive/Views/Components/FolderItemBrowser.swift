@@ -707,6 +707,7 @@ private nonisolated final class DriveFilePromiseDelegate: NSObject, NSFilePromis
                         itemID: item.id,
                         destinationURL: url,
                         resourceKey: item.resourceKey,
+                        accessAccountID: item.accessAccountID,
                         customName: (item.name as NSString).deletingPathExtension
                     ),
                     progress: { _ in }

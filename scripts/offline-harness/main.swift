@@ -65,6 +65,8 @@ let bareID = "barename"
 let timestampID = "timestamped"
 // Metadata deliberately disagrees with the served bytes for integrity cleanup.
 let corruptID = "corrupt-checksum"
+let secondAccountOnlyID = "second-account-only-\(UUID().uuidString)"
+let noAccountAccessID = "no-account-access-\(UUID().uuidString)"
 let bigSize = 300 * 1024 * 1024 / 1000 // 300 KB stand-in; size is faked in metadata
 let bigDeclaredSize = 300 * 1024 * 1024
 
@@ -164,6 +166,22 @@ final class DriveStub: URLProtocol, @unchecked Sendable {
             } else {
                 counter.hit("metadata")
                 let id = url.lastPathComponent
+                let authorization = request.value(forHTTPHeaderField: "Authorization")
+                if (id == secondAccountOnlyID && authorization != "Bearer second-token") || id == noAccountAccessID {
+                    let errorBody = try! JSONSerialization.data(withJSONObject: [
+                        "error": ["code": 404, "message": "File not found"]
+                    ])
+                    let response = HTTPURLResponse(
+                        url: url,
+                        statusCode: 404,
+                        httpVersion: "HTTP/1.1",
+                        headerFields: nil
+                    )!
+                    self.client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+                    self.client?.urlProtocol(self, didLoad: errorBody)
+                    self.client?.urlProtocolDidFinishLoading(self)
+                    return
+                }
                 if id == bigID {
                     body = ["id": id, "name": "big.bin", "mimeType": "application/octet-stream",
                             "size": "\(bigDeclaredSize)"]
@@ -217,6 +235,33 @@ func pass(_ label: String, _ condition: Bool, _ detail: String = "") {
     print("\(condition ? "PASS" : "FAIL") \(label)\(detail.isEmpty ? "" : ": \(detail)")")
     if !condition { failures += 1 }
 }
+
+// MARK: - 0. Multi-account access routing
+
+print("--- multi-account access routing")
+let multiAccountService = GoogleDriveDownloadService(
+    loginManager: StubLogin(tokens: [
+        GoogleAccessToken(accountID: "account-1", token: "first-token"),
+        GoogleAccessToken(accountID: "account-2", token: "second-token")
+    ]),
+    urlSession: session
+)
+let routedResult = try await multiAccountService.analyzeLink(itemID: secondAccountOnlyID, resourceKey: nil)
+if case .success(let routedAnalysis) = routedResult {
+    check("falls through to the account with access", routedAnalysis.accessAccountID ?? "nil", "account-2")
+} else {
+    pass("falls through to the account with access", false, "got \(routedResult)")
+}
+
+let deniedResult = try await multiAccountService.analyzeLink(itemID: noAccountAccessID, resourceKey: nil)
+pass("reports when no connected account has access", deniedResult == .noAccountAccess)
+
+let signedOutService = GoogleDriveDownloadService(loginManager: StubLogin(tokens: []), urlSession: session)
+let signedOutResult = try await signedOutService.analyzeLink(
+    itemID: "signed-out-\(UUID().uuidString)",
+    resourceKey: nil
+)
+pass("asks for sign-in when no account is connected", signedOutResult == .needsAuthentication)
 
 // MARK: - 1. Folder analysis
 

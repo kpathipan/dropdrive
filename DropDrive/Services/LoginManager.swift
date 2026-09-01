@@ -3,32 +3,25 @@ import AppAuth
 import Foundation
 import GTMAppAuth
 
-/// `Sendable` because the download engine is `nonisolated` and holds one: the
-/// conforming type is a MainActor class, so its methods still run on the main
-/// actor, they're just awaited from off it.
+/// The download engine calls this from nonisolated work, while the concrete
+/// manager stays on MainActor because AppAuth presents UI and owns mutable auth
+/// state. Every returned token remains paired with its Google subject ID.
 protocol LoginManaging: Sendable {
-    func restoreSavedAccount() async -> GoogleAccount?
-    func refreshSavedAccount() async -> GoogleAccount?
-    func signIn() async throws -> GoogleAccount
-    func signOut()
-    func validAccessToken() async throws -> String
-    func cachedAccessTokenIfAvailable() async -> String?
+    func restoreSavedAccounts() async -> GoogleAccountSnapshot
+    func refreshSavedAccounts() async -> GoogleAccountSnapshot
+    func signIn() async throws -> GoogleAccountSnapshot
+    func removeAccount(userID: String) -> GoogleAccountSnapshot
+    func setDefaultAccount(userID: String) -> GoogleAccountSnapshot
+    func validAccessToken(for accountID: String?) async throws -> GoogleAccessToken
+    func cachedAccessTokens(preferredAccountID: String?) async -> GoogleAccessTokenSet
 }
 
-/// Talks to AppAuth + GTMAppAuth directly rather than going through `GIDSignIn`.
+/// Multi-account Google OAuth backed by one file-based Keychain item per user.
 ///
-/// `GIDSignIn` hard-codes a `GTMKeychainStore` that writes to the *data-protection*
-/// keychain (it sets `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, which forces
-/// `kSecUseDataProtectionKeychain`). On macOS that keychain requires an
-/// `application-identifier` entitlement, which only a real Apple Team signature
-/// provides — an ad-hoc signed build has no team, so every write fails with
-/// `errSecMissingEntitlement` (-34018) and GID surfaces it as "keychain error" (-2),
-/// killing sign-in the instant the OAuth redirect succeeds. Verified directly: an
-/// ad-hoc signed binary gets -34018 from the data-protection keychain and
-/// `errSecSuccess` from the file-based one. There is no public GID API to swap the
-/// store (`sharedInstance` builds its own, and `init` is `NS_UNAVAILABLE`), so this
-/// drives the same underlying libraries itself and asks for the file-based keychain,
-/// which needs no entitlement.
+/// The file-based store is intentional. GoogleSignIn's data-protection store
+/// needs an application-identifier entitlement, which free/ad-hoc macOS builds
+/// cannot supply. Separate item names let several refresh tokens coexist and
+/// ensure removing one account never rewrites another account's ACL.
 @MainActor
 final class LoginManager: LoginManaging {
     static let shared = LoginManager()
@@ -36,80 +29,62 @@ final class LoginManager: LoginManaging {
     static let driveReadonlyScope = "https://www.googleapis.com/auth/drive.readonly"
 
     private enum StorageKey {
-        static let googleAccount = "googleAccount"
+        /// Pre-multi-account display metadata, retained only for migration.
+        static let legacyGoogleAccount = "googleAccount"
+        static let accounts = "googleAccounts.v2"
+        static let defaultAccountID = "defaultGoogleAccountID.v2"
     }
 
     private static let userInfoEndpoint = URL(string: "https://www.googleapis.com/oauth2/v3/userinfo")!
 
     private let userDefaults: UserDefaults
-
-    /// `.useFileBasedKeychain` is the whole point — see the type-level note above.
-    private let keychainStore = KeychainStore(
+    private let legacyKeychainStore = KeychainStore(
         itemName: KeychainNamespace.sessionItem,
         keychainAttributes: [.useFileBasedKeychain]
     )
 
     /// Retained until ASWebAuthenticationSession captures its callback.
     private var currentAuthorizationFlow: OIDExternalUserAgentSession?
-
-    /// Keep the session that just completed OAuth in memory. Reading it back
-    /// from Keychain immediately used to create a fragile hand-off: a transient
-    /// Keychain read failure made the next Drive analysis report "sign in"
-    /// even though authorization had already succeeded. Keychain remains the
-    /// durable source across launches; this is the live source within a launch.
-    private var activeSession: AuthSession?
-    private var allowsKeychainSessionLookup = true
+    /// Fresh OAuth sessions stay live here so analysis never depends on an
+    /// immediate Keychain read-after-write. Keychain remains durable storage.
+    private var activeSessions: [String: AuthSession] = [:]
 
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
     }
 
-    // MARK: - Session lookup
+    // MARK: - Account lifecycle
 
-    /// Re-fetches the signed-in profile and stores it if anything changed.
-    ///
-    /// The profile is captured once at sign-in and then read from UserDefaults
-    /// forever, so a photo added — or changed — on the Google account after that
-    /// never reaches the app, and the picture URL Google hands out is not
-    /// permanent either. Called after the cached copy has already been shown, so
-    /// the avatar appears immediately and quietly corrects itself.
-    func refreshSavedAccount() async -> GoogleAccount? {
-        guard let session = loadSession(), session.authState.isAuthorized,
-              let token = try? await accessToken(for: session),
-              let fresh = try? await Self.fetchProfile(accessToken: token) else {
-            return nil
-        }
-        guard fresh != loadStoredAccount() else { return nil }
-        save(fresh)
-        return fresh
+    func restoreSavedAccounts() async -> GoogleAccountSnapshot {
+        migrateLegacySessionIfPresent()
+        return currentSnapshot()
     }
 
-    func restoreSavedAccount() async -> GoogleAccount? {
-        guard let session = loadSession(), session.authState.isAuthorized else {
-            // Only surface "connected" when a real session actually exists. Returning
-            // the UserDefaults-cached account regardless (the old behaviour) let the
-            // account chip claim signed-in while every private-file analysis still
-            // failed with "needs authentication".
-            userDefaults.removeObject(forKey: StorageKey.googleAccount)
-            return nil
+    func refreshSavedAccounts() async -> GoogleAccountSnapshot {
+        migrateLegacySessionIfPresent()
+        var accounts = loadStoredAccounts()
+        var reconnectIDs: Set<String> = []
+
+        for index in accounts.indices {
+            let accountID = accounts[index].userID
+            guard let session = loadSession(for: accountID),
+                  session.authState.isAuthorized,
+                  Self.grantedScopes(of: session).contains(Self.driveReadonlyScope),
+                  let token = try? await accessToken(for: session, accountID: accountID) else {
+                reconnectIDs.insert(accountID)
+                continue
+            }
+            if let fresh = try? await Self.fetchProfile(accessToken: token), fresh.userID == accountID {
+                accounts[index] = fresh
+            }
         }
 
-        if let cached = loadStoredAccount() {
-            return cached
-        }
-
-        guard let token = try? await accessToken(for: session),
-              let account = try? await Self.fetchProfile(accessToken: token) else {
-            return nil
-        }
-        save(account)
-        return account
+        saveAccounts(accounts)
+        return snapshot(accounts: accounts, reconnectIDs: reconnectIDs)
     }
 
-    func signIn() async throws -> GoogleAccount {
-        guard let clientID = configuredClientID else {
-            throw LoginManagerError.missingClientID
-        }
+    func signIn() async throws -> GoogleAccountSnapshot {
+        guard let clientID = configuredClientID else { throw LoginManagerError.missingClientID }
         guard let presentingWindow = NSApplication.shared.keyWindow ?? NSApplication.shared.windows.first else {
             throw LoginManagerError.missingPresentingWindow
         }
@@ -124,64 +99,93 @@ final class LoginManager: LoginManaging {
             scopes: [OIDScopeOpenID, OIDScopeProfile, OIDScopeEmail, Self.driveReadonlyScope],
             redirectURL: redirectURL,
             responseType: OIDResponseTypeCode,
-            additionalParameters: nil
+            // Without Google's chooser, "Add account" often silently returns
+            // the account already connected in the browser.
+            additionalParameters: ["prompt": "select_account", "include_granted_scopes": "true"]
         )
 
         let authState = try await presentAuthorization(request: request, window: presentingWindow)
-
         let session = AuthSession(authState: authState)
-        try storeSession(session)
+        guard Self.grantedScopes(of: session).contains(Self.driveReadonlyScope) else {
+            throw LoginManagerError.missingDrivePermission
+        }
 
-        let token = try await accessToken(for: session)
-        // OAuth and the Drive grant are already complete at this point. UserInfo
-        // is only display metadata, so a temporary failure there must not turn a
-        // valid login into a failed one and force the user through OAuth again.
-        let account = (try? await Self.fetchProfile(accessToken: token))
-            ?? Self.accountFromIDToken(in: session)
-        save(account)
-        return account
+        let fallbackAccount = Self.accountFromIDToken(in: session)
+        // Validate and identify the session before touching Keychain. If OAuth
+        // fails halfway through, an already-connected copy of this account is
+        // left exactly as it was instead of being overwritten and then removed.
+        let token = try await accessToken(
+            for: session,
+            accountID: fallbackAccount.userID,
+            persistSession: false
+        )
+        let account = (try? await Self.fetchProfile(accessToken: token)) ?? fallbackAccount
+        guard account.userID != Self.unknownAccountID else {
+            throw LoginManagerError.missingAccountIdentity
+        }
+        try storeSession(session, accountID: account.userID)
+
+        var accounts = loadStoredAccounts()
+        Self.upsert(account, in: &accounts)
+        saveAccounts(accounts)
+        if loadDefaultAccountID() == nil { saveDefaultAccountID(account.userID) }
+        return currentSnapshot()
     }
 
-    func signOut() {
-        activeSession = nil
-        allowsKeychainSessionLookup = false
-        try? keychainStore.removeAuthSession()
-        userDefaults.removeObject(forKey: StorageKey.googleAccount)
+    func removeAccount(userID: String) -> GoogleAccountSnapshot {
+        removeSession(accountID: userID)
+        var accounts = loadStoredAccounts()
+        accounts.removeAll { $0.userID == userID }
+        saveAccounts(accounts)
+
+        let defaultID = loadDefaultAccountID()
+        if defaultID == userID || !accounts.contains(where: { $0.userID == defaultID }) {
+            saveDefaultAccountID(accounts.first?.userID)
+        }
+        return currentSnapshot()
+    }
+
+    func setDefaultAccount(userID: String) -> GoogleAccountSnapshot {
+        guard loadStoredAccounts().contains(where: { $0.userID == userID }) else {
+            return currentSnapshot()
+        }
+        saveDefaultAccountID(userID)
+        return currentSnapshot()
     }
 
     // MARK: - Tokens
 
-    /// Returns a valid access token only if a stored session already carries the
-    /// required scope, refreshing silently if needed. Never prompts for interaction.
-    func cachedAccessTokenIfAvailable() async -> String? {
-        guard let session = loadSession(), session.authState.isAuthorized else {
-            return nil
+    func cachedAccessTokens(preferredAccountID: String?) async -> GoogleAccessTokenSet {
+        migrateLegacySessionIfPresent()
+        let accounts = loadStoredAccounts()
+        let accountIDs = orderedAccountIDs(accounts: accounts, preferredAccountID: preferredAccountID)
+        var tokens: [GoogleAccessToken] = []
+
+        for accountID in accountIDs {
+            guard let session = loadSession(for: accountID), session.authState.isAuthorized,
+                  Self.grantedScopes(of: session).contains(Self.driveReadonlyScope),
+                  let token = try? await accessToken(for: session, accountID: accountID) else {
+                continue
+            }
+            tokens.append(GoogleAccessToken(accountID: accountID, token: token))
         }
 
-        let scopes = Self.grantedScopes(of: session)
-        guard scopes.contains(Self.driveReadonlyScope) else {
-            return nil
-        }
-
-        return try? await accessToken(for: session)
+        return GoogleAccessTokenSet(hasAccounts: !accounts.isEmpty, tokens: tokens)
     }
 
-    func validAccessToken() async throws -> String {
-        guard let session = loadSession(), session.authState.isAuthorized else {
-            throw LoginManagerError.notSignedIn
-        }
-        guard Self.grantedScopes(of: session).contains(Self.driveReadonlyScope) else {
-            // AppAuth has no incremental-scope call; sign-in already requests the
-            // Drive scope, so a session without it means re-authorizing from scratch.
-            throw LoginManagerError.notSignedIn
-        }
-        return try await accessToken(for: session)
+    func validAccessToken(for accountID: String?) async throws -> GoogleAccessToken {
+        let available = await cachedAccessTokens(preferredAccountID: accountID)
+        guard let token = available.tokens.first else { throw LoginManagerError.notSignedIn }
+        return token
     }
 
-    /// Refreshes the access token if it has expired, then re-persists the session —
-    /// a refresh can rotate the refresh token, and dropping that would silently
-    /// invalidate the stored session on the next launch.
-    private func accessToken(for session: AuthSession) async throws -> String {
+    /// Refreshes the access token if needed and persists a rotated refresh token
+    /// back into only the Keychain item belonging to this account.
+    private func accessToken(
+        for session: AuthSession,
+        accountID: String,
+        persistSession: Bool = true
+    ) async throws -> String {
         let token: String = try await withCheckedThrowingContinuation { continuation in
             session.authState.performAction { accessToken, _, error in
                 if let error {
@@ -195,8 +199,66 @@ final class LoginManager: LoginManaging {
                 continuation.resume(returning: accessToken)
             }
         }
-        try? storeSession(session)
+        if persistSession { try? storeSession(session, accountID: accountID) }
         return token
+    }
+
+    // MARK: - Keychain and migration
+
+    private func keychainStore(for accountID: String) -> KeychainStore {
+        KeychainStore(
+            itemName: KeychainNamespace.sessionItem(for: accountID),
+            keychainAttributes: [.useFileBasedKeychain]
+        )
+    }
+
+    private func loadSession(for accountID: String) -> AuthSession? {
+        if let active = activeSessions[accountID] { return active }
+        guard let restored = try? keychainStore(for: accountID).retrieveAuthSession() else { return nil }
+        activeSessions[accountID] = restored
+        return restored
+    }
+
+    private func storeSession(_ session: AuthSession, accountID: String) throws {
+        try keychainStore(for: accountID).save(authSession: session)
+        activeSessions[accountID] = session
+    }
+
+    private func removeSession(accountID: String) {
+        activeSessions[accountID] = nil
+        try? keychainStore(for: accountID).removeAuthSession()
+    }
+
+    /// v6.23 and earlier stored one OAuth session under the base item name and
+    /// one profile in UserDefaults. Move it once, only deleting the old item
+    /// after the per-account write succeeds. If that write is temporarily
+    /// blocked, keep the legacy session active and retry on the next call.
+    private func migrateLegacySessionIfPresent() {
+        guard let legacySession = try? legacyKeychainStore.retrieveAuthSession(),
+              legacySession.authState.isAuthorized else { return }
+
+        let tokenAccount = Self.accountFromIDToken(in: legacySession)
+        let legacyProfile = loadLegacyAccount()
+        let account: GoogleAccount
+        if tokenAccount.userID == Self.unknownAccountID, let legacyProfile {
+            account = legacyProfile
+        } else {
+            account = legacyProfile?.userID == tokenAccount.userID ? legacyProfile! : tokenAccount
+        }
+        activeSessions[account.userID] = legacySession
+
+        var accounts = loadStoredAccounts()
+        Self.upsert(account, in: &accounts)
+        saveAccounts(accounts)
+        if loadDefaultAccountID() == nil { saveDefaultAccountID(account.userID) }
+
+        do {
+            try storeSession(legacySession, accountID: account.userID)
+            try legacyKeychainStore.removeAuthSession()
+            userDefaults.removeObject(forKey: StorageKey.legacyGoogleAccount)
+        } catch {
+            // The old item remains untouched and active for this launch.
+        }
     }
 
     // MARK: - AppAuth plumbing
@@ -206,13 +268,7 @@ final class LoginManager: LoginManaging {
         tokenEndpoint: URL(string: "https://oauth2.googleapis.com/token")!
     )
 
-    private func presentAuthorization(
-        request: OIDAuthorizationRequest,
-        window: NSWindow
-    ) async throws -> OIDAuthState {
-        // AppAuth's `OIDAuthState` isn't Sendable, and it comes back through a
-        // completion handler, so it stays boxed across the continuation and is
-        // only unwrapped here on the main actor.
+    private func presentAuthorization(request: OIDAuthorizationRequest, window: NSWindow) async throws -> OIDAuthState {
         let boxed: UncheckedSendable<OIDAuthState> = try await withCheckedThrowingContinuation { continuation in
             currentAuthorizationFlow = OIDAuthState.authState(
                 byPresenting: request,
@@ -227,22 +283,6 @@ final class LoginManager: LoginManaging {
             }
         }
         return boxed.value
-    }
-
-    private func loadSession() -> AuthSession? {
-        if let activeSession { return activeSession }
-        guard allowsKeychainSessionLookup,
-              let restored = try? keychainStore.retrieveAuthSession() else {
-            return nil
-        }
-        activeSession = restored
-        return restored
-    }
-
-    private func storeSession(_ session: AuthSession) throws {
-        try keychainStore.save(authSession: session)
-        activeSession = session
-        allowsKeychainSessionLookup = true
     }
 
     private static func grantedScopes(of session: AuthSession) -> [String] {
@@ -274,35 +314,103 @@ final class LoginManager: LoginManaging {
         )
     }
 
-    /// The ID token arrives with the successful OAuth token response over TLS.
-    /// AppAuth parses it for display-only fallback data; authorization continues
-    /// to rely exclusively on the access token and its granted Drive scope.
+    /// AppAuth parses the ID token received from Google's TLS token endpoint.
+    /// These claims are display fallback only; Drive authorization still uses
+    /// the access token and verified scope above.
     private static func accountFromIDToken(in session: AuthSession) -> GoogleAccount {
         let rawIDToken = session.authState.lastTokenResponse?.idToken
             ?? session.authState.lastAuthorizationResponse.idToken
         let claims = rawIDToken.flatMap { OIDIDToken(idTokenString: $0)?.claims as? [String: Any] }
         let email = claims?["email"] as? String ?? session.userEmail ?? "Google account"
         return GoogleAccount(
-            userID: claims?["sub"] as? String ?? session.userID ?? "google-account",
+            userID: claims?["sub"] as? String ?? session.userID ?? unknownAccountID,
             name: claims?["name"] as? String ?? email,
             email: email,
             profileImageURL: (claims?["picture"] as? String).flatMap(URL.init(string:))
         )
     }
 
-    // MARK: - Configuration
+    private static let unknownAccountID = "google-account"
+
+    // MARK: - Metadata
+
+    private func currentSnapshot() -> GoogleAccountSnapshot {
+        let accounts = loadStoredAccounts()
+        let reconnectIDs = Set(accounts.compactMap { account -> String? in
+            guard let session = loadSession(for: account.userID), session.authState.isAuthorized,
+                  Self.grantedScopes(of: session).contains(Self.driveReadonlyScope) else {
+                return account.userID
+            }
+            return nil
+        })
+        return snapshot(accounts: accounts, reconnectIDs: reconnectIDs)
+    }
+
+    private func snapshot(accounts: [GoogleAccount], reconnectIDs: Set<String>) -> GoogleAccountSnapshot {
+        let storedDefault = loadDefaultAccountID()
+        let resolvedDefault = accounts.contains(where: { $0.userID == storedDefault })
+            ? storedDefault
+            : accounts.first?.userID
+        if resolvedDefault != storedDefault { saveDefaultAccountID(resolvedDefault) }
+        return GoogleAccountSnapshot(
+            accounts: accounts,
+            defaultAccountID: resolvedDefault,
+            reconnectAccountIDs: reconnectIDs
+        )
+    }
+
+    private func orderedAccountIDs(accounts: [GoogleAccount], preferredAccountID: String?) -> [String] {
+        var result: [String] = []
+        let candidates: [String?] = [preferredAccountID, loadDefaultAccountID()]
+            + accounts.map { Optional($0.userID) }
+        for candidate in candidates {
+            guard let candidate, accounts.contains(where: { $0.userID == candidate }),
+                  !result.contains(candidate) else { continue }
+            result.append(candidate)
+        }
+        return result
+    }
+
+    private static func upsert(_ account: GoogleAccount, in accounts: inout [GoogleAccount]) {
+        if let index = accounts.firstIndex(where: { $0.userID == account.userID }) {
+            accounts[index] = account
+        } else {
+            accounts.append(account)
+        }
+    }
+
+    private func loadStoredAccounts() -> [GoogleAccount] {
+        guard let data = userDefaults.data(forKey: StorageKey.accounts),
+              let decoded = try? JSONDecoder().decode([GoogleAccount].self, from: data) else { return [] }
+        var seen: Set<String> = []
+        return decoded.filter { seen.insert($0.userID).inserted }
+    }
+
+    private func saveAccounts(_ accounts: [GoogleAccount]) {
+        guard let data = try? JSONEncoder().encode(accounts) else { return }
+        userDefaults.set(data, forKey: StorageKey.accounts)
+    }
+
+    private func loadLegacyAccount() -> GoogleAccount? {
+        guard let data = userDefaults.data(forKey: StorageKey.legacyGoogleAccount) else { return nil }
+        return try? JSONDecoder().decode(GoogleAccount.self, from: data)
+    }
+
+    private func loadDefaultAccountID() -> String? {
+        userDefaults.string(forKey: StorageKey.defaultAccountID)
+    }
+
+    private func saveDefaultAccountID(_ accountID: String?) {
+        if let accountID { userDefaults.set(accountID, forKey: StorageKey.defaultAccountID) }
+        else { userDefaults.removeObject(forKey: StorageKey.defaultAccountID) }
+    }
 
     private var configuredClientID: String? {
         guard let clientID = Bundle.main.object(forInfoDictionaryKey: "GIDClientID") as? String,
-              !clientID.isEmpty,
-              !clientID.contains("YOUR_") else {
-            return nil
-        }
+              !clientID.isEmpty, !clientID.contains("YOUR_") else { return nil }
         return clientID
     }
 
-    /// Google's installed-app redirect is the reversed client ID, which is also the
-    /// URL scheme already registered in Info.plist.
     private static func redirectURL(clientID: String) -> URL? {
         let reversed = Bundle.main.object(forInfoDictionaryKey: "REVERSED_CLIENT_ID") as? String
             ?? "com.googleusercontent.apps." + clientID.replacingOccurrences(
@@ -311,22 +419,6 @@ final class LoginManager: LoginManaging {
             )
         return URL(string: "\(reversed):/oauthredirect")
     }
-
-    // MARK: - Cached profile
-
-    private func save(_ account: GoogleAccount) {
-        guard let data = try? JSONEncoder().encode(account) else {
-            return
-        }
-        userDefaults.set(data, forKey: StorageKey.googleAccount)
-    }
-
-    private func loadStoredAccount() -> GoogleAccount? {
-        guard let data = userDefaults.data(forKey: StorageKey.googleAccount) else {
-            return nil
-        }
-        return try? JSONDecoder().decode(GoogleAccount.self, from: data)
-    }
 }
 
 enum LoginManagerError: LocalizedError {
@@ -334,6 +426,8 @@ enum LoginManagerError: LocalizedError {
     case missingPresentingWindow
     case notSignedIn
     case missingAccessToken
+    case missingDrivePermission
+    case missingAccountIdentity
 
     var errorDescription: String? {
         switch self {
@@ -345,13 +439,14 @@ enum LoginManagerError: LocalizedError {
             "Sign in with Google before downloading."
         case .missingAccessToken:
             "Could not obtain a valid Google access token."
+        case .missingDrivePermission:
+            "Google Drive permission is required to use this account."
+        case .missingAccountIdentity:
+            "Google did not return an account identity. Please try connecting again."
         }
     }
 }
 
-/// Carries a value across an isolation boundary the compiler can't verify.
-/// Used where a callback-based API hands back a non-Sendable object it has
-/// already finished with.
 struct UncheckedSendable<Value>: @unchecked Sendable {
     let value: Value
     init(_ value: Value) { self.value = value }

@@ -17,4 +17,14 @@ enum KeychainNamespace {
         return releaseSessionItem
         #endif
     }()
+
+    /// One Keychain item per Google subject ID. Base64url keeps the item name
+    /// deterministic without putting an email address into Keychain metadata.
+    static func sessionItem(for accountID: String) -> String {
+        let encoded = Data(accountID.utf8).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        return "\(sessionItem).account.\(encoded)"
+    }
 }

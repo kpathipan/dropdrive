@@ -97,6 +97,7 @@ private nonisolated struct DriveListResponse: Decodable, Sendable {
 }
 
 enum DriveDownloadError: LocalizedError {
+    case authenticationRequired
     case invalidResponse
     case server(Int, String)
     case unsupportedFileType
@@ -104,6 +105,8 @@ enum DriveDownloadError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
+        case .authenticationRequired:
+            "Connect a Google account that can access this item."
         case .invalidResponse:
             "Received an unexpected response from Google Drive."
         case .server(let statusCode, let message):
@@ -135,9 +138,14 @@ private struct DownloadInterruption: Error {
 
 /// Either an OAuth bearer token (private, user-authorized access) or a project API key
 /// (anonymous access to publicly-shared files/folders, no sign-in required).
-private enum DriveCredential: Sendable {
-    case oauth(String)
+private nonisolated enum DriveCredential: Sendable {
+    case oauth(token: String, accountID: String)
     case apiKey(String)
+
+    var accountID: String? {
+        if case .oauth(_, let accountID) = self { return accountID }
+        return nil
+    }
 
     nonisolated func applying(to components: inout URLComponents) {
         if case .apiKey(let key) = self {
@@ -148,7 +156,7 @@ private enum DriveCredential: Sendable {
     }
 
     nonisolated func applying(to request: inout URLRequest) {
-        if case .oauth(let token) = self {
+        if case .oauth(let token, _) = self {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
     }
@@ -189,6 +197,46 @@ private actor AnalysisCache {
     func clear() {
         storage.removeAll()
         insertionOrder.removeAll()
+    }
+}
+
+/// A small persistent hint from Drive item ID to the account that most recently
+/// opened it. It changes only request order — every access is still checked by
+/// Google — and stays bounded so a menu-bar app cannot accumulate an unlimited
+/// browsing history.
+private actor DriveAccountAccessCache {
+    static let shared = DriveAccountAccessCache()
+    private static let capacity = 100
+    private static let storageKey = "driveAccountAccess.v1"
+
+    private var mapping: [String: String]
+    private var order: [String]
+
+    init() {
+        if let data = UserDefaults.standard.data(forKey: Self.storageKey),
+           let decoded = try? JSONDecoder().decode([String: String].self, from: data) {
+            mapping = decoded
+            order = Array(decoded.keys.prefix(Self.capacity))
+        } else {
+            mapping = [:]
+            order = []
+        }
+    }
+
+    func accountID(for itemID: String) -> String? { mapping[itemID] }
+
+    func remember(accountID: String, for itemIDs: [String]) {
+        for itemID in itemIDs where !itemID.isEmpty {
+            order.removeAll { $0 == itemID }
+            order.append(itemID)
+            mapping[itemID] = accountID
+        }
+        while order.count > Self.capacity {
+            mapping.removeValue(forKey: order.removeFirst())
+        }
+        if let data = try? JSONEncoder().encode(mapping) {
+            UserDefaults.standard.set(data, forKey: Self.storageKey)
+        }
     }
 }
 
@@ -671,14 +719,37 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
             return .success(analysis)
         }
 
-        guard let token = await loginManager.cachedAccessTokenIfAvailable() else {
-            return .needsAuthentication
+        let rememberedAccountID = await DriveAccountAccessCache.shared.accountID(for: itemID)
+        let tokenSet = await loginManager.cachedAccessTokens(preferredAccountID: rememberedAccountID)
+        guard tokenSet.hasAccounts, !tokenSet.tokens.isEmpty else { return .needsAuthentication }
+
+        for access in tokenSet.tokens {
+            let credential = DriveCredential.oauth(token: access.token, accountID: access.accountID)
+            do {
+                let metadata = try await fetchMetadata(fileID: itemID, credential: credential, resourceKeys: resourceKeys)
+                let (resolved, updatedKeys) = try await resolvingShortcut(metadata, credential: credential, resourceKeys: resourceKeys)
+                let analysis = try await buildAnalysis(
+                    for: resolved,
+                    credential: credential,
+                    resourceKeys: updatedKeys,
+                    isPublic: false
+                )
+                await DriveAccountAccessCache.shared.remember(
+                    accountID: access.accountID,
+                    for: [itemID, resolved.id]
+                )
+                return .success(analysis)
+            } catch {
+                guard Self.canTryAnotherAccount(after: error) else { throw error }
+            }
         }
 
-        let metadata = try await fetchMetadata(fileID: itemID, credential: .oauth(token), resourceKeys: resourceKeys)
-        let (resolved, updatedKeys) = try await resolvingShortcut(metadata, credential: .oauth(token), resourceKeys: resourceKeys)
-        let analysis = try await buildAnalysis(for: resolved, credential: .oauth(token), resourceKeys: updatedKeys, isPublic: false)
-        return .success(analysis)
+        return .noAccountAccess
+    }
+
+    private static func canTryAnotherAccount(after error: Error) -> Bool {
+        guard case DriveDownloadError.server(let statusCode, _) = error else { return false }
+        return statusCode == 401 || statusCode == 403 || statusCode == 404
     }
 
     private func buildAnalysis(
@@ -697,7 +768,8 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
                 totalBytes: metadata.size,
                 fileCount: nil,
                 ownerName: metadata.ownerName,
-                categoryBreakdown: nil
+                categoryBreakdown: nil,
+                accessAccountID: credential.accountID
             )
         }
 
@@ -712,7 +784,8 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
             fileCount: fileCount,
             ownerName: metadata.ownerName,
             categoryBreakdown: breakdown,
-            folderItems: folderItems
+            folderItems: folderItems,
+            accessAccountID: credential.accountID
         )
     }
 
@@ -764,7 +837,8 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
                             md5Checksum: child.md5Checksum,
                             modifiedTime: child.modifiedTime,
                             thumbnailLink: child.thumbnailLink,
-                            thumbnailVersion: child.thumbnailVersion
+                            thumbnailVersion: child.thumbnailVersion,
+                            accessAccountID: credential.accountID
                         ))
                     }
                 }
@@ -863,7 +937,11 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
     @discardableResult
     func download(_ request: DownloadRequest, progress: @escaping @Sendable (DownloadProgress) -> Void) async throws -> URL {
         var resourceKeys = request.resourceKey.map { [request.itemID: $0] } ?? [:]
-        let credential = try await resolveCredential(for: request.itemID, resourceKeys: resourceKeys)
+        let credential = try await resolveCredential(
+            for: request.itemID,
+            resourceKeys: resourceKeys,
+            preferredAccountID: request.accessAccountID
+        )
 
         progress(DownloadProgress(currentFileName: "Reading details…"))
         let rawMetadata = try await fetchMetadata(fileID: request.itemID, credential: credential, resourceKeys: resourceKeys)
@@ -1021,22 +1099,53 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
 
     /// Prefers anonymous API-key access when the item is publicly reachable; falls back
     /// to an authenticated OAuth token (prompting sign-in if necessary) otherwise.
-    private func resolveCredential(for itemID: String, resourceKeys: [String: String]) async throws -> DriveCredential {
+    private func resolveCredential(
+        for itemID: String,
+        resourceKeys: [String: String],
+        preferredAccountID: String?
+    ) async throws -> DriveCredential {
         // Prior analysis already determined public/private for this item — reuse that
         // instead of re-probing anonymous access with another network round trip.
+        let cachedAnalysis = await AnalysisCache.shared.get(itemID)
         if let apiKey = Self.configuredAPIKey,
-           case .success(let analysis) = await AnalysisCache.shared.get(itemID),
+           case .success(let analysis) = cachedAnalysis,
            analysis.isPublic {
             return .apiKey(apiKey)
         }
 
-        if await AnalysisCache.shared.get(itemID) == nil, let apiKey = Self.configuredAPIKey,
+        if cachedAnalysis == nil, let apiKey = Self.configuredAPIKey,
            (try? await fetchMetadata(fileID: itemID, credential: .apiKey(apiKey), resourceKeys: resourceKeys)) != nil {
             return .apiKey(apiKey)
         }
 
-        let token = try await loginManager.validAccessToken()
-        return .oauth(token)
+        let analyzedAccountID: String?
+        if case .success(let analysis) = cachedAnalysis { analyzedAccountID = analysis.accessAccountID }
+        else { analyzedAccountID = nil }
+        let rememberedAccountID = await DriveAccountAccessCache.shared.accountID(for: itemID)
+        let preferred = preferredAccountID ?? analyzedAccountID ?? rememberedAccountID
+        let tokenSet = await loginManager.cachedAccessTokens(preferredAccountID: preferred)
+        guard let first = tokenSet.tokens.first else { throw DriveDownloadError.authenticationRequired }
+
+        // A queue item carries the account proven during analysis, so no extra
+        // preflight is needed in the common path. Older saved queues have no ID;
+        // test candidates cheaply before committing the transfer to one.
+        if preferredAccountID == first.accountID || analyzedAccountID == first.accountID {
+            return .oauth(token: first.token, accountID: first.accountID)
+        }
+
+        var lastAccessError: Error?
+        for access in tokenSet.tokens {
+            let credential = DriveCredential.oauth(token: access.token, accountID: access.accountID)
+            do {
+                _ = try await fetchMetadata(fileID: itemID, credential: credential, resourceKeys: resourceKeys)
+                await DriveAccountAccessCache.shared.remember(accountID: access.accountID, for: [itemID])
+                return credential
+            } catch {
+                guard Self.canTryAnotherAccount(after: error) else { throw error }
+                lastAccessError = error
+            }
+        }
+        throw lastAccessError ?? DriveDownloadError.authenticationRequired
     }
 
     private struct PlanItem: Sendable {

@@ -3,26 +3,47 @@ import Foundation
 // Stand-ins for the app-only dependencies DownloadService.swift refers to, so
 // the real file can be compiled and exercised outside the app bundle.
 
-struct GoogleAccount: Sendable { let name = ""; let email = "" }
+struct GoogleAccount: Sendable { let userID: String; let name = ""; let email = "" }
+struct GoogleAccountSnapshot: Sendable {
+    let accounts: [GoogleAccount]
+    let defaultAccountID: String?
+    let reconnectAccountIDs: Set<String>
+}
+struct GoogleAccessToken: Sendable { let accountID: String; let token: String }
+struct GoogleAccessTokenSet: Sendable { let hasAccounts: Bool; let tokens: [GoogleAccessToken] }
 
 protocol LoginManaging: Sendable {
-    func restoreSavedAccount() async -> GoogleAccount?
-    func refreshSavedAccount() async -> GoogleAccount?
-    func signIn() async throws -> GoogleAccount
-    func signOut()
-    func handleCallbackURL(_ url: URL) -> Bool
-    func validAccessToken() async throws -> String
-    func cachedAccessTokenIfAvailable() async -> String?
+    func restoreSavedAccounts() async -> GoogleAccountSnapshot
+    func refreshSavedAccounts() async -> GoogleAccountSnapshot
+    func signIn() async throws -> GoogleAccountSnapshot
+    func removeAccount(userID: String) -> GoogleAccountSnapshot
+    func setDefaultAccount(userID: String) -> GoogleAccountSnapshot
+    func validAccessToken(for accountID: String?) async throws -> GoogleAccessToken
+    func cachedAccessTokens(preferredAccountID: String?) async -> GoogleAccessTokenSet
 }
 
 struct StubLogin: LoginManaging {
-    func restoreSavedAccount() async -> GoogleAccount? { nil }
-    func refreshSavedAccount() async -> GoogleAccount? { nil }
-    func signIn() async throws -> GoogleAccount { GoogleAccount() }
-    func signOut() {}
-    func handleCallbackURL(_ url: URL) -> Bool { false }
-    func validAccessToken() async throws -> String { "test-token" }
-    func cachedAccessTokenIfAvailable() async -> String? { "test-token" }
+    var tokens = [GoogleAccessToken(accountID: "account-1", token: "test-token")]
+    private var snapshot: GoogleAccountSnapshot {
+        GoogleAccountSnapshot(
+            accounts: tokens.map { GoogleAccount(userID: $0.accountID) },
+            defaultAccountID: tokens.first?.accountID,
+            reconnectAccountIDs: []
+        )
+    }
+    func restoreSavedAccounts() async -> GoogleAccountSnapshot { snapshot }
+    func refreshSavedAccounts() async -> GoogleAccountSnapshot { snapshot }
+    func signIn() async throws -> GoogleAccountSnapshot { snapshot }
+    func removeAccount(userID: String) -> GoogleAccountSnapshot { snapshot }
+    func setDefaultAccount(userID: String) -> GoogleAccountSnapshot { snapshot }
+    func validAccessToken(for accountID: String?) async throws -> GoogleAccessToken { tokens.first! }
+    func cachedAccessTokens(preferredAccountID: String?) async -> GoogleAccessTokenSet {
+        var ordered = tokens
+        if let preferredAccountID, let index = ordered.firstIndex(where: { $0.accountID == preferredAccountID }) {
+            ordered.insert(ordered.remove(at: index), at: 0)
+        }
+        return GoogleAccessTokenSet(hasAccounts: !tokens.isEmpty, tokens: ordered)
+    }
 }
 
 func tr(_ english: String, _ thai: String) -> String { english }

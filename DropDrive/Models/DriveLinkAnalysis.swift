@@ -97,6 +97,7 @@ nonisolated struct DriveLinkAnalysis: Equatable, Sendable, Codable {
         /// `thumbnailVersion` is the stable cache invalidation signal.
         let thumbnailLink: String?
         let thumbnailVersion: String?
+        let accessAccountID: String?
 
         init(
             id: String,
@@ -109,7 +110,8 @@ nonisolated struct DriveLinkAnalysis: Equatable, Sendable, Codable {
             md5Checksum: String? = nil,
             modifiedTime: String? = nil,
             thumbnailLink: String? = nil,
-            thumbnailVersion: String? = nil
+            thumbnailVersion: String? = nil,
+            accessAccountID: String? = nil
         ) {
             self.id = id
             self.name = name
@@ -122,6 +124,7 @@ nonisolated struct DriveLinkAnalysis: Equatable, Sendable, Codable {
             self.modifiedTime = modifiedTime
             self.thumbnailLink = thumbnailLink
             self.thumbnailVersion = thumbnailVersion
+            self.accessAccountID = accessAccountID
         }
     }
 
@@ -143,6 +146,9 @@ nonisolated struct DriveLinkAnalysis: Equatable, Sendable, Codable {
     var thumbnailURL: String?
     var durationSeconds: Double?
     var videoDetails: VideoDetails?
+    /// The Google account selected during analysis. Nil means public access or
+    /// a non-Drive media source.
+    var accessAccountID: String?
 
     init(
         itemID: String,
@@ -158,7 +164,8 @@ nonisolated struct DriveLinkAnalysis: Equatable, Sendable, Codable {
         isVideo: Bool? = nil,
         thumbnailURL: String? = nil,
         durationSeconds: Double? = nil,
-        videoDetails: VideoDetails? = nil
+        videoDetails: VideoDetails? = nil,
+        accessAccountID: String? = nil
     ) {
         self.itemID = itemID
         self.name = name
@@ -174,6 +181,7 @@ nonisolated struct DriveLinkAnalysis: Equatable, Sendable, Codable {
         self.thumbnailURL = thumbnailURL
         self.durationSeconds = durationSeconds
         self.videoDetails = videoDetails
+        self.accessAccountID = accessAccountID
     }
 
     /// Returns the same analysis narrowed to the selected folder files. Nil
@@ -208,7 +216,8 @@ nonisolated struct DriveLinkAnalysis: Equatable, Sendable, Codable {
             isVideo: copy.isVideo,
             thumbnailURL: copy.thumbnailURL,
             durationSeconds: copy.durationSeconds,
-            videoDetails: copy.videoDetails
+            videoDetails: copy.videoDetails,
+            accessAccountID: copy.accessAccountID
         )
     }
 }
@@ -216,6 +225,7 @@ nonisolated struct DriveLinkAnalysis: Equatable, Sendable, Codable {
 nonisolated enum LinkAnalysisResult: Equatable, Sendable {
     case success(DriveLinkAnalysis)
     case needsAuthentication
+    case noAccountAccess
 }
 
 /// Nil is the compact persisted spelling for "every file"; an empty set means
@@ -246,6 +256,7 @@ enum LinkAnalysisState: Equatable {
     case invalidLink
     case analyzing
     case needsConnection
+    case noAccountAccess
     case failed(String)
     /// Analysis succeeded; showing the result card and waiting for the user to
     /// confirm (and to pick a destination first if they want) before anything is
@@ -267,6 +278,7 @@ struct BatchLinkReview: Identifiable, Equatable {
     enum Result: Equatable {
         case ready(DriveLinkAnalysis)
         case needsConnection
+        case noAccountAccess
         case unavailable(String)
     }
 

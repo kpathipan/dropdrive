@@ -63,25 +63,30 @@ actor DriveThumbnailCache {
 
     private nonisolated static func fetch(_ item: DriveLinkAnalysis.FolderItem) async -> Data? {
         guard let raw = item.thumbnailLink, let url = URL(string: raw) else { return nil }
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 15
-        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let available = await LoginManager.shared.cachedAccessTokens(
+            preferredAccountID: item.accessAccountID
+        )
+        let authenticated = available.tokens.map { Optional($0.token) }
+        let candidates: [String?] = item.accessAccountID == nil
+            ? [nil] + authenticated
+            : authenticated + [nil]
 
-        // Public thumbnails work without a token. Supplying the existing Drive
-        // token also covers private files without creating a second login path.
-        if let token = await LoginManager.shared.cachedAccessTokenIfAvailable() {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        for token in candidates {
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 15
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+            if let resourceKey = item.resourceKey {
+                request.setValue("\(item.id)/\(resourceKey)", forHTTPHeaderField: "X-Goog-Drive-Resource-Keys")
+            }
+            guard let (data, response) = try? await Self.session.data(for: request),
+                  let http = response as? HTTPURLResponse else { continue }
+            if (200..<300).contains(http.statusCode), !data.isEmpty, data.count <= Self.maximumItemBytes {
+                return data
+            }
+            guard http.statusCode == 401 || http.statusCode == 403 || http.statusCode == 404 else { break }
         }
-        if let resourceKey = item.resourceKey {
-            request.setValue("\(item.id)/\(resourceKey)", forHTTPHeaderField: "X-Goog-Drive-Resource-Keys")
-        }
-
-        guard let (data, response) = try? await Self.session.data(for: request),
-              let http = response as? HTTPURLResponse,
-              (200..<300).contains(http.statusCode),
-              !data.isEmpty,
-              data.count <= Self.maximumItemBytes else { return nil }
-        return data
+        return nil
     }
 }
 

@@ -57,12 +57,14 @@ final class DropDriveViewModel {
     private nonisolated enum BatchWorkResult: Sendable {
         case ready(DriveLinkAnalysis)
         case needsConnection
+        case noAccountAccess
         case unsupported
         case videoUnavailable
         case failed(FriendlyFailure)
     }
 
     private nonisolated enum FriendlyFailure: Sendable {
+        case authenticationRequired
         case outOfSpace
         case driveServer(Int)
         case driveInvalidResponse
@@ -87,7 +89,12 @@ final class DropDriveViewModel {
         }
     }
     var selectedDestinationURL: URL?
-    var googleAccount: GoogleAccount?
+    var googleAccounts: [GoogleAccount] = []
+    var defaultGoogleAccountID: String?
+    var reconnectGoogleAccountIDs: Set<String> = []
+    var googleAccount: GoogleAccount? {
+        googleAccounts.first { $0.userID == defaultGoogleAccountID } ?? googleAccounts.first
+    }
     var isSigningIn = false
     var pendingDownloadLink: String?  // Store link when auth needed, retry after login
     private var authenticationRevision = 0
@@ -296,15 +303,14 @@ final class DropDriveViewModel {
     func restoreLogin() {
         let revision = authenticationRevision
         Task {
-            let restored = await loginManager.restoreSavedAccount()
+            let restored = await loginManager.restoreSavedAccounts()
             guard revision == authenticationRevision, !isSigningIn else { return }
-            googleAccount = restored
+            applyAccountSnapshot(restored)
             // The cached copy is shown first so the chip doesn't sit empty, then
             // corrected if the profile has moved on since sign-in.
-            if let refreshed = await loginManager.refreshSavedAccount() {
-                guard revision == authenticationRevision, !isSigningIn else { return }
-                googleAccount = refreshed
-            }
+            let refreshed = await loginManager.refreshSavedAccounts()
+            guard revision == authenticationRevision, !isSigningIn else { return }
+            applyAccountSnapshot(refreshed)
         }
     }
 
@@ -314,9 +320,10 @@ final class DropDriveViewModel {
         authenticationRevision &+= 1
         Task {
             do {
-                let account = try await loginManager.signIn()
-                googleAccount = account
+                let snapshot = try await loginManager.signIn()
+                applyAccountSnapshot(snapshot)
                 isSigningIn = false
+                await downloadService.clearAnalysisCache()
                 await refreshAuthenticationDependentAnalysis()
             } catch {
                 // Sign-in was cancelled or failed; the Connect button simply
@@ -330,15 +337,17 @@ final class DropDriveViewModel {
     /// scheduling a debounced retry let the popover keep rendering the old
     /// `.needsConnection` result, and the retry could be cancelled by another
     /// harmless UI update before it reached Drive.
-    private func refreshAuthenticationDependentAnalysis() async {
+    private func refreshAuthenticationDependentAnalysis(force: Bool = false) async {
         let stateNeedsRefresh: Bool
         switch linkAnalysisState {
-        case .needsConnection:
+        case .needsConnection, .noAccountAccess:
             stateNeedsRefresh = true
         case .batchReview(let items):
             stateNeedsRefresh = items.contains { item in
-                if case .needsConnection = item.result { return true }
-                return false
+                switch item.result {
+                case .needsConnection, .noAccountAccess: true
+                default: false
+                }
             }
         default:
             stateNeedsRefresh = false
@@ -346,7 +355,7 @@ final class DropDriveViewModel {
 
         let current = driveLink.trimmingCharacters(in: .whitespacesAndNewlines)
         let pending = pendingDownloadLink?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard stateNeedsRefresh || pending?.isEmpty == false else { return }
+        guard force || stateNeedsRefresh || pending?.isEmpty == false else { return }
         let source = current.isEmpty ? (pending ?? "") : current
         pendingDownloadLink = nil
         guard !source.isEmpty else { return }
@@ -363,11 +372,43 @@ final class DropDriveViewModel {
         }
     }
 
-    func signOut() {
+    func removeGoogleAccount(_ userID: String) {
+        let shouldReanalyze = analysisUsesAccount(userID)
         authenticationRevision &+= 1
-        loginManager.signOut()
-        googleAccount = nil
-        Task { await downloadService.clearAnalysisCache() }
+        applyAccountSnapshot(loginManager.removeAccount(userID: userID))
+        Task {
+            await downloadService.clearAnalysisCache()
+            await refreshAuthenticationDependentAnalysis(force: shouldReanalyze)
+        }
+    }
+
+    func setDefaultGoogleAccount(_ userID: String) {
+        applyAccountSnapshot(loginManager.setDefaultAccount(userID: userID))
+    }
+
+    func googleAccount(for accountID: String?) -> GoogleAccount? {
+        guard let accountID else { return nil }
+        return googleAccounts.first { $0.userID == accountID }
+    }
+
+    private func applyAccountSnapshot(_ snapshot: GoogleAccountSnapshot) {
+        googleAccounts = snapshot.accounts
+        defaultGoogleAccountID = snapshot.defaultAccountID
+        reconnectGoogleAccountIDs = snapshot.reconnectAccountIDs
+    }
+
+    private func analysisUsesAccount(_ userID: String) -> Bool {
+        switch linkAnalysisState {
+        case .analyzed(let analysis), .duplicateCompleted(let analysis):
+            return analysis.accessAccountID == userID
+        case .batchReview(let items):
+            return items.contains { item in
+                guard case .ready(let analysis) = item.result else { return false }
+                return analysis.accessAccountID == userID
+            }
+        default:
+            return false
+        }
     }
 
     /// Entry point for every URL the app is opened with: Google Sign-In's OAuth
@@ -436,7 +477,7 @@ final class DropDriveViewModel {
                 }
             case .unsupported:
                 receipt.unsupported += 1
-            case .needsConnection, .videoUnavailable, .failed:
+            case .needsConnection, .noAccountAccess, .videoUnavailable, .failed:
                 receipt.retryableFailures += 1
                 receipt.retryableLinks.append(item.link)
             }
@@ -576,6 +617,9 @@ final class DropDriveViewModel {
                 // Store link to retry after login succeeds
                 pendingDownloadLink = trimmedLink
                 linkAnalysisState = .needsConnection
+            case .noAccountAccess:
+                pendingDownloadLink = trimmedLink
+                linkAnalysisState = .noAccountAccess
             }
         } catch {
             guard !Task.isCancelled else { return }
@@ -606,6 +650,8 @@ final class DropDriveViewModel {
                 BatchLinkReview(link: work.link, isSelected: true, result: .ready(analysis))
             case .needsConnection:
                 BatchLinkReview(link: work.link, isSelected: false, result: .needsConnection)
+            case .noAccountAccess:
+                BatchLinkReview(link: work.link, isSelected: false, result: .noAccountAccess)
             case .unsupported:
                 BatchLinkReview(link: work.link, isSelected: false, result: .unavailable(tr("Unsupported link", "ไม่รองรับลิงก์นี้")))
             case .videoUnavailable:
@@ -639,6 +685,7 @@ final class DropDriveViewModel {
             switch result {
             case .success(let analysis): return BatchWork(link: link, result: .ready(analysis))
             case .needsAuthentication: return BatchWork(link: link, result: .needsConnection)
+            case .noAccountAccess: return BatchWork(link: link, result: .noAccountAccess)
             }
         } catch {
             return BatchWork(link: link, result: .failed(Self.failure(for: error)))
@@ -825,6 +872,7 @@ final class DropDriveViewModel {
     func cancelAnalysis() {
         analysisTask?.cancel()
         enrichmentTask?.cancel()
+        pendingDownloadLink = nil
         linkAnalysisState = .idle
         driveLink = ""
     }
@@ -1099,6 +1147,7 @@ final class DropDriveViewModel {
             itemID: item.itemID,
             destinationURL: destinationURL,
             resourceKey: GoogleDriveLinkParser.resourceKey(from: item.driveLink),
+            accessAccountID: item.analysis.accessAccountID,
             resumeID: item.id,
             customName: item.customName,
             selectedFileIDs: item.selectedFileIDs,
@@ -1533,6 +1582,7 @@ final class DropDriveViewModel {
         if isOutOfSpace(error) { return .outOfSpace }
         if let driveError = error as? DriveDownloadError {
             switch driveError {
+            case .authenticationRequired: return .authenticationRequired
             case .server(let statusCode, _): return .driveServer(statusCode)
             case .invalidResponse: return .driveInvalidResponse
             case .unsupportedFileType: return .driveUnsupported
@@ -1553,6 +1603,11 @@ final class DropDriveViewModel {
 
     private static func friendlyMessage(for failure: FriendlyFailure) -> String {
         switch failure {
+        case .authenticationRequired:
+            return tr(
+                "Connect a Google account that can access this item, then retry.",
+                "เชื่อมต่อบัญชี Google ที่มีสิทธิ์เข้าถึงรายการนี้ แล้วลองอีกครั้ง"
+            )
         case .outOfSpace:
             return tr(
                 "The disk is full. Free up some space, then retry.",

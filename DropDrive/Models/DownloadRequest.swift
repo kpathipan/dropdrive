@@ -5,6 +5,9 @@ nonisolated struct DownloadRequest: Equatable, Sendable {
     let itemID: String
     let destinationURL: URL
     var resourceKey: String? = nil
+    /// Account proven to have access during analysis. The download service can
+    /// fall back to another connected account if this one needs reconnecting.
+    var accessAccountID: String? = nil
     /// Identifies this download across pause/resume/retry attempts (the owning
     /// QueueItem's id), so resume data and in-progress-folder markers stay scoped
     /// to the right item.

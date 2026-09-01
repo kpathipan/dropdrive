@@ -207,11 +207,14 @@ struct MenuBarView: View {
             Spacer()
 
             HeaderAccountButton(
-                account: viewModel.googleAccount,
+                accounts: viewModel.googleAccounts,
+                defaultAccountID: viewModel.defaultGoogleAccountID,
+                reconnectAccountIDs: viewModel.reconnectGoogleAccountIDs,
                 isSigningIn: viewModel.isSigningIn,
                 isLocked: viewModel.isQueueProcessing,
-                onSignIn: viewModel.signInWithGoogle,
-                onSignOut: viewModel.signOut
+                onAddAccount: viewModel.signInWithGoogle,
+                onSetDefault: viewModel.setDefaultGoogleAccount,
+                onRemove: viewModel.removeGoogleAccount
             )
 
             Button {
@@ -586,9 +589,19 @@ struct MenuBarView: View {
             LinkAnalyzingView()
         case .needsConnection:
             LinkNeedsConnectionView(isSigningIn: viewModel.isSigningIn, onConnect: viewModel.signInWithGoogle)
+        case .noAccountAccess:
+            LinkNoAccountAccessView(
+                link: viewModel.driveLink,
+                accountCount: viewModel.googleAccounts.count,
+                isSigningIn: viewModel.isSigningIn,
+                onAddAccount: viewModel.signInWithGoogle,
+                onRetry: viewModel.retryAnalysis,
+                onCancel: viewModel.cancelAnalysis
+            )
         case .analyzed(let analysis):
             AnalyzedPromptView(
                 analysis: analysis,
+                accessAccount: viewModel.googleAccount(for: analysis.accessAccountID),
                 isDuplicate: false,
                 destinationURL: viewModel.selectedDestinationURL,
                 startsImmediately: viewModel.confirmationStartsImmediately,
@@ -634,6 +647,7 @@ struct MenuBarView: View {
         case .duplicateCompleted(let analysis):
             AnalyzedPromptView(
                 analysis: analysis,
+                accessAccount: viewModel.googleAccount(for: analysis.accessAccountID),
                 isDuplicate: true,
                 destinationURL: viewModel.selectedDestinationURL,
                 startsImmediately: viewModel.confirmationStartsImmediately,
@@ -715,131 +729,183 @@ private struct ContentHeightKey: PreferenceKey {
 
 // MARK: - Header account button
 
-/// A small account control in the window's top-right corner — the profile
-/// avatar (or a person glyph when signed out). Tap for account details and
-/// disconnect, or a connect prompt.
+/// Compact multi-account hub. The default account keeps the familiar profile
+/// photo in the header; a count badge reveals that more sessions are available
+/// without turning the top bar into a row of tiny avatars.
 private struct HeaderAccountButton: View {
-    let account: GoogleAccount?
+    let accounts: [GoogleAccount]
+    let defaultAccountID: String?
+    let reconnectAccountIDs: Set<String>
     let isSigningIn: Bool
     let isLocked: Bool
-    let onSignIn: () -> Void
-    let onSignOut: () -> Void
+    let onAddAccount: () -> Void
+    let onSetDefault: (String) -> Void
+    let onRemove: (String) -> Void
 
     @State private var showPopover = false
+
+    private var defaultAccount: GoogleAccount? {
+        accounts.first { $0.userID == defaultAccountID } ?? accounts.first
+    }
 
     var body: some View {
         Button {
             showPopover = true
         } label: {
-            avatar
+            GoogleAccountAvatar(account: defaultAccount)
+                .overlay(alignment: .bottomTrailing) {
+                    if accounts.count > 1 {
+                        Text("\(accounts.count)")
+                            .font(.dd(7, .bold).monospacedDigit())
+                            .foregroundStyle(.white)
+                            .frame(minWidth: 12, minHeight: 12)
+                            .background(Circle().fill(DDTheme.accent))
+                            .overlay { Circle().strokeBorder(DDTheme.canvas, lineWidth: 1) }
+                            .offset(x: 4, y: 3)
+                    }
+                }
         }
         .buttonStyle(.plain)
         .disabled(isSigningIn)
-        .help(account?.email ?? tr("Connect Google Drive", "เชื่อมต่อ Google Drive"))
-        .accessibilityLabel(account.map { "Account: \($0.name)" } ?? "Connect Google Drive")
+        .help(accounts.isEmpty
+              ? tr("Connect Google Drive", "เชื่อมต่อ Google Drive")
+              : tr("\(accounts.count) Google account(s)", "บัญชี Google \(accounts.count) บัญชี"))
+        .accessibilityLabel(accounts.isEmpty
+                            ? tr("Connect Google Drive", "เชื่อมต่อ Google Drive")
+                            : tr("Google accounts, \(accounts.count) connected", "บัญชี Google เชื่อมต่อแล้ว \(accounts.count) บัญชี"))
         .popover(isPresented: $showPopover, arrowEdge: .bottom) {
-            // The popover chrome is drawn by AppKit in the SYSTEM appearance,
-            // but its SwiftUI content can inherit the presenting hierarchy's
-            // forced-light environment — black text on a dark popover. Resolve the actual
-            // system appearance and pin the content to it explicitly.
             popoverContent
+                // AppKit draws the popover chrome in the real system
+                // appearance, so match that here to keep text readable even
+                // when the main DropDrive panel uses an explicit theme.
                 .colorScheme(systemColorScheme)
         }
     }
 
-    /// The real system appearance, not the light scheme the presenting window
-    /// forces on its environment. Evaluated when the popover opens.
     private var systemColorScheme: ColorScheme {
         NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? .dark : .light
     }
 
     @ViewBuilder
-    private var avatar: some View {
-        if let account {
-            AsyncImage(url: account.profileImageURL) { phase in
-                switch phase {
-                case .success(let image):
-                    image.resizable().aspectRatio(contentMode: .fill)
-                default:
-                    initialCircle(String(account.name.prefix(1)).uppercased())
-                }
-            }
-            .frame(width: 22, height: 22)
-            .clipShape(Circle())
-            .overlay { Circle().strokeBorder(DDTheme.border, lineWidth: 0.5) }
-        } else {
-            Image(systemName: "person.crop.circle")
-                .font(.dd(17))
-                .foregroundStyle(.secondary)
-                .frame(width: 22, height: 22)
-        }
-    }
-
-    private func initialCircle(_ text: String) -> some View {
-        Circle()
-            .fill(DDTheme.accent)
-            .overlay {
-                Text(text)
-                    .font(.dd(11, .semibold))
-                    .foregroundStyle(.white)
-            }
-    }
-
-    @ViewBuilder
     private var popoverContent: some View {
-        if let account {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 10) {
-                    avatar
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(account.name)
-                            .font(.dd(13, .semibold))
-                        Text(account.email)
-                            .font(.dd(11))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(tr("Google accounts", "บัญชี Google"))
+                    .font(.dd(13, .semibold))
+                Spacer()
+                if !accounts.isEmpty {
+                    Text(tr("\(accounts.count) connected", "เชื่อมต่อ \(accounts.count) บัญชี"))
+                        .font(.dd(9, .medium).monospacedDigit())
+                        .foregroundStyle(.secondary)
                 }
-
-                Divider()
-
-                Button {
-                    NSWorkspace.shared.open(URL(string: "https://myaccount.google.com/permissions")!)
-                } label: {
-                    Text(tr("Manage Connection", "จัดการการเชื่อมต่อ"))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    showPopover = false
-                    onSignOut()
-                } label: {
-                    Text(tr("Disconnect", "ยกเลิกการเชื่อมต่อ"))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.red)
-                .disabled(isLocked)
             }
-            .padding(14)
-            .frame(width: 230)
-        } else {
-            VStack(spacing: 10) {
+
+            if accounts.isEmpty {
                 Text(tr("Connect your Google account to download private files and folders.", "เชื่อมต่อบัญชี Google เพื่อดาวน์โหลดไฟล์และโฟลเดอร์ส่วนตัว"))
                     .font(.dd(11))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-
-                Button(tr("Continue with Google", "เข้าสู่ระบบด้วย Google")) {
-                    showPopover = false
-                    onSignIn()
+                    .frame(maxWidth: .infinity)
+            } else {
+                VStack(spacing: 4) {
+                    ForEach(accounts) { account in
+                        accountRow(account)
+                    }
                 }
-                .buttonStyle(.borderedProminent)
             }
-            .padding(14)
-            .frame(width: 230)
+
+            Divider()
+
+            Button {
+                showPopover = false
+                onAddAccount()
+            } label: {
+                Label(
+                    isSigningIn ? tr("Connecting…", "กำลังเชื่อมต่อ…") : tr("Add Google account", "เพิ่มบัญชี Google"),
+                    systemImage: "plus.circle.fill"
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(isSigningIn)
+
+            if !accounts.isEmpty {
+                Button {
+                    NSWorkspace.shared.open(URL(string: "https://myaccount.google.com/permissions")!)
+                } label: {
+                    Label(tr("Manage Google permissions", "จัดการสิทธิ์ Google"), systemImage: "arrow.up.right.square")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                .font(.dd(11))
+                .foregroundStyle(.secondary)
+            }
         }
+        .padding(14)
+        .frame(width: 300)
+    }
+
+    private func accountRow(_ account: GoogleAccount) -> some View {
+        HStack(spacing: 9) {
+            GoogleAccountAvatar(account: account, size: 26)
+
+            Button {
+                onSetDefault(account.userID)
+            } label: {
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 4) {
+                        Text(account.name)
+                            .font(.dd(11, .semibold))
+                            .lineLimit(1)
+                        if account.userID == defaultAccountID {
+                            Text(tr("Default", "ค่าเริ่มต้น"))
+                                .font(.dd(8, .bold))
+                                .foregroundStyle(DDTheme.accent)
+                        }
+                    }
+                    Text(account.email)
+                        .font(.dd(9))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    if reconnectAccountIDs.contains(account.userID) {
+                        Text(tr("Reconnect required", "ต้องเชื่อมต่อใหม่"))
+                            .font(.dd(8, .semibold))
+                            .foregroundStyle(.orange)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .help(tr("Use as default", "ตั้งเป็นบัญชีค่าเริ่มต้น"))
+
+            Button {
+                onSetDefault(account.userID)
+            } label: {
+                Image(systemName: account.userID == defaultAccountID ? "star.fill" : "star")
+                    .foregroundStyle(account.userID == defaultAccountID ? DDTheme.accent : Color.secondary)
+            }
+            .buttonStyle(.plain)
+            .help(tr("Use as default", "ตั้งเป็นบัญชีค่าเริ่มต้น"))
+
+            Button {
+                onRemove(account.userID)
+            } label: {
+                Image(systemName: "xmark.circle")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .disabled(isLocked)
+            .help(isLocked
+                  ? tr("Wait for the active download to finish", "รอให้การดาวน์โหลดปัจจุบันเสร็จก่อน")
+                  : tr("Remove this account", "ลบบัญชีนี้"))
+            .accessibilityLabel(tr("Remove \(account.email)", "ลบบัญชี \(account.email)"))
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(account.userID == defaultAccountID ? DDTheme.accentSoft : Color.clear)
+        )
     }
 }
 

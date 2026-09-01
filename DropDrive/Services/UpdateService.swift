@@ -91,17 +91,22 @@ final class UpdateService {
     private var periodicTimer: Timer?
 
     private static let lastCheckKey = "updateChecker.lastCheckDate"
-    /// Pacing for checks nobody asked for — the launch check, the timer, waking
-    /// from sleep. Once a day is plenty for those.
-    private static let backgroundInterval: TimeInterval = 24 * 60 * 60
+    /// GitHub Releases is pull-based, not push-based. A fifteen-minute cadence
+    /// keeps an always-running menu-bar app close to a newly published release
+    /// while remaining far below GitHub's unauthenticated API limit.
+    private static let backgroundInterval: TimeInterval = 15 * 60
+    /// The timer wakes more often than the minimum check interval so a failed
+    /// launch request is retried quickly instead of disappearing for hours.
+    private static let periodicInterval: TimeInterval = 5 * 60
     /// Opening the window is a deliberate act, and the answer shown there is the
     /// whole point of it, so it gets a much shorter leash. Sharing the daily one
     /// meant a release landing an hour after the last background check stayed
     /// invisible for twenty-three more — with the Preferences button the only
     /// way to see it, which is exactly the trip the banner exists to save.
-    /// Fifteen minutes caps this at four requests an hour even if the window is
-    /// opened constantly.
-    private static let openedInterval: TimeInterval = 15 * 60
+    /// Opening the panel is explicit, so allow a fresher answer than the passive
+    /// schedule. Two minutes still prevents rapid menu toggles from hammering
+    /// GitHub while making a just-published release visible promptly.
+    private static let openedInterval: TimeInterval = 2 * 60
     static let updateAvailableCategoryID = "UPDATE_AVAILABLE"
     static let installActionID = "INSTALL_UPDATE"
     static let releaseURLKey = "releaseURL"
@@ -131,13 +136,13 @@ final class UpdateService {
     func startPeriodicChecks() {
         guard isConfigured, periodicTimer == nil else { return }
 
-        let timer = Timer(timeInterval: 2 * 60 * 60, repeats: true) { _ in
+        let timer = Timer(timeInterval: Self.periodicInterval, repeats: true) { _ in
             Task { @MainActor in UpdateService.shared.checkIfNeeded() }
         }
-        // The 24-hour minimum inside checkIfNeeded() is what actually paces
-        // this, so the timer only has to land somewhere near the boundary —
-        // no reason to make the machine wake up for it.
-        timer.tolerance = 30 * 60
+        // The minimum inside checkIfNeeded() is what paces successful requests;
+        // a modest tolerance lets macOS coalesce wakeups without turning a
+        // transient network error into another multi-hour blind spot.
+        timer.tolerance = 60
         RunLoop.main.add(timer, forMode: .common)
         periodicTimer = timer
 
@@ -226,6 +231,8 @@ final class UpdateService {
         let endpoint = URL(string: "https://api.github.com/repos/\(repository)/releases/latest")!
         var request = URLRequest(url: endpoint)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         request.timeoutInterval = 20
 
         let (data, response) = try await URLSession.shared.data(for: request)

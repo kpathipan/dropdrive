@@ -5,6 +5,17 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.24.1] - Reliable update notifications
+
+### Fixed
+- **New releases are discovered promptly by an always-running menu-bar app.**
+  DropDrive now begins checking only after AppKit has finished launching,
+  retries a failed check every five minutes, and rechecks successful results at
+  most every fifteen minutes instead of waiting up to a day.
+- **Update checks bypass stale local GitHub responses.** Opening DropDrive can
+  revalidate the latest release after two minutes, so a release published just
+  after the previous check no longer remains hidden behind a cached response.
+
 ## [6.24.0] - Multiple Google Drive accounts
 
 ### Added

@@ -21,6 +21,12 @@ final class DropDriveAppDelegate: NSObject, NSApplicationDelegate {
         // Quit menu). Driven manually via NSStatusItem rather than SwiftUI's
         // MenuBarExtra so right-click can show its own menu.
         statusController = StatusItemController()
+        // Start network work only after AppKit has finished launching. Running
+        // the first check from the SwiftUI App initializer could fail before
+        // the agent had a usable application lifecycle, then remain invisible
+        // until the old two-hour timer happened to fire.
+        UpdateService.shared.checkIfNeeded()
+        UpdateService.shared.startPeriodicChecks()
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -77,8 +83,6 @@ struct DropDriveApp: App {
     init() {
         UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
         NotificationService.requestAuthorizationIfNeeded()
-        UpdateService.shared.checkIfNeeded()
-        UpdateService.shared.startPeriodicChecks()
     }
 
     var body: some Scene {

@@ -52,6 +52,14 @@ final class LoginManager: LoginManaging {
     /// Retained until ASWebAuthenticationSession captures its callback.
     private var currentAuthorizationFlow: OIDExternalUserAgentSession?
 
+    /// Keep the session that just completed OAuth in memory. Reading it back
+    /// from Keychain immediately used to create a fragile hand-off: a transient
+    /// Keychain read failure made the next Drive analysis report "sign in"
+    /// even though authorization had already succeeded. Keychain remains the
+    /// durable source across launches; this is the live source within a launch.
+    private var activeSession: AuthSession?
+    private var allowsKeychainSessionLookup = true
+
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
     }
@@ -122,15 +130,21 @@ final class LoginManager: LoginManaging {
         let authState = try await presentAuthorization(request: request, window: presentingWindow)
 
         let session = AuthSession(authState: authState)
-        try keychainStore.save(authSession: session)
+        try storeSession(session)
 
         let token = try await accessToken(for: session)
-        let account = try await Self.fetchProfile(accessToken: token)
+        // OAuth and the Drive grant are already complete at this point. UserInfo
+        // is only display metadata, so a temporary failure there must not turn a
+        // valid login into a failed one and force the user through OAuth again.
+        let account = (try? await Self.fetchProfile(accessToken: token))
+            ?? Self.accountFromIDToken(in: session)
         save(account)
         return account
     }
 
     func signOut() {
+        activeSession = nil
+        allowsKeychainSessionLookup = false
         try? keychainStore.removeAuthSession()
         userDefaults.removeObject(forKey: StorageKey.googleAccount)
     }
@@ -181,7 +195,7 @@ final class LoginManager: LoginManaging {
                 continuation.resume(returning: accessToken)
             }
         }
-        try? keychainStore.save(authSession: session)
+        try? storeSession(session)
         return token
     }
 
@@ -216,7 +230,19 @@ final class LoginManager: LoginManaging {
     }
 
     private func loadSession() -> AuthSession? {
-        try? keychainStore.retrieveAuthSession()
+        if let activeSession { return activeSession }
+        guard allowsKeychainSessionLookup,
+              let restored = try? keychainStore.retrieveAuthSession() else {
+            return nil
+        }
+        activeSession = restored
+        return restored
+    }
+
+    private func storeSession(_ session: AuthSession) throws {
+        try keychainStore.save(authSession: session)
+        activeSession = session
+        allowsKeychainSessionLookup = true
     }
 
     private static func grantedScopes(of session: AuthSession) -> [String] {
@@ -245,6 +271,22 @@ final class LoginManager: LoginManaging {
             name: info.name ?? "Google User",
             email: info.email ?? "No email available",
             profileImageURL: info.picture.flatMap(URL.init(string:))
+        )
+    }
+
+    /// The ID token arrives with the successful OAuth token response over TLS.
+    /// AppAuth parses it for display-only fallback data; authorization continues
+    /// to rely exclusively on the access token and its granted Drive scope.
+    private static func accountFromIDToken(in session: AuthSession) -> GoogleAccount {
+        let rawIDToken = session.authState.lastTokenResponse?.idToken
+            ?? session.authState.lastAuthorizationResponse.idToken
+        let claims = rawIDToken.flatMap { OIDIDToken(idTokenString: $0)?.claims as? [String: Any] }
+        let email = claims?["email"] as? String ?? session.userEmail ?? "Google account"
+        return GoogleAccount(
+            userID: claims?["sub"] as? String ?? session.userID ?? "google-account",
+            name: claims?["name"] as? String ?? email,
+            email: email,
+            profileImageURL: (claims?["picture"] as? String).flatMap(URL.init(string:))
         )
     }
 

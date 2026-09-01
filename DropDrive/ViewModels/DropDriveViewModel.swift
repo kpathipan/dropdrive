@@ -90,6 +90,7 @@ final class DropDriveViewModel {
     var googleAccount: GoogleAccount?
     var isSigningIn = false
     var pendingDownloadLink: String?  // Store link when auth needed, retry after login
+    private var authenticationRevision = 0
 
     var linkAnalysisState: LinkAnalysisState = .idle
 
@@ -293,45 +294,77 @@ final class DropDriveViewModel {
     }
 
     func restoreLogin() {
+        let revision = authenticationRevision
         Task {
-            googleAccount = await loginManager.restoreSavedAccount()
+            let restored = await loginManager.restoreSavedAccount()
+            guard revision == authenticationRevision, !isSigningIn else { return }
+            googleAccount = restored
             // The cached copy is shown first so the chip doesn't sit empty, then
             // corrected if the profile has moved on since sign-in.
             if let refreshed = await loginManager.refreshSavedAccount() {
+                guard revision == authenticationRevision, !isSigningIn else { return }
                 googleAccount = refreshed
             }
         }
     }
 
     func signInWithGoogle() {
+        guard !isSigningIn else { return }
+        isSigningIn = true
+        authenticationRevision &+= 1
         Task {
-            isSigningIn = true
-            defer { isSigningIn = false }
-
             do {
                 let account = try await loginManager.signIn()
                 googleAccount = account
-
-                // Re-run analysis for whatever is in the field now that there's a
-                // session. Restoring `pendingDownloadLink` can't be what triggers
-                // that: the link never left the text field, so assigning it back
-                // writes the value it already had, and `driveLink`'s didSet
-                // deliberately ignores no-op writes — which left the view stuck on
-                // "needs connection" after a successful sign-in until the app was
-                // relaunched and the link pasted again. Kick it off explicitly.
-                if let pending = pendingDownloadLink {
-                    driveLink = pending
-                    pendingDownloadLink = nil
-                }
-                scheduleAnalysis()
+                isSigningIn = false
+                await refreshAuthenticationDependentAnalysis()
             } catch {
                 // Sign-in was cancelled or failed; the Connect button simply
                 // becomes available again for the user to retry.
+                isSigningIn = false
             }
         }
     }
 
+    /// Complete the auth hand-off in the same task that completed OAuth. Merely
+    /// scheduling a debounced retry let the popover keep rendering the old
+    /// `.needsConnection` result, and the retry could be cancelled by another
+    /// harmless UI update before it reached Drive.
+    private func refreshAuthenticationDependentAnalysis() async {
+        let stateNeedsRefresh: Bool
+        switch linkAnalysisState {
+        case .needsConnection:
+            stateNeedsRefresh = true
+        case .batchReview(let items):
+            stateNeedsRefresh = items.contains { item in
+                if case .needsConnection = item.result { return true }
+                return false
+            }
+        default:
+            stateNeedsRefresh = false
+        }
+
+        let current = driveLink.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pending = pendingDownloadLink?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard stateNeedsRefresh || pending?.isEmpty == false else { return }
+        let source = current.isEmpty ? (pending ?? "") : current
+        pendingDownloadLink = nil
+        guard !source.isEmpty else { return }
+
+        if driveLink != source { driveLink = source }
+        analysisTask?.cancel()
+        enrichmentTask?.cancel()
+
+        let links = SupportedLinkExtractor.links(from: source)
+        if links.count > 1 {
+            await runBatchAnalysis(for: links)
+        } else {
+            await runAnalysis(for: source)
+        }
+    }
+
     func signOut() {
+        authenticationRevision &+= 1
         loginManager.signOut()
         googleAccount = nil
         Task { await downloadService.clearAnalysisCache() }
@@ -666,6 +699,9 @@ final class DropDriveViewModel {
     /// a batch add from a multi-selection deep link, where a duplicate is simply
     /// skipped rather than surfaced as a prompt.
     private func handleSuccessfulAnalysis(_ analysis: DriveLinkAnalysis, trimmedLink: String, reportInline: Bool = true) {
+        if pendingDownloadLink == trimmedLink {
+            pendingDownloadLink = nil
+        }
         if DestinationStore.destinationRule(forLink: trimmedLink) == nil,
            let category = DestinationStore.category(for: analysis),
            let categoryDestination = DestinationStore.destinationRule(forCategory: category) {

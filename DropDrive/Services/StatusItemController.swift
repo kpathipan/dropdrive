@@ -42,7 +42,7 @@ final class StatusItemController: NSObject {
         guard wasShown else { return }
         Task { @MainActor [weak self] in
             await Task.yield()
-            self?.showPopover(importClipboard: false)
+            self?.showPopover()
         }
     }
 
@@ -81,7 +81,7 @@ final class StatusItemController: NSObject {
             }
             dropTarget.onDestinationDrop = { [weak self] folderURL in
                 DropDriveViewModel.shared.selectDestinationFolder(folderURL)
-                self?.showPopover(importClipboard: false)
+                self?.showPopover()
                 NotificationCenter.default.post(name: .dropDriveShowQueue, object: nil)
             }
             dropTarget.toolTip = button.toolTip
@@ -125,11 +125,7 @@ final class StatusItemController: NSObject {
         }
     }
 
-    func showPopover(importClipboard: Bool = true) {
-        let importedClipboardLink = importClipboard
-            && UserDefaults.standard.bool(forKey: "hasSeenWelcome")
-            && DropDriveViewModel.shared.importClipboardLinksIfAppropriate()
-
+    func showPopover() {
         if !popover.isShown, let button = statusItem.button {
             NSApp.activate(ignoringOtherApps: true)
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
@@ -145,16 +141,10 @@ final class StatusItemController: NSObject {
             popover.contentViewController?.view.window?.makeKey()
         }
 
-        if importedClipboardLink {
-            Task { @MainActor in
-                await Task.yield()
-                NotificationCenter.default.post(name: .dropDriveShowQueue, object: nil)
-            }
-        }
     }
 
     func showSettings() {
-        showPopover(importClipboard: false)
+        showPopover()
         Task { @MainActor in
             // Let a newly opened popover install its SwiftUI subscriptions
             // before selecting the pane.
@@ -164,7 +154,7 @@ final class StatusItemController: NSObject {
     }
 
     func showAttention() {
-        showPopover(importClipboard: false)
+        showPopover()
         Task { @MainActor in
             await Task.yield()
             NotificationCenter.default.post(name: .dropDriveShowAttention, object: nil)
@@ -196,7 +186,7 @@ final class StatusItemController: NSObject {
         let viewModel = DropDriveViewModel.shared
         guard viewModel.selectedDestinationURL != nil else {
             viewModel.driveLink = links.joined(separator: "\n")
-            showPopover(importClipboard: false)
+            showPopover()
             NotificationCenter.default.post(name: .dropDriveShowQueue, object: nil)
             return
         }
@@ -208,7 +198,7 @@ final class StatusItemController: NSObject {
             )
             if !receipt.retryableLinks.isEmpty {
                 viewModel.driveLink = receipt.retryableLinks.joined(separator: "\n")
-                self?.showPopover(importClipboard: false)
+                self?.showPopover()
                 NotificationCenter.default.post(name: .dropDriveShowQueue, object: nil)
             }
         }

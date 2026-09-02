@@ -126,10 +126,6 @@ final class DropDriveViewModel {
     private var isChoosingDestination = false
     private var highlightTask: Task<Void, Never>?
     private var isPausingActiveItem = false
-    /// Prevents the same clipboard contents from being re-imported every time
-    /// the popover is reopened after the user has handled or cleared them.
-    private var lastImportedClipboardChangeCount = -1
-
     /// Auto-retry on network drops: attempts already made per queue item, and the
     /// backoff before each retry. Cleared on success, pause, cancel, or removal.
     private var autoRetryAttempts: [UUID: Int] = [:]
@@ -226,27 +222,6 @@ final class DropDriveViewModel {
             guard item.status == .ready, let destination = item.destinationURL else { return false }
             return !FileManager.default.fileExists(atPath: destination.path)
         }
-    }
-
-    /// Fills an otherwise-empty link field from the current clipboard. This is
-    /// deliberately event-driven (only when the user opens DropDrive), so the
-    /// app never polls or retains unrelated clipboard contents in the background.
-    /// Analysis may begin, but downloads still require the normal review action.
-    @discardableResult
-    func importClipboardLinksIfAppropriate() -> Bool {
-        guard driveLink.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              !hasActiveAnalysisCard,
-              !isSigningIn else { return false }
-
-        let pasteboard = NSPasteboard.general
-        guard pasteboard.changeCount != lastImportedClipboardChangeCount else { return false }
-
-        let links = ClipboardLinkReader.links(from: pasteboard)
-        guard !links.isEmpty else { return false }
-
-        lastImportedClipboardChangeCount = pasteboard.changeCount
-        driveLink = links.joined(separator: "\n")
-        return true
     }
 
     private func installRecoveryObservers() {

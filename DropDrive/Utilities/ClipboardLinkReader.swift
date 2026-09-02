@@ -1,8 +1,8 @@
 import AppKit
 
-/// Reads only supported links from the system pasteboard. Keeping this in one
-/// place makes automatic pickup and the explicit Paste button behave exactly
-/// the same, including multi-link extraction and duplicate removal.
+/// Reads only supported links from the system pasteboard for the explicit Paste
+/// control, including multi-link extraction and duplicate removal. Merely
+/// opening DropDrive never imports these links into the form.
 @MainActor
 enum ClipboardLinkReader {
     static func links(from pasteboard: NSPasteboard = .general) -> [String] {

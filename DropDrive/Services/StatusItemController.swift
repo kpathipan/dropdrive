@@ -20,6 +20,12 @@ final class StatusItemController: NSObject {
     private var lastImageKey = ""
     private var lastTitle = ""
 
+    /// A variable-length status item makes an open popover chase the changing
+    /// percentage, ETA, or transfer speed across the menu bar. Reserve one
+    /// compact slot for the whole active transfer instead. The title can keep
+    /// updating, but the button (and therefore the popover anchor) stays put.
+    private static let liveProgressStatusItemLength: CGFloat = 172
+
     /// A folder panel needs the same part of the screen as this compact window.
     /// Close the chrome but retain its SwiftUI controller/state, then restore it
     /// after the panel finishes so the exact analysis card and selection return.
@@ -253,6 +259,7 @@ final class StatusItemController: NSObject {
     private func refreshIcon() {
         let state = currentState()
         let title = menuBarProgressTitle()
+        let showsLiveProgress = !title.isEmpty
         let key: String
         switch state {
         case .idle: key = "idle"
@@ -265,10 +272,23 @@ final class StatusItemController: NSObject {
             lastImageKey = key
             statusItem.button?.image = Self.image(for: state)
         }
+
+        // Set the fixed frame before installing a live title, and clear the
+        // title before returning to the compact variable-width idle item. This
+        // avoids an intermediate layout pass with the old title's width.
+        if showsLiveProgress, statusItem.length != Self.liveProgressStatusItemLength {
+            statusItem.length = Self.liveProgressStatusItemLength
+        }
         if title != lastTitle {
             lastTitle = title
             statusItem.button?.title = title
             statusItem.button?.imagePosition = title.isEmpty ? .imageOnly : .imageLeading
+            statusItem.button?.font = title.isEmpty
+                ? NSFont.menuBarFont(ofSize: 0)
+                : NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        }
+        if !showsLiveProgress, statusItem.length != NSStatusItem.variableLength {
+            statusItem.length = NSStatusItem.variableLength
         }
     }
 
@@ -294,13 +314,29 @@ final class StatusItemController: NSObject {
         if let fraction = progress.fractionCompleted {
             parts.append("\(Int((fraction * 100).rounded()))%")
         }
-        if let eta = progress.etaSeconds, let remaining = Formatters.remainingTime(eta) {
-            parts.append(remaining)
+        if let eta = progress.etaSeconds, let remaining = Self.compactRemainingTime(eta) {
+            parts.append(tr("ETA \(remaining)", "เหลือ \(remaining)"))
         }
         if parts.isEmpty, progress.bytesPerSecond > 0 {
             parts.append(Formatters.transferSpeed(progress.bytesPerSecond))
         }
         return parts.prefix(2).joined(separator: " · ")
+    }
+
+    /// Bounded-width ETA for the menu bar. The queue row still shows the full
+    /// localized duration; this version deliberately caps very long estimates
+    /// so an unreliable early sample cannot consume half the menu bar.
+    private static func compactRemainingTime(_ seconds: Double) -> String? {
+        guard seconds.isFinite, seconds > 0 else { return nil }
+        let total = max(1, Int(seconds.rounded(.up)))
+        if total >= 100 * 3600 { return "99h+" }
+        if total >= 3600 {
+            return "\(total / 3600)h \((total % 3600) / 60)m"
+        }
+        if total >= 60 {
+            return "\(total / 60)m \(total % 60)s"
+        }
+        return "\(total)s"
     }
 
     private static func image(for state: IconState) -> NSImage {

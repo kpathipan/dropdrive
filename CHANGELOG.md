@@ -5,6 +5,16 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.24.4] - Clipboard stays under your control
+
+### Changed
+- **Opening DropDrive no longer imports a copied link automatically.** The link
+  field remains untouched until the user explicitly pastes, clicks the Paste
+  control, drags a link onto the menu-bar icon, shares it, or sends it from a
+  phone.
+- **The obsolete automatic-import state and code path were removed,** keeping
+  repeated popover openings predictable without affecting multi-link parsing.
+
 ## [6.24.3] - Stable live numbers
 
 ### Changed

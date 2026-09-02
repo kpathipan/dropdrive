@@ -5,6 +5,22 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.24.3] - Stable live numbers
+
+### Changed
+- **Numbers stay visually still throughout DropDrive.** Counts, file sizes,
+  percentages, speeds, and remaining times use tabular digits while normal Thai
+  and English text keeps the native system typeface.
+- **Live transfer details keep reserved layout slots.** Percentage, speed, ETA,
+  and byte progress can update without pushing filenames or controls sideways.
+
+### Fixed
+- **The menu-bar progress text no longer slides inside its fixed status item.**
+  Active text is pinned to the leading edge, and the percentage keeps a stable
+  field from 1% through 100%.
+- **Update-download progress uses the same stable layout as file downloads,**
+  preventing the banner and Settings details from twitching as units change.
+
 ## [6.24.2] - A calmer download window
 
 ### Changed

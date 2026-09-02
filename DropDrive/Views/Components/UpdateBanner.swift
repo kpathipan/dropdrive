@@ -156,23 +156,41 @@ struct UpdateProgressDetail: View {
     var body: some View {
         HStack(spacing: 4) {
             Text(progress.fraction, format: .percent.precision(.fractionLength(0)))
-                .monospacedDigit()
+                .stableLiveMetric(width: DDMetrics.progressPercentWidth)
 
-            if progress.totalBytes > 0 {
-                Text("· \(Formatters.byteCount(progress.bytesWritten)) / \(Formatters.byteCount(progress.totalBytes))")
-            }
+            Text(bytesText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-            if progress.bytesPerSecond > 0 {
-                Text("· \(Formatters.transferSpeed(progress.bytesPerSecond))")
-            }
+            Text(speedText)
+                .stableLiveMetric(width: DDMetrics.progressSpeedWidth)
 
-            if let etaSeconds = progress.etaSeconds, let remaining = Formatters.remainingTime(etaSeconds) {
-                Text("· \(remaining)")
-            }
+            Text(remainingText)
+                .stableLiveMetric(width: DDMetrics.progressETAWidth)
         }
         .font(.dd(11))
         .foregroundStyle(.secondary)
         .lineLimit(1)
+        .transaction { transaction in
+            transaction.animation = nil
+        }
         .accessibilityElement(children: .combine)
+    }
+
+    private var bytesText: String {
+        guard progress.totalBytes > 0 else { return "" }
+        return "\(Formatters.byteCount(progress.bytesWritten)) / \(Formatters.byteCount(progress.totalBytes))"
+    }
+
+    private var speedText: String {
+        guard progress.bytesPerSecond > 0 else { return "" }
+        return Formatters.transferSpeed(progress.bytesPerSecond)
+    }
+
+    private var remainingText: String {
+        guard let etaSeconds = progress.etaSeconds,
+              let remaining = Formatters.remainingTime(etaSeconds) else { return "" }
+        return remaining
     }
 }

@@ -112,6 +112,10 @@ struct MenuBarView: View {
         }
         .frame(width: 400, height: hasSeenWelcome ? windowHeight : 360)
         .font(.dd(13))
+        // Digits remain tabular throughout the app, so changing counts and
+        // sizes do not make adjacent text twitch. Words still use proportional
+        // SF/Thai system typography.
+        .monospacedDigit()
         // Frosted, not painted. Every menu bar panel macOS ships — Control
         // Centre, Wi-Fi, Sound — sits on a translucent material, and a flat
         // opaque fill is most of why this window read as pasted onto the screen
@@ -555,6 +559,11 @@ struct MenuBarView: View {
             Text(headerStatus)
                 .font(.dd(11, .medium))
                 .lineLimit(1)
+                .minimumScaleFactor(0.82)
+        }
+        .frame(width: DDMetrics.headerStatusWidth, alignment: .leading)
+        .transaction { transaction in
+            transaction.animation = nil
         }
         .foregroundStyle(viewModel.isQueueProcessing ? DDTheme.accent : DDTheme.success)
         .padding(.horizontal, 7)

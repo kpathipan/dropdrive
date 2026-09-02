@@ -333,6 +333,10 @@ final class StatusItemController: NSObject {
         lastTitle = title
         statusItem.button?.title = title
         statusItem.button?.imagePosition = title.isEmpty ? .imageOnly : .imageLeading
+        // A status-bar button centres a changing title by default, which makes
+        // every character slide even though the item itself has a fixed width.
+        // Pin active text to the leading edge; the idle icon remains centred.
+        statusItem.button?.alignment = title.isEmpty ? .center : .left
         statusItem.button?.font = title.isEmpty
             ? NSFont.menuBarFont(ofSize: 0)
             : NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
@@ -358,7 +362,9 @@ final class StatusItemController: NSObject {
 
         var parts: [String] = []
         if let percentage = progress.activeDisplayPercentage {
-            parts.append("\(percentage)%")
+            // Three reserved columns keep the ETA's starting position fixed
+            // across 9%, 10%, and 100%.
+            parts.append(String(format: "%3d%%", percentage))
         }
         if let eta = progress.etaSeconds, let remaining = Self.compactRemainingTime(eta) {
             parts.append(tr("ETA \(remaining)", "เหลือ \(remaining)"))

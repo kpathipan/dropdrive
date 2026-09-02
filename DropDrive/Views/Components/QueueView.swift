@@ -387,11 +387,10 @@ private struct QueueRow: View {
 
                 Spacer()
 
-                if let percentage = progress.activeDisplayPercentage {
-                    Text("\(percentage)%")
-                        .font(.dd(11, .medium).monospacedDigit())
-                        .foregroundStyle(DDTheme.accent)
-                }
+                Text(progress.activeDisplayPercentage.map { "\($0)%" } ?? "")
+                    .font(.dd(11, .medium))
+                    .stableLiveMetric(width: DDMetrics.progressPercentWidth)
+                    .foregroundStyle(DDTheme.accent)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
@@ -411,21 +410,16 @@ private struct QueueRow: View {
             .animation(.linear(duration: 0.25), value: progress.activeDisplayFraction)
 
             HStack(spacing: 4) {
-                if progress.totalBytes > 0 {
-                    Text(tr("\(Formatters.byteCount(progress.bytesDownloaded)) of \(Formatters.byteCount(progress.totalBytes))", "\(Formatters.byteCount(progress.bytesDownloaded)) จาก \(Formatters.byteCount(progress.totalBytes))"))
-                }
+                Text(downloadedBytesText(progress))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                if progress.bytesPerSecond > 0 {
-                    if progress.totalBytes > 0 { Text("·") }
-                    Text(Formatters.transferSpeed(progress.bytesPerSecond))
-                }
+                Text(speedText(progress))
+                    .stableLiveMetric(width: DDMetrics.progressSpeedWidth)
 
-                if let etaSeconds = progress.etaSeconds, let remaining = Formatters.remainingTime(etaSeconds) {
-                    Text("·")
-                    Text(remaining)
-                }
-
-                Spacer()
+                Text(remainingText(progress))
+                    .stableLiveMetric(width: DDMetrics.progressETAWidth)
 
                 Button(tr("Pause", "หยุดพัก"), action: onPauseActive)
                     .buttonStyle(.bordered)
@@ -437,8 +431,30 @@ private struct QueueRow: View {
             }
             .font(.dd(11))
             .foregroundStyle(.secondary)
+            .transaction { transaction in
+                transaction.animation = nil
+            }
         }
         .padding(.leading, 32)
+    }
+
+    private func downloadedBytesText(_ progress: DownloadProgress) -> String {
+        guard progress.totalBytes > 0 else { return "" }
+        return tr(
+            "\(Formatters.byteCount(progress.bytesDownloaded)) of \(Formatters.byteCount(progress.totalBytes))",
+            "\(Formatters.byteCount(progress.bytesDownloaded)) จาก \(Formatters.byteCount(progress.totalBytes))"
+        )
+    }
+
+    private func speedText(_ progress: DownloadProgress) -> String {
+        guard progress.bytesPerSecond > 0 else { return "" }
+        return Formatters.transferSpeed(progress.bytesPerSecond)
+    }
+
+    private func remainingText(_ progress: DownloadProgress) -> String {
+        guard let etaSeconds = progress.etaSeconds,
+              let remaining = Formatters.remainingTime(etaSeconds) else { return "" }
+        return remaining
     }
 
     /// The picture the row leads with, in descending order of how much it tells

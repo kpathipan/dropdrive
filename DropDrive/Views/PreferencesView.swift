@@ -64,6 +64,7 @@ struct PreferencesView: View {
                 .tag(SettingsTab.about)
         }
         .padding(.top, 8)
+        .monospacedDigit()
         .task {
             preferences.syncLaunchAtLoginWithSystemState()
             if BandwidthPreset.matching(preferences.bandwidthLimitBytesPerSecond) == .custom,

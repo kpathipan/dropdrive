@@ -63,15 +63,25 @@ enum DDMetrics {
     static let controlHeight: CGFloat = 38
     static let inputRadius: CGFloat = 11
     static let cardRadius: CGFloat = 14
+
+    /// Live values keep these slots even as their contents change. Tabular
+    /// digits prevent 1/8-style width changes, while a reserved slot prevents
+    /// 9 -> 10 and KB -> MB transitions from pushing neighbouring controls.
+    static let headerStatusWidth: CGFloat = 112
+    static let progressPercentWidth: CGFloat = 34
+    static let progressSpeedWidth: CGFloat = 68
+    static let progressETAWidth: CGFloat = 62
 }
 
 extension Font {
     /// Use the system text face rather than a custom family. macOS supplies SF
     /// Pro for Latin and its own matching Thai fallback, which preserves the
     /// platform's Dynamic Type metrics and makes mixed Thai/English content read
-    /// like part of the OS instead of a separately styled panel.
+    /// like part of the OS instead of a separately styled panel. Only numerals
+    /// use tabular widths, so every DropDrive label remains still when a count,
+    /// size, percentage, or time changes.
     static func dd(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
-        .system(size: size, weight: weight)
+        .system(size: size, weight: weight).monospacedDigit()
     }
 }
 
@@ -101,6 +111,27 @@ struct InputFieldBackground: ViewModifier {
     }
 }
 
+/// Typography and layout for a number that updates while it is visible.
+///
+/// This deliberately keeps the normal system face for words and applies
+/// tabular spacing only to digits. Disabling inherited text animation also
+/// avoids a progress update cross-fading or sliding inside an otherwise
+/// animated card.
+struct StableLiveMetric: ViewModifier {
+    let width: CGFloat
+    let alignment: Alignment
+
+    func body(content: Content) -> some View {
+        content
+            .monospacedDigit()
+            .lineLimit(1)
+            .frame(width: width, alignment: alignment)
+            .transaction { transaction in
+                transaction.animation = nil
+            }
+    }
+}
+
 extension View {
     func cardBackground(cornerRadius: CGFloat = DDMetrics.cardRadius) -> some View {
         modifier(CardBackground(cornerRadius: cornerRadius))
@@ -108,5 +139,9 @@ extension View {
 
     func inputFieldBackground(cornerRadius: CGFloat = DDMetrics.inputRadius) -> some View {
         modifier(InputFieldBackground(cornerRadius: cornerRadius))
+    }
+
+    func stableLiveMetric(width: CGFloat, alignment: Alignment = .trailing) -> some View {
+        modifier(StableLiveMetric(width: width, alignment: alignment))
     }
 }

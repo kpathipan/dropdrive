@@ -5,6 +5,27 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.24.2] - A calmer download window
+
+### Changed
+- **Finished work moves out of Queue automatically.** The success row remains
+  briefly for confirmation, then lives in Recent where it can be opened,
+  revealed, copied, or downloaded again without crowding active work.
+- **Queue preserves the reader's scroll position.** New arrivals follow the
+  bottom only when the user was already there instead of pulling them away from
+  an older item they were inspecting.
+
+### Fixed
+- **The menu-bar popover stays anchored while live numbers change.** Download
+  status uses a fixed-width slot and refreshes at a readable one-second cadence,
+  so changing percentage, ETA, and speed no longer push the window sideways.
+- **An active download never claims to be 100% complete.** It remains at 99%
+  while final bytes, validation, conversion, or file flushing are still running;
+  completion appears only when the output is ready to use.
+- **The Queue window keeps a stable height throughout a transfer.** Progress
+  details, incoming items, and success transitions scroll inside the panel
+  instead of repeatedly stretching or shrinking the whole popover.
+
 ## [6.24.1] - Reliable update notifications
 
 ### Fixed

@@ -38,9 +38,17 @@ struct MenuBarView: View {
     @State private var selectedPane: Pane = .queue
     @State private var previousPrimaryPane: Pane = .queue
     @State private var historySearchText = ""
-    /// Live height of the active pane's content, reported by ContentHeightKey.
-    /// The window hugs this (capped), so it grows and shrinks with the queue.
-    @State private var measuredHeight: CGFloat = 110
+    /// Natural heights are kept per pane. Sharing one value meant opening
+    /// Recent could overwrite Queue's remembered size (and vice versa), then
+    /// the next tab switch animated through a height that belonged elsewhere.
+    @State private var queueMeasuredHeight: CGFloat = 110
+    @State private var recentMeasuredHeight: CGFloat = 110
+    /// Once a transfer begins, Queue keeps the height it had at that moment.
+    /// Progress details and completed-row transitions scroll inside that frame
+    /// instead of making the whole menu-bar window breathe on every state tick.
+    @State private var lockedQueueWindowHeight: CGFloat?
+    @State private var queueContentBottom: CGFloat = 0
+    @State private var queueViewportHeight: CGFloat = 0
     /// First-run walkthrough: shown once in place of the whole window, mostly to
     /// tell friends the app lives in the menu bar and has no Dock icon.
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
@@ -53,16 +61,34 @@ struct MenuBarView: View {
     private static let chromeAllowance: CGFloat = 43 + 43
     private static let maxWindowHeight: CGFloat = 560
     private static let minWindowHeight: CGFloat = 160
+    private static let midTransferInitialWindowHeight: CGFloat = 420
+    private static let queueBottomTolerance: CGFloat = 44
 
     private var windowHeight: CGFloat {
-        let raw: CGFloat
         switch selectedPane {
-        case .queue, .recent:
-            raw = measuredHeight + Self.chromeAllowance
+        case .queue:
+            if shouldLockQueueWindow, let lockedQueueWindowHeight {
+                return lockedQueueWindowHeight
+            }
+            return Self.clampedWindowHeight(queueMeasuredHeight + Self.chromeAllowance)
+        case .recent:
+            return Self.clampedWindowHeight(recentMeasuredHeight + Self.chromeAllowance)
         case .settings:
-            raw = 500
+            return 500
         }
-        return min(max(raw, Self.minWindowHeight), Self.maxWindowHeight)
+    }
+
+    private static func clampedWindowHeight(_ raw: CGFloat) -> CGFloat {
+        min(max(raw, minWindowHeight), maxWindowHeight)
+    }
+
+    private var isQueueNearBottom: Bool {
+        guard queueViewportHeight > 0, queueContentBottom > 0 else { return true }
+        return queueContentBottom <= queueViewportHeight + Self.queueBottomTolerance
+    }
+
+    private var shouldLockQueueWindow: Bool {
+        viewModel.isQueueProcessing || viewModel.queue.contains { $0.status == .completed }
     }
 
     var body: some View {
@@ -105,9 +131,40 @@ struct MenuBarView: View {
         .animation(Self.springMotion, value: windowHeight)
         .onPreferenceChange(ContentHeightKey.self) { height in
             guard height > 0 else { return }
-            withAnimation(Self.springMotion) { measuredHeight = height }
+            switch selectedPane {
+            case .queue:
+                // Still remember the natural post-transfer height, but don't
+                // animate the outer frame while the lock is active.
+                if lockedQueueWindowHeight != nil {
+                    queueMeasuredHeight = height
+                } else {
+                    withAnimation(Self.springMotion) { queueMeasuredHeight = height }
+                }
+            case .recent:
+                withAnimation(Self.springMotion) { recentMeasuredHeight = height }
+            case .settings:
+                break
+            }
+        }
+        .onChange(of: shouldLockQueueWindow) { _, shouldLock in
+            if shouldLock {
+                lockedQueueWindowHeight = Self.clampedWindowHeight(
+                    queueMeasuredHeight + Self.chromeAllowance
+                )
+            } else {
+                withAnimation(Self.springMotion) { lockedQueueWindowHeight = nil }
+            }
         }
         .task {
+            // A Share/phone handoff can start a download before this popover is
+            // ever opened. In that case there was no false→true change to
+            // capture, so establish a comfortable stable frame on first view.
+            if shouldLockQueueWindow, lockedQueueWindowHeight == nil {
+                lockedQueueWindowHeight = Self.clampedWindowHeight(max(
+                    queueMeasuredHeight + Self.chromeAllowance,
+                    Self.midTransferInitialWindowHeight
+                ))
+            }
             viewModel.restoreLogin()
             viewModel.promptForSavedQueueIfNeeded()
         }
@@ -391,6 +448,17 @@ struct MenuBarView: View {
                                 recentPreview(recent).transition(.opacity)
                             }
                         }
+
+                        Color.clear
+                            .frame(height: 1)
+                            .background {
+                                GeometryReader { geometry in
+                                    Color.clear.preference(
+                                        key: QueueContentBottomKey.self,
+                                        value: geometry.frame(in: .named("dropdrive-queue-scroll")).maxY
+                                    )
+                                }
+                            }
                     }
                     .padding(DDMetrics.contentInset)
                     .background(
@@ -399,14 +467,24 @@ struct MenuBarView: View {
                         }
                     )
                 }
-                .onChange(of: viewModel.activeQueueItemID) { _, newValue in
-                    guard let newValue else { return }
-                    withAnimation { proxy.scrollTo(newValue, anchor: .center) }
+                .coordinateSpace(name: "dropdrive-queue-scroll")
+                .background {
+                    GeometryReader { geometry in
+                        Color.clear.preference(
+                            key: QueueViewportHeightKey.self,
+                            value: geometry.size.height
+                        )
+                    }
                 }
                 .onChange(of: viewModel.queue.count) { _, _ in
+                    // Preserve the reader's place. Only keep following new
+                    // arrivals when they were already looking at the bottom.
+                    guard isQueueNearBottom else { return }
                     guard let lastID = viewModel.queue.last?.id else { return }
                     withAnimation { proxy.scrollTo(lastID, anchor: .bottom) }
                 }
+                .onPreferenceChange(QueueContentBottomKey.self) { queueContentBottom = $0 }
+                .onPreferenceChange(QueueViewportHeightKey.self) { queueViewportHeight = $0 }
             }
         }
         .animation(Self.springMotion, value: viewModel.linkAnalysisState)
@@ -573,6 +651,17 @@ struct MenuBarView: View {
             .foregroundStyle(.secondary)
             .help(tr("Reveal in Finder", "เปิดใน Finder"))
             .accessibilityLabel("Reveal \(item.name) in Finder")
+
+            Button {
+                prepareHistoryRedownload(item)
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .font(.dd(11))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help(tr("Download again", "ดาวน์โหลดอีกครั้ง"))
+            .accessibilityLabel(tr("Download again", "ดาวน์โหลดอีกครั้ง"))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -694,6 +783,7 @@ struct MenuBarView: View {
                                 pasteboard.clearContents()
                                 pasteboard.setString(item.driveLink, forType: .string)
                             },
+                            onDownloadAgain: prepareHistoryRedownload,
                             onRemoveItem: { historyStore.remove($0) },
                             onClearHistory: {
                                 historyStore.clear()
@@ -715,12 +805,36 @@ struct MenuBarView: View {
         }
     }
 
+    private func prepareHistoryRedownload(_ item: DownloadHistoryItem) {
+        previousPrimaryPane = .queue
+        withAnimation(Self.springMotion) { selectedPane = .queue }
+        if viewModel.driveLink == item.driveLink {
+            viewModel.retryAnalysis()
+        } else {
+            viewModel.driveLink = item.driveLink
+        }
+    }
+
 }
 
 // MARK: - Content height measurement
 
 /// Reports the active pane's natural content height so the window can hug it.
 private struct ContentHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+private struct QueueContentBottomKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+private struct QueueViewportHeightKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = max(value, nextValue())

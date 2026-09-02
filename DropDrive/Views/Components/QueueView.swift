@@ -387,8 +387,8 @@ private struct QueueRow: View {
 
                 Spacer()
 
-                if let fraction = progress.fractionCompleted {
-                    Text(fraction, format: .percent.precision(.fractionLength(0)))
+                if let percentage = progress.activeDisplayPercentage {
+                    Text("\(percentage)%")
                         .font(.dd(11, .medium).monospacedDigit())
                         .foregroundStyle(DDTheme.accent)
                 }
@@ -402,13 +402,13 @@ private struct QueueRow: View {
                             .fill(DDTheme.accent.opacity(0.10))
                         RoundedRectangle(cornerRadius: 7, style: .continuous)
                             .fill(DDTheme.accent.opacity(0.28))
-                            .frame(width: proxy.size.width * (progress.fractionCompleted ?? 0))
+                            .frame(width: proxy.size.width * (progress.activeDisplayFraction ?? 0))
                     }
                 }
             }
             // Matches the sampling the engine reports at, so the fill glides
             // rather than stepping.
-            .animation(.linear(duration: 0.25), value: progress.fractionCompleted)
+            .animation(.linear(duration: 0.25), value: progress.activeDisplayFraction)
 
             HStack(spacing: 4) {
                 if progress.totalBytes > 0 {

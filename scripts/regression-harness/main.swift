@@ -12,6 +12,14 @@ check("NAS zero capacity is unknown", DestinationCapacity.normalized(important: 
 check("ordinary capacity is a valid fallback", DestinationCapacity.normalized(important: 0, ordinary: 16_000_000) == .available(16_000_000))
 check("best positive capacity wins", DestinationCapacity.normalized(important: 32_000_000, ordinary: 16_000_000) == .available(32_000_000))
 
+let nearlyFinished = DownloadProgress(bytesDownloaded: 995, totalBytes: 1_000)
+check("active progress never rounds up to 100 percent", nearlyFinished.activeDisplayPercentage == 99)
+check("active progress fill never reaches completion", nearlyFinished.activeDisplayFraction == 0.99)
+let fullyTransferred = DownloadProgress(bytesDownloaded: 1_000, totalBytes: 1_000)
+check("100 percent belongs to completed state", fullyTransferred.activeDisplayPercentage == 99)
+let invalidNegativeProgress = DownloadProgress(bytesDownloaded: -10, totalBytes: 1_000)
+check("progress never renders below zero", invalidNegativeProgress.fractionCompleted == 0)
+
 check("successful phone handoff is consumed", ExternalLinkReceipt(queued: 1).disposition == .consume)
 check("known duplicate phone handoff is consumed", ExternalLinkReceipt(duplicates: 1).disposition == .consume)
 check("transient phone failure is retained", ExternalLinkReceipt(retryableFailures: 1).disposition == .retry)

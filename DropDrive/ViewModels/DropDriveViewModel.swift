@@ -144,6 +144,11 @@ final class DropDriveViewModel {
     /// icon can flash a checkmark.
     var showCompletionFlash = false
     private var completionFlashTask: Task<Void, Never>?
+    /// Completed work already lives in Recent. Keep its queue row just long
+    /// enough for the success sweep to register, then remove that duplicate
+    /// automatically so Queue returns to active and actionable work.
+    private var completedRowRemovalTasks: [UUID: Task<Void, Never>] = [:]
+    private static let completedRowDisplayDuration: TimeInterval = 2.25
     /// Capacity lookups can block on a sleeping NAS. SwiftUI may rebuild the
     /// review card several times for an unrelated state change, so keep the
     /// last answer briefly; the start-download gate always performs a fresh
@@ -1339,6 +1344,7 @@ final class DropDriveViewModel {
                 fileCount: item.analysis.fileCount ?? 1,
                 sizeBytes: item.analysis.totalBytes
             ))
+            scheduleCompletedRowRemoval(item.id)
         case .failed:
             // The resume data is deliberately kept: a failure is exactly when
             // it earns its keep, and Retry reuses the same item id, so the next
@@ -1400,6 +1406,19 @@ final class DropDriveViewModel {
         }
     }
 
+    private func scheduleCompletedRowRemoval(_ id: UUID) {
+        completedRowRemovalTasks[id]?.cancel()
+        completedRowRemovalTasks[id] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(Self.completedRowDisplayDuration))
+            guard !Task.isCancelled, let self else { return }
+            self.completedRowRemovalTasks[id] = nil
+            guard self.queue.contains(where: { $0.id == id && $0.status == .completed }) else { return }
+            self.queue.removeAll { $0.id == id }
+            QueueStore.save(self.queue)
+            ResumeEnvelopeStore.clear(for: id)
+        }
+    }
+
     /// Cancels the active download outright; any resume data it produced is discarded.
     func cancelActiveDownload() {
         isPausingActiveItem = false
@@ -1446,6 +1465,8 @@ final class DropDriveViewModel {
 
     func removeQueueItem(_ id: UUID) {
         guard id != activeQueueItemID else { return }
+        completedRowRemovalTasks[id]?.cancel()
+        completedRowRemovalTasks[id] = nil
         // Removing an unfinished item is a cancellation from the user's point of
         // view: whatever it already wrote to disk goes with it.
         if let item = queue.first(where: { $0.id == id }), item.status != .completed {
@@ -1471,7 +1492,13 @@ final class DropDriveViewModel {
     }
 
     func clearCompletedQueueItems() {
-        queue.removeAll { $0.status == .completed }
+        let completedIDs = Set(queue.lazy.filter { $0.status == .completed }.map(\.id))
+        for id in completedIDs {
+            completedRowRemovalTasks[id]?.cancel()
+            completedRowRemovalTasks[id] = nil
+            ResumeEnvelopeStore.clear(for: id)
+        }
+        queue.removeAll { completedIDs.contains($0.id) }
         QueueStore.save(queue)
     }
 
@@ -1487,7 +1514,12 @@ final class DropDriveViewModel {
             asAudio: item.asAudio,
             clipSection: item.clipSection,
             customName: item.customName,
-            selectedFileIDs: item.selectedFileIDs
+            selectedFileIDs: item.selectedFileIDs,
+            videoQuality: item.videoQuality,
+            subtitleMode: item.subtitleMode,
+            splitChapters: item.splitChapters,
+            saveThumbnail: item.saveThumbnail,
+            selectedMediaIndexes: item.selectedMediaIndexes
         ))
         QueueStore.save(queue)
     }
@@ -1509,7 +1541,15 @@ final class DropDriveViewModel {
 
     private func checkForSavedQueue() {
         guard let saved = QueueStore.load(), !saved.isEmpty else { return }
-        pendingRestoreQueue = saved
+        // A completed item has already been recorded in Recent. Older builds
+        // persisted those duplicate rows forever; migrate them out silently so
+        // an upgrade doesn't ask to restore already-finished downloads.
+        let restorable = saved.filter { $0.status != .completed }
+        if restorable.count != saved.count {
+            if restorable.isEmpty { QueueStore.clear() } else { QueueStore.save(restorable) }
+        }
+        guard !restorable.isEmpty else { return }
+        pendingRestoreQueue = restorable
     }
 
     /// Asked the first time the user opens the window, not at launch. Launch is

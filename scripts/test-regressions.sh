@@ -14,6 +14,7 @@ xcrun swiftc -O \
   DropDrive/Utilities/TikTokPlayerMedia.swift \
   DropDriveShare/ShareLinkExtractor.swift \
   DropDrive/Models/ExternalLinkReceipt.swift \
+  DropDrive/Models/DownloadProgress.swift \
   DropDrive/Models/DriveLinkAnalysis.swift \
   DropDrive/Models/QueueItem.swift \
   DropDrive/Services/AppLanguage.swift \

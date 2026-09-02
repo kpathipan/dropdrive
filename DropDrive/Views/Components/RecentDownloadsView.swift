@@ -6,6 +6,7 @@ struct RecentDownloadsView: View {
     @Binding var searchText: String
     let onRevealInFinder: (DownloadHistoryItem) -> Void
     let onCopyLink: (DownloadHistoryItem) -> Void
+    let onDownloadAgain: (DownloadHistoryItem) -> Void
     let onRemoveItem: (DownloadHistoryItem) -> Void
     let onClearHistory: () -> Void
 
@@ -103,6 +104,7 @@ struct RecentDownloadsView: View {
                                 onOpenFolder: { openedFolder = item },
                                 onRevealInFinder: { onRevealInFinder(item) },
                                 onCopyLink: { onCopyLink(item) },
+                                onDownloadAgain: { onDownloadAgain(item) },
                                 onRemove: { onRemoveItem(item) }
                             )
                         }
@@ -148,7 +150,12 @@ struct RecentDownloadsView: View {
                 if index > 0 {
                     Divider().padding(.leading, 38)
                 }
-                RecentDownloadRow(item: item, onRevealInFinder: onRevealInFinder, onCopyLink: onCopyLink)
+                RecentDownloadRow(
+                    item: item,
+                    onRevealInFinder: onRevealInFinder,
+                    onCopyLink: onCopyLink,
+                    onDownloadAgain: onDownloadAgain
+                )
             }
         }
         .cardBackground()
@@ -192,6 +199,7 @@ private struct GalleryTile: View {
     let onOpenFolder: () -> Void
     let onRevealInFinder: () -> Void
     let onCopyLink: () -> Void
+    let onDownloadAgain: () -> Void
     let onRemove: () -> Void
 
     @State private var isHovering = false
@@ -278,7 +286,8 @@ private struct GalleryTile: View {
                 Button(tr("Quick Look", "ดูตัวอย่าง")) { if let url { QuickLookPresenter.shared.preview(url) } }
                 Button(tr("Reveal in Finder", "เปิดใน Finder"), action: onRevealInFinder)
             }
-            Button(tr("Copy Google Drive Link", "คัดลอกลิงก์ Google Drive"), action: onCopyLink)
+            Button(tr("Copy source link", "คัดลอกลิงก์ต้นทาง"), action: onCopyLink)
+            Button(tr("Download again", "ดาวน์โหลดอีกครั้ง"), action: onDownloadAgain)
             Divider()
             // Clearing the whole history was the only way to get rid of a dead
             // entry, which is far too blunt when the rest is worth keeping.
@@ -561,6 +570,7 @@ private struct RecentDownloadRow: View {
     let item: DownloadHistoryItem
     let onRevealInFinder: (DownloadHistoryItem) -> Void
     let onCopyLink: (DownloadHistoryItem) -> Void
+    let onDownloadAgain: (DownloadHistoryItem) -> Void
 
     @State private var isHovering = false
 
@@ -602,7 +612,8 @@ private struct RecentDownloadRow: View {
             if item.itemURL != nil {
                 Button(tr("Reveal in Finder", "เปิดใน Finder")) { onRevealInFinder(item) }
             }
-            Button(tr("Copy Google Drive Link", "คัดลอกลิงก์ Google Drive")) { onCopyLink(item) }
+            Button(tr("Copy source link", "คัดลอกลิงก์ต้นทาง")) { onCopyLink(item) }
+            Button(tr("Download again", "ดาวน์โหลดอีกครั้ง")) { onDownloadAgain(item) }
         }
         .accessibilityElement(children: .combine)
     }

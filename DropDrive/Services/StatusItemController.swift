@@ -19,12 +19,15 @@ final class StatusItemController: NSObject {
     private var globalShortcut: GlobalShortcutService?
     private var lastImageKey = ""
     private var lastTitle = ""
+    private var lastLiveTitleUpdate: Date?
+    private var pendingLiveTitleTask: Task<Void, Never>?
 
     /// A variable-length status item makes an open popover chase the changing
     /// percentage, ETA, or transfer speed across the menu bar. Reserve one
     /// compact slot for the whole active transfer instead. The title can keep
     /// updating, but the button (and therefore the popover anchor) stays put.
     private static let liveProgressStatusItemLength: CGFloat = 172
+    private static let liveTitleUpdateInterval: TimeInterval = 1
 
     /// A folder panel needs the same part of the screen as this compact window.
     /// Close the chrome but retain its SwiftUI controller/state, then restore it
@@ -246,8 +249,8 @@ final class StatusItemController: NSObject {
         let viewModel = DropDriveViewModel.shared
         if viewModel.showCompletionFlash { return .done }
         if viewModel.isQueueProcessing {
-            let raw = viewModel.activeProgress?.fractionCompleted ?? 0
-            return .progress((raw * 50).rounded() / 50) // 2% steps
+            let raw = viewModel.activeProgress?.activeDisplayFraction ?? 0
+            return .progress((raw * 50).rounded(.down) / 50) // 2% steps, never a false 100%
         }
         if viewModel.queue.contains(where: { $0.status == .failed || $0.status == .waiting }) { return .failed }
         // Ranked below anything to do with a download: an update can wait, and
@@ -279,17 +282,60 @@ final class StatusItemController: NSObject {
         if showsLiveProgress, statusItem.length != Self.liveProgressStatusItemLength {
             statusItem.length = Self.liveProgressStatusItemLength
         }
-        if title != lastTitle {
-            lastTitle = title
-            statusItem.button?.title = title
-            statusItem.button?.imagePosition = title.isEmpty ? .imageOnly : .imageLeading
-            statusItem.button?.font = title.isEmpty
-                ? NSFont.menuBarFont(ofSize: 0)
-                : NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
-        }
+        refreshLiveTitle(title)
         if !showsLiveProgress, statusItem.length != NSStatusItem.variableLength {
             statusItem.length = NSStatusItem.variableLength
         }
+    }
+
+    /// The download engine samples often enough to keep the in-window progress
+    /// bar fluid. A number in the menu bar is text, not animation, so updating
+    /// it five times a second only makes it flicker and wakes AppKit needlessly.
+    /// Empty/completed state applies immediately; live text is capped at 1 Hz.
+    private func refreshLiveTitle(_ title: String) {
+        guard !title.isEmpty else {
+            pendingLiveTitleTask?.cancel()
+            pendingLiveTitleTask = nil
+            lastLiveTitleUpdate = nil
+            applyLiveTitle("")
+            return
+        }
+
+        let now = Date()
+        let elapsed = lastLiveTitleUpdate.map { now.timeIntervalSince($0) }
+            ?? Self.liveTitleUpdateInterval
+        guard elapsed < Self.liveTitleUpdateInterval else {
+            pendingLiveTitleTask?.cancel()
+            pendingLiveTitleTask = nil
+            lastLiveTitleUpdate = now
+            applyLiveTitle(title)
+            return
+        }
+
+        guard pendingLiveTitleTask == nil else { return }
+        let delay = Self.liveTitleUpdateInterval - elapsed
+        pendingLiveTitleTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled, let self else { return }
+            self.pendingLiveTitleTask = nil
+            let latest = self.menuBarProgressTitle()
+            if latest.isEmpty {
+                self.lastLiveTitleUpdate = nil
+            } else {
+                self.lastLiveTitleUpdate = .now
+            }
+            self.applyLiveTitle(latest)
+        }
+    }
+
+    private func applyLiveTitle(_ title: String) {
+        guard title != lastTitle else { return }
+        lastTitle = title
+        statusItem.button?.title = title
+        statusItem.button?.imagePosition = title.isEmpty ? .imageOnly : .imageLeading
+        statusItem.button?.font = title.isEmpty
+            ? NSFont.menuBarFont(ofSize: 0)
+            : NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
     }
 
     private func observeState() {
@@ -311,8 +357,8 @@ final class StatusItemController: NSObject {
               let progress = DropDriveViewModel.shared.activeProgress else { return "" }
 
         var parts: [String] = []
-        if let fraction = progress.fractionCompleted {
-            parts.append("\(Int((fraction * 100).rounded()))%")
+        if let percentage = progress.activeDisplayPercentage {
+            parts.append("\(percentage)%")
         }
         if let eta = progress.etaSeconds, let remaining = Self.compactRemainingTime(eta) {
             parts.append(tr("ETA \(remaining)", "เหลือ \(remaining)"))

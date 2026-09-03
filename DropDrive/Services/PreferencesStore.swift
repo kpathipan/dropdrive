@@ -14,7 +14,6 @@ final class PreferencesStore {
         static let launchAtLogin = "preferences.launchAtLogin"
         static let bandwidthLimitBytesPerSecond = "preferences.bandwidthLimitBytesPerSecond"
         static let preferCompatibleVideo = "preferences.preferCompatibleVideo"
-        static let showMenuBarProgress = "preferences.showMenuBarProgress"
     }
 
     var defaultDownloadFolderURL: URL? {
@@ -28,10 +27,6 @@ final class PreferencesStore {
     /// open without extra software.
     var preferCompatibleVideo: Bool {
         didSet { UserDefaults.standard.set(preferCompatibleVideo, forKey: Key.preferCompatibleVideo) }
-    }
-
-    var showMenuBarProgress: Bool {
-        didSet { UserDefaults.standard.set(showMenuBarProgress, forKey: Key.showMenuBarProgress) }
     }
 
     var openFinderWhenComplete: Bool {
@@ -71,7 +66,6 @@ final class PreferencesStore {
         openFinderWhenComplete = defaults.bool(forKey: Key.openFinderWhenComplete)
         playNotificationSound = defaults.object(forKey: Key.playNotificationSound) as? Bool ?? true
         preferCompatibleVideo = defaults.object(forKey: Key.preferCompatibleVideo) as? Bool ?? true
-        showMenuBarProgress = defaults.object(forKey: Key.showMenuBarProgress) as? Bool ?? true
         launchAtLogin = defaults.bool(forKey: Key.launchAtLogin)
         defaultDownloadFolderURL = Self.restoreDefaultDownloadFolder()
         let storedLimit = defaults.object(forKey: Key.bandwidthLimitBytesPerSecond) as? Double

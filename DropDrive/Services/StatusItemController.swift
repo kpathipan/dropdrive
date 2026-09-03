@@ -18,16 +18,7 @@ final class StatusItemController: NSObject {
     private var dropTargetView: StatusItemDropTargetView?
     private var globalShortcut: GlobalShortcutService?
     private var lastImageKey = ""
-    private var lastTitle = ""
-    private var lastLiveTitleUpdate: Date?
-    private var pendingLiveTitleTask: Task<Void, Never>?
-
-    /// A variable-length status item makes an open popover chase the changing
-    /// percentage, ETA, or transfer speed across the menu bar. Reserve one
-    /// compact slot for the whole active transfer instead. The title can keep
-    /// updating, but the button (and therefore the popover anchor) stays put.
-    private static let liveProgressStatusItemLength: CGFloat = 172
-    private static let liveTitleUpdateInterval: TimeInterval = 1
+    private var lastToolTip = ""
 
     /// A folder panel needs the same part of the screen as this compact window.
     /// Close the chrome but retain its SwiftUI controller/state, then restore it
@@ -47,7 +38,10 @@ final class StatusItemController: NSObject {
     }
 
     override init() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        // Icon-only for every state. Never changing this length is what keeps
+        // both the menu-bar item and the popover's anchor pixel-stable while a
+        // transfer is running.
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
         popover = NSPopover()
         popover.behavior = .transient
@@ -230,7 +224,8 @@ final class StatusItemController: NSObject {
         /// otherwise the update banner only rewards someone who happened to
         /// open the window for another reason.
         case updateAvailable
-        case progress(Double)
+        /// nil when the source cannot report a total yet.
+        case progress(Double?)
         case done
         case failed
     }
@@ -239,8 +234,10 @@ final class StatusItemController: NSObject {
         let viewModel = DropDriveViewModel.shared
         if viewModel.showCompletionFlash { return .done }
         if viewModel.isQueueProcessing {
-            let raw = viewModel.activeProgress?.activeDisplayFraction ?? 0
-            return .progress((raw * 50).rounded(.down) / 50) // 2% steps, never a false 100%
+            let stepped = viewModel.activeProgress?.activeDisplayFraction.map {
+                ($0 * 50).rounded(.down) / 50
+            }
+            return .progress(stepped) // 2% steps, never a false 100%
         }
         if viewModel.queue.contains(where: { $0.status == .failed || $0.status == .waiting }) { return .failed }
         // Ranked below anything to do with a download: an update can wait, and
@@ -251,91 +248,32 @@ final class StatusItemController: NSObject {
 
     private func refreshIcon() {
         let state = currentState()
-        let title = menuBarProgressTitle()
-        let showsLiveProgress = !title.isEmpty
+        let toolTip = menuBarToolTip()
         let key: String
         switch state {
         case .idle: key = "idle"
         case .updateAvailable: key = "update"
         case .done: key = "done"
         case .failed: key = "failed"
-        case .progress(let f): key = "p\(f)"
+        case .progress(let fraction):
+            key = fraction.map { "p\($0)" } ?? "p-indeterminate"
         }
         if key != lastImageKey {
             lastImageKey = key
             statusItem.button?.image = Self.image(for: state)
         }
-
-        // Set the fixed frame before installing a live title, and clear the
-        // title before returning to the compact variable-width idle item. This
-        // avoids an intermediate layout pass with the old title's width.
-        if showsLiveProgress, statusItem.length != Self.liveProgressStatusItemLength {
-            statusItem.length = Self.liveProgressStatusItemLength
+        if toolTip != lastToolTip {
+            lastToolTip = toolTip
+            statusItem.button?.toolTip = toolTip
+            statusItem.button?.setAccessibilityLabel(toolTip)
+            dropTargetView?.toolTip = toolTip
         }
-        refreshLiveTitle(title)
-        if !showsLiveProgress, statusItem.length != NSStatusItem.variableLength {
-            statusItem.length = NSStatusItem.variableLength
-        }
-    }
-
-    /// The download engine samples often enough to keep the in-window progress
-    /// bar fluid. A number in the menu bar is text, not animation, so updating
-    /// it five times a second only makes it flicker and wakes AppKit needlessly.
-    /// Empty/completed state applies immediately; live text is capped at 1 Hz.
-    private func refreshLiveTitle(_ title: String) {
-        guard !title.isEmpty else {
-            pendingLiveTitleTask?.cancel()
-            pendingLiveTitleTask = nil
-            lastLiveTitleUpdate = nil
-            applyLiveTitle("")
-            return
-        }
-
-        let now = Date()
-        let elapsed = lastLiveTitleUpdate.map { now.timeIntervalSince($0) }
-            ?? Self.liveTitleUpdateInterval
-        guard elapsed < Self.liveTitleUpdateInterval else {
-            pendingLiveTitleTask?.cancel()
-            pendingLiveTitleTask = nil
-            lastLiveTitleUpdate = now
-            applyLiveTitle(title)
-            return
-        }
-
-        guard pendingLiveTitleTask == nil else { return }
-        let delay = Self.liveTitleUpdateInterval - elapsed
-        pendingLiveTitleTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(delay))
-            guard !Task.isCancelled, let self else { return }
-            self.pendingLiveTitleTask = nil
-            let latest = self.menuBarProgressTitle()
-            if latest.isEmpty {
-                self.lastLiveTitleUpdate = nil
-            } else {
-                self.lastLiveTitleUpdate = .now
-            }
-            self.applyLiveTitle(latest)
-        }
-    }
-
-    private func applyLiveTitle(_ title: String) {
-        guard title != lastTitle else { return }
-        lastTitle = title
-        statusItem.button?.title = title
-        statusItem.button?.imagePosition = title.isEmpty ? .imageOnly : .imageLeading
-        // A status-bar button centres a changing title by default, which makes
-        // every character slide even though the item itself has a fixed width.
-        // Pin active text to the leading edge; the idle icon remains centred.
-        statusItem.button?.alignment = title.isEmpty ? .center : .left
-        statusItem.button?.font = title.isEmpty
-            ? NSFont.menuBarFont(ofSize: 0)
-            : NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
     }
 
     private func observeState() {
         withObservationTracking {
             _ = currentState()
-            _ = menuBarProgressTitle()
+            _ = menuBarToolTip()
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 self?.refreshIcon()
@@ -345,40 +283,26 @@ final class StatusItemController: NSObject {
         refreshIcon()
     }
 
-    private func menuBarProgressTitle() -> String {
-        guard PreferencesStore.shared.showMenuBarProgress,
-              DropDriveViewModel.shared.isQueueProcessing,
-              let progress = DropDriveViewModel.shared.activeProgress else { return "" }
+    /// Full transfer details remain available on hover and to VoiceOver without
+    /// occupying any permanent menu-bar width.
+    private func menuBarToolTip() -> String {
+        let base = globalShortcut == nil
+            ? tr("DropDrive · global shortcut unavailable", "DropDrive · คีย์ลัดถูกใช้งานโดยแอปอื่น")
+            : "DropDrive · \(GlobalShortcutService.displayName)"
+        guard DropDriveViewModel.shared.isQueueProcessing,
+              let progress = DropDriveViewModel.shared.activeProgress else { return base }
 
         var parts: [String] = []
         if let percentage = progress.activeDisplayPercentage {
-            // Three reserved columns keep the ETA's starting position fixed
-            // across 9%, 10%, and 100%.
-            parts.append(String(format: "%3d%%", percentage))
+            parts.append("\(percentage)%")
         }
-        if let eta = progress.etaSeconds, let remaining = Self.compactRemainingTime(eta) {
-            parts.append(tr("ETA \(remaining)", "เหลือ \(remaining)"))
-        }
-        if parts.isEmpty, progress.bytesPerSecond > 0 {
+        if progress.bytesPerSecond > 0 {
             parts.append(Formatters.transferSpeed(progress.bytesPerSecond))
         }
-        return parts.prefix(2).joined(separator: " · ")
-    }
-
-    /// Bounded-width ETA for the menu bar. The queue row still shows the full
-    /// localized duration; this version deliberately caps very long estimates
-    /// so an unreliable early sample cannot consume half the menu bar.
-    private static func compactRemainingTime(_ seconds: Double) -> String? {
-        guard seconds.isFinite, seconds > 0 else { return nil }
-        let total = max(1, Int(seconds.rounded(.up)))
-        if total >= 100 * 3600 { return "99h+" }
-        if total >= 3600 {
-            return "\(total / 3600)h \((total % 3600) / 60)m"
+        if let eta = progress.etaSeconds, let remaining = Formatters.remainingTime(eta) {
+            parts.append(remaining)
         }
-        if total >= 60 {
-            return "\(total / 60)m \(total % 60)s"
-        }
-        return "\(total)s"
+        return ([base] + parts).joined(separator: " · ")
     }
 
     private static func image(for state: IconState) -> NSImage {
@@ -392,7 +316,7 @@ final class StatusItemController: NSObject {
         case .failed:
             return symbol("exclamationmark.triangle")
         case .progress(let fraction):
-            return ringImage(fraction: fraction)
+            return fraction.map(ringImage) ?? symbol("arrow.down.circle")
         }
     }
 

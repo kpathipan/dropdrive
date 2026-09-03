@@ -134,8 +134,8 @@ struct PreferencesView: View {
                 Text(tr("Keyboard Shortcut", "คีย์ลัด"))
             } footer: {
                 Text(tr(
-                    "Works from any app and prepares supported links currently on the clipboard.",
-                    "ใช้ได้จากทุกแอป และเตรียมลิงก์ที่รองรับจากคลิปบอร์ดให้พร้อมวิเคราะห์"
+                    "Use this shortcut to open DropDrive from any app.",
+                    "ใช้คีย์ลัดนี้เพื่อเปิด DropDrive ได้จากทุกแอป"
                 ))
                 .foregroundStyle(.secondary)
             }
@@ -172,9 +172,6 @@ struct PreferencesView: View {
             Section {
                 Toggle(isOn: $preferences.preferCompatibleVideo) {
                     Label(tr("Keep videos playable on Mac (H.264/MP4)", "ให้วิดีโอเปิดได้บน Mac (H.264/MP4)"), systemImage: "play.rectangle")
-                }
-                Toggle(isOn: $preferences.showMenuBarProgress) {
-                    Label(tr("Show live progress in the menu bar", "แสดงความคืบหน้าบนเมนูบาร์"), systemImage: "menubar.rectangle")
                 }
             } header: {
                 Text(tr("Video", "วิดีโอ"))

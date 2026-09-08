@@ -67,6 +67,13 @@ struct MenuBarView: View {
     private var windowHeight: CGFloat {
         switch selectedPane {
         case .queue:
+            if isReviewingDownload {
+                switch viewModel.linkAnalysisState {
+                case .analyzed(let analysis), .duplicateCompleted(let analysis):
+                    return analysis.type == .folder ? Self.maxWindowHeight : 420
+                default: break
+                }
+            }
             if shouldLockQueueWindow, let lockedQueueWindowHeight {
                 return lockedQueueWindowHeight
             }
@@ -384,7 +391,23 @@ struct MenuBarView: View {
             .padding(.bottom, 4)
     }
 
+    private var isReviewingDownload: Bool {
+        switch viewModel.linkAnalysisState {
+        case .analyzed, .duplicateCompleted: true
+        default: false
+        }
+    }
+
+    @ViewBuilder
     private var queuePane: some View {
+        if isReviewingDownload {
+            analysisArea.padding(12)
+        } else {
+            ordinaryQueuePane
+        }
+    }
+
+    private var ordinaryQueuePane: some View {
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView {

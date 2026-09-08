@@ -1,54 +1,34 @@
 import Foundation
 
-/// Sweeps up scratch files that a previous run left behind.
-///
-/// Multi-part downloads stage their byte ranges in `DropDrive-<uuid>` temp
-/// directories and delete them on the way out, but that cleanup never runs when
-/// the process is killed mid-download (force quit, crash, restart). Each
-/// abandoned attempt then strands its parts — observed in the wild at 20 leftover
-/// directories holding 14 GB, which is what filled the user's disk.
+/// Only disposable files in exact app-owned cache directories are swept.
+/// System downloads and unknown staging directories are never ours by name alone.
 nonisolated enum TempCleaner {
-    /// Directories younger than this may belong to a download still running in
-    /// another instance, so they're left alone.
-    private static let minimumAge: TimeInterval = 60 * 60
-
     static func sweepInBackground() {
-        Task.detached(priority: .utility) {
-            sweep()
-        }
+        Task.detached(priority: .utility) { sweep() }
     }
 
-    static func sweep() {
-        let fileManager = FileManager.default
-        let temp = fileManager.temporaryDirectory
-        let entries = (try? fileManager.contentsOfDirectory(
-            at: temp,
-            includingPropertiesForKeys: [.contentModificationDateKey, .isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        )) ?? []
-
-        let cutoff = Date().addingTimeInterval(-minimumAge)
-
-        for entry in entries {
-            let name = entry.lastPathComponent
-            // Only our own scratch: the multi-part staging dirs, the cached
-            // yt-dlp extraction info, and URLSession's own download scratch.
-            //
-            // That last one is written by the system into this same directory
-            // and is only cleaned up when the delegate callback that consumes it
-            // runs — which a cancelled or failed download never reaches. 232 of
-            // them had collected here, the oldest three weeks old. The age
-            // cutoff keeps this off any download still in flight.
-            guard name.hasPrefix("DropDrive-")
-                || name == "DropDrive-info"
-                || name == "dropdrive-ytdlp-cache"
-                || name.hasPrefix("CFNetworkDownload_")
+    static func sweep(in temporary: URL = FileManager.default.temporaryDirectory, now: Date = .now) {
+        let manager = FileManager.default
+        let cutoff = now.addingTimeInterval(-24 * 60 * 60)
+        for name in ["DropDrive-info", "dropdrive-ytdlp-cache"] {
+            let directory = temporary.appendingPathComponent(name, isDirectory: true)
+            guard let values = try? directory.resourceValues(forKeys: [.isSymbolicLinkKey]),
+                values.isSymbolicLink != true,
+                let enumerator = manager.enumerator(
+                    at: directory,
+                    includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey, .contentModificationDateKey],
+                    options: [.skipsHiddenFiles])
             else { continue }
-
-            let values = try? entry.resourceValues(forKeys: [.contentModificationDateKey])
-            guard let modified = values?.contentModificationDate, modified < cutoff else { continue }
-
-            try? fileManager.removeItem(at: entry)
+            for case let file as URL in enumerator {
+                guard
+                    let values = try? file.resourceValues(forKeys: [
+                        .isRegularFileKey, .isSymbolicLinkKey, .contentModificationDateKey,
+                    ]),
+                    values.isSymbolicLink != true, values.isRegularFile == true,
+                    let modified = values.contentModificationDate, modified < cutoff
+                else { continue }
+                try? manager.removeItem(at: file)
+            }
         }
     }
 }

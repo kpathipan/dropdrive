@@ -262,19 +262,21 @@ final class DropDriveViewModel {
             // rather than turning an unknown value into a disabled button.
             canQueue = true
         case .available(let free):
-            if let bytes = analysis.totalBytes {
+            if analysis.isVideo != true, let bytes = analysis.totalBytes {
                 canQueue = free >= Self.requiredCapacity(for: bytes)
             } else {
                 canQueue = free >= Self.unknownSizeFloorBytes
             }
         }
         guard let destination = selectedDestinationURL else {
-            return DestinationPreflight(capacity: capacity, requiredBytes: analysis.totalBytes, hasNameCollision: false, canQueue: canQueue)
+            return DestinationPreflight(
+                capacity: capacity, requiredBytes: analysis.isVideo == true ? nil : analysis.totalBytes,
+                hasNameCollision: false, canQueue: canQueue)
         }
         let candidate = destination.appendingPathComponent(analysis.name, isDirectory: analysis.type == .folder)
         return DestinationPreflight(
             capacity: capacity,
-            requiredBytes: analysis.totalBytes,
+            requiredBytes: analysis.isVideo == true ? nil : analysis.totalBytes,
             hasNameCollision: FileManager.default.fileExists(atPath: candidate.path),
             canQueue: canQueue
         )
@@ -524,7 +526,9 @@ final class DropDriveViewModel {
                   let index = queue.firstIndex(where: { $0.id == queueItemID }) else { return }
             selectedDestinationURL = folderURL
             queue[index].destinationURL = folderURL
-            if queue[index].status == .waiting, queue[index].attentionKind == .destination {
+            if (queue[index].status == .waiting || queue[index].status == .failed),
+                queue[index].attentionKind == .destination || queue[index].attentionKind == .space
+            {
                 queue[index].status = .ready
                 queue[index].attentionKind = nil
                 queue[index].errorMessage = nil
@@ -649,7 +653,12 @@ final class DropDriveViewModel {
         videoDownloadService: VideoDownloadService
     ) async -> BatchWork {
         if VideoDownloadService.isSupportedLink(link) {
-            let analysis = await videoDownloadService.quickAnalyze(link)
+            let analysis: DriveLinkAnalysis?
+            if let quick = await videoDownloadService.quickAnalyze(link) {
+                analysis = quick
+            } else {
+                analysis = try? await videoDownloadService.analyze(link)
+            }
             return BatchWork(link: link, result: analysis.map(BatchWorkResult.ready) ?? .videoUnavailable)
         }
 
@@ -692,8 +701,8 @@ final class DropDriveViewModel {
             handleSuccessfulAnalysis(analysis, trimmedLink: trimmedLink)
         } catch {
             guard !Task.isCancelled else { return }
-            let message = (error as? VideoDownloadService.VideoError)?.message
-                ?? tr("Couldn't read this video link.", "อ่านลิงก์วิดีโอนี้ไม่ได้")
+            let kind = (error as? VideoDownloadService.VideoError)?.failure ?? .source
+            let message = Self.videoRecoveryMessage(kind)
             linkAnalysisState = .failed(message)
         }
     }
@@ -998,7 +1007,7 @@ final class DropDriveViewModel {
     /// Required free space when the download's size is unknown — video links are
     /// confirmed from oEmbed data, which carries no size at all, and those used
     /// to skip the check entirely.
-    private static let unknownSizeFloorBytes: Int64 = 5 * 1024 * 1024 * 1024
+    private static let unknownSizeFloorBytes: Int64 = TransferGuard.reserveBytes
 
     /// Small downloads should not require an unrelated 2 GB of free space.
     /// Reserve 10% with sensible 64 MB–2 GB bounds instead.
@@ -1068,7 +1077,8 @@ final class DropDriveViewModel {
             return nil
         }
 
-        let known = queueSummary.totalBytes
+        let next = queue.first(where: { $0.status == .ready })
+        let known = next?.analysis.isVideo == true ? 0 : (next?.analysis.totalBytes ?? 0)
         let freeText = Formatters.byteCount(free)
 
         guard known > 0 else {
@@ -1115,11 +1125,24 @@ final class DropDriveViewModel {
             processQueueIfNeeded()
             return
         }
+        let required =
+            item.analysis.isVideo == true
+            ? Self.unknownSizeFloorBytes
+            : item.analysis.totalBytes.map(Self.requiredCapacity) ?? Self.unknownSizeFloorBytes
+        if case .available(let free) = DestinationCapacity.inspect(destinationURL), free < required {
+            queue[index].status = .failed
+            queue[index].attentionKind = .space
+            queue[index].errorMessage = Self.videoRecoveryMessage(.space)
+            QueueStore.save(queue)
+            processQueueIfNeeded()
+            return
+        }
         queue[index].status = .downloading
+        queue[index].startedAt = .now
         queue[index].attentionKind = nil
         queue[index].nextRetryAt = nil
         activeQueueItemID = item.id
-        activeProgress = DownloadProgress(currentFileName: "Preparing…")
+        activeProgress = DownloadProgress(currentFileName: tr("Preparing…", "กำลังเตรียมไฟล์…"))
         QueueStore.save(queue)
 
         if item.analysis.isVideo == true {
@@ -1141,15 +1164,19 @@ final class DropDriveViewModel {
             }
         )
 
+        let service = downloadService
         downloadTask = Task {
             let activity = DownloadActivityService.begin()
             defer { DownloadActivityService.end(activity) }
             do {
-                let resultURL = try await downloadService.download(request) { progress in
-                    Task { @MainActor [self] in
-                        self.activeProgress = progress
-                        if progress.bytesDownloaded > 0 || progress.completedFiles > 0 {
-                            self.clearAttention(for: item.id)
+                let resultURL = try await TransferGuard.run(destination: destinationURL) {
+                    try await service.download(request) { progress in
+                        Task { @MainActor [self] in
+                            guard self.activeQueueItemID == item.id else { return }
+                            self.activeProgress = progress
+                            if progress.bytesDownloaded > 0 || progress.completedFiles > 0 {
+                                self.clearAttention(for: item.id)
+                            }
                         }
                     }
                 }
@@ -1166,11 +1193,19 @@ final class DropDriveViewModel {
                 // giving up — resume data is kept, so each retry continues from
                 // where the connection died rather than starting over.
                 let attempts = autoRetryAttempts[item.id, default: 0]
-                if error is URLError, attempts < Self.autoRetryDelays.count {
+                let kind = Self.driveFailureKind(error)
+                if kind == .network, attempts < Self.autoRetryDelays.count {
                     scheduleAutoRetry(item, destinationURL: destinationURL, attempt: attempts + 1)
                 } else {
                     autoRetryAttempts[item.id] = nil
-                    finishActiveItem(item.id, status: .failed, resultURL: nil, errorMessage: Self.friendlyMessage(for: error))
+                    if let index = queue.firstIndex(where: { $0.id == item.id }) {
+                        queue[index].attentionKind = QueueItem.AttentionKind(rawValue: kind.rawValue)
+                    }
+                    finishActiveItem(
+                        item.id, status: kind == .destination ? .waiting : .failed, resultURL: nil,
+                        errorMessage: kind == .source || kind == .authentication
+                            ? Self.friendlyMessage(for: error) : Self.videoRecoveryMessage(kind))
+                    if let failed = queue.first(where: { $0.id == item.id }) { notifyAttentionIfNeeded(for: failed) }
                 }
             }
         }
@@ -1180,43 +1215,123 @@ final class DropDriveViewModel {
     /// queue mechanics (cancel/pause statuses, completion handling, retry UI)
     /// are shared. yt-dlp resumes its own .part files, so pause/resume works.
     private func startVideoDownload(_ item: QueueItem, destinationURL: URL) {
+        let service = videoDownloadService
         downloadTask = Task {
             let activity = DownloadActivityService.begin()
             defer { DownloadActivityService.end(activity) }
             do {
-                let resultURL = try await videoDownloadService.download(
-                    link: item.driveLink,
-                    title: item.displayName,
-                    destination: destinationURL,
-                    asAudio: item.asAudio == true,
-                    clipSection: item.clipSection,
-                    customName: item.customName,
-                    quality: item.videoQuality ?? (item.asAudio == true ? .mp3 : .automatic),
-                    subtitleMode: item.subtitleMode ?? .none,
-                    splitChapters: item.splitChapters == true,
-                    saveThumbnail: item.saveThumbnail == true,
-                    selectedMediaIndexes: item.selectedMediaIndexes,
-                    collectionCount: item.analysis.videoDetails?.mediaItems.count ?? 0
-                ) { progress in
-                    Task { @MainActor [self] in
-                        self.activeProgress = progress
-                        if progress.bytesDownloaded > 0 {
-                            self.clearAttention(for: item.id)
+                let resultURL = try await TransferGuard.run(destination: destinationURL) {
+                    try await service.download(
+                        link: item.driveLink,
+                        title: item.displayName,
+                        destination: destinationURL,
+                        asAudio: item.asAudio == true,
+                        clipSection: item.clipSection,
+                        customName: item.customName,
+                        quality: item.videoQuality ?? (item.asAudio == true ? .mp3 : .automatic),
+                        subtitleMode: item.subtitleMode ?? .none,
+                        splitChapters: item.splitChapters == true,
+                        saveThumbnail: item.saveThumbnail == true,
+                        selectedMediaIndexes: item.selectedMediaIndexes,
+                        collectionCount: item.analysis.videoDetails?.mediaItems.count ?? 0,
+                        thumbnailURL: item.analysis.thumbnailURL,
+                        ownerName: item.analysis.ownerName
+                    ) { progress in
+                        Task { @MainActor [self] in
+                            guard self.activeQueueItemID == item.id else { return }
+                            self.activeProgress = progress
+                            if progress.bytesDownloaded > 0 {
+                                self.clearAttention(for: item.id)
+                            }
                         }
                     }
                 }
                 try Task.checkCancellation()
+                autoRetryAttempts[item.id] = nil
                 finishActiveItem(item.id, status: .completed, resultURL: resultURL, errorMessage: nil)
             } catch is CancellationError {
                 let status: QueueItem.Status = isPausingActiveItem ? .paused : .cancelled
                 isPausingActiveItem = false
+                autoRetryAttempts[item.id] = nil
                 finishActiveItem(item.id, status: status, resultURL: nil, errorMessage: nil)
             } catch {
-                let message = (error as? VideoDownloadService.VideoError)?.message
-                    ?? tr("The video download failed.", "ดาวน์โหลดวิดีโอไม่สำเร็จ")
-                finishActiveItem(item.id, status: .failed, resultURL: nil, errorMessage: message)
+                // URLSession-backed media can report URLError.cancelled rather
+                // than CancellationError. Never turn the user's Cancel into a retry.
+                if Task.isCancelled {
+                    let status: QueueItem.Status = isPausingActiveItem ? .paused : .cancelled
+                    isPausingActiveItem = false
+                    autoRetryAttempts[item.id] = nil
+                    finishActiveItem(item.id, status: status, resultURL: nil, errorMessage: nil)
+                    return
+                }
+                let kind =
+                    (error as? VideoDownloadPolicy.Failure)
+                    ?? (error as? VideoDownloadService.VideoError)?.failure
+                    ?? ((error as? URLError) != nil ? .network : .source)
+                if kind == .network, autoRetryAttempts[item.id, default: 0] < Self.autoRetryDelays.count {
+                    scheduleAutoRetry(
+                        item, destinationURL: destinationURL, attempt: autoRetryAttempts[item.id, default: 0] + 1)
+                } else {
+                    autoRetryAttempts[item.id] = nil
+                    if let index = queue.firstIndex(where: { $0.id == item.id }) {
+                        queue[index].attentionKind = QueueItem.AttentionKind(rawValue: kind.rawValue)
+                    }
+                    finishActiveItem(
+                        item.id, status: kind == .destination ? .waiting : .failed,
+                        resultURL: nil, errorMessage: Self.videoRecoveryMessage(kind))
+                    if let failed = queue.first(where: { $0.id == item.id }) { notifyAttentionIfNeeded(for: failed) }
+                }
             }
         }
+    }
+
+    private static func videoRecoveryMessage(_ kind: VideoDownloadPolicy.Failure) -> String {
+        switch kind {
+        case .network:
+            return tr(
+                "Connection lost. Check your internet, then retry to continue.",
+                "การเชื่อมต่อขัดข้อง ตรวจอินเทอร์เน็ตแล้วกดลองใหม่เพื่อทำต่อ")
+        case .destination:
+            return tr(
+                "Destination unavailable. Reconnect the drive or choose another folder.",
+                "ปลายทางใช้งานไม่ได้ เชื่อมต่อไดรฟ์หรือเลือกโฟลเดอร์ใหม่")
+        case .space:
+            return tr(
+                "Not enough free space. Free some space or choose another destination, then retry.",
+                "พื้นที่ไม่พอ เคลียร์พื้นที่หรือเลือกปลายทางใหม่ แล้วกดลองใหม่")
+        case .authentication:
+            return tr(
+                "This source requires access. Open the original link to check its privacy or account requirements.",
+                "แหล่งนี้ต้องมีสิทธิ์เข้าถึง เปิดลิงก์ต้นทางเพื่อตรวจบัญชีและการแชร์")
+        case .source:
+            return tr(
+                "Couldn't retrieve this media. Open the original link to check that it is available, then retry.",
+                "ดึงไฟล์ไม่ได้ เปิดลิงก์ต้นทางเพื่อตรวจว่ายังใช้งานได้ แล้วลองใหม่")
+        }
+    }
+
+    private static func driveFailureKind(_ error: Error) -> VideoDownloadPolicy.Failure {
+        if let failure = error as? VideoDownloadPolicy.Failure { return failure }
+        if error is URLError { return .network }
+        if let drive = error as? DriveDownloadError {
+            switch drive {
+            case .authenticationRequired: return .authentication
+            case .server(let code, _) where [401, 403, 404].contains(code): return .authentication
+            case .server(let code, _) where code == 429 || code >= 500: return .network
+            default: return .source
+            }
+        }
+        let nsError = error as NSError
+        if nsError.domain == NSCocoaErrorDomain {
+            if nsError.code == NSFileWriteOutOfSpaceError { return .space }
+            if [
+                NSFileWriteNoPermissionError, NSFileReadNoPermissionError, NSFileNoSuchFileError,
+                NSFileReadNoSuchFileError,
+            ].contains(nsError.code) {
+                return .destination
+            }
+        }
+        return VideoDownloadPolicy.failure(for: error.localizedDescription)
     }
 
     /// Waits out the backoff with the item still active (so the queue doesn't
@@ -1360,7 +1475,8 @@ final class DropDriveViewModel {
         if item.analysis.isVideo == true {
             VideoDownloadService.cleanupPartials(title: item.displayName, in: destinationURL)
         } else if item.analysis.type == .folder {
-            GoogleDriveDownloadService.removePartialFolderArtifact(itemID: item.itemID, in: destinationURL)
+            GoogleDriveDownloadService.removePartialFolderArtifact(
+                itemID: item.itemID, in: destinationURL, resumeID: item.id)
         } else {
             // A single file stages as "<name>.dddownload" next to its
             // destination; a run that was killed rather than cancelled leaves

@@ -12,6 +12,7 @@ struct VideoDownloadService: Sendable {
     struct VideoError: LocalizedError {
         let message: String
         var errorDescription: String? { message }
+        var failure: VideoDownloadPolicy.Failure { VideoDownloadPolicy.failure(for: message) }
     }
 
     private struct TikTokPhotoPost: Sendable {
@@ -203,8 +204,12 @@ struct VideoDownloadService: Sendable {
         saveThumbnail: Bool = false,
         selectedMediaIndexes: Set<Int>? = nil,
         collectionCount: Int = 0,
+        thumbnailURL: String? = nil,
+        ownerName: String? = nil,
         onProgress: @escaping @Sendable (DownloadProgress) -> Void
     ) async throws -> URL {
+        try Task.checkCancellation()
+        onProgress(DownloadProgress(currentFileName: tr("Resolving media link…", "กำลังขอลิงก์ไฟล์…")))
         // Keep photo posts as their original still images plus soundtrack.
         if Self.couldBeTikTokPhotoPost(link),
            let photoPost = await Self.tikTokPhotoPost(for: link) {
@@ -263,6 +268,7 @@ struct VideoDownloadService: Sendable {
             "--progress"
         ]
         if !isCollection { arguments.append("--no-playlist") }
+        arguments += VideoDownloadPolicy.rateArguments(PreferencesStore.shared.bandwidthLimitBytesPerSecond)
         if let selectedMediaIndexes, !selectedMediaIndexes.isEmpty {
             arguments += ["--playlist-items", selectedMediaIndexes.sorted().map(String.init).joined(separator: ",")]
         }
@@ -358,6 +364,7 @@ struct VideoDownloadService: Sendable {
         }
 
         func retryTikTokEmbed(after error: Error) async throws -> String {
+            try Task.checkCancellation()
             guard let embedURL = await Self.tikTokEmbedURL(for: link) else { throw error }
 
             // The generic embed extractor calls every item "TikTok Embed" and
@@ -371,17 +378,37 @@ struct VideoDownloadService: Sendable {
         }
 
         func downloadTikTokPlayerURL(_ playerURL: URL) async throws -> String {
+            try Task.checkCancellation()
+            // Supply the confirmed metadata with the direct stream. Otherwise
+            // the generic CDN extractor loses the caption/author/cover in MP3.
+            var info: [String: Any] = [
+                "id": LinkIdentity.videoItemID(for: link), "title": customName ?? title,
+                "url": playerURL.absoluteString, "ext": "mp4",
+                "webpage_url": link, "extractor": "TikTok", "extractor_key": "TikTok",
+                "http_headers": ["Referer": "https://www.tiktok.com/"],
+            ]
+            if let thumbnailURL { info["thumbnail"] = thumbnailURL }
+            if let ownerName { info["uploader"] = ownerName }
+            let metadata = Self.infoCacheURL(for: "player-\(UUID().uuidString)")
+            try JSONSerialization.data(withJSONObject: info).write(to: metadata, options: .atomic)
+            defer { try? FileManager.default.removeItem(at: metadata) }
             finalPath.value = nil
             return try await Self.run(
                 arguments: argumentsUsingConfirmedTitle() + [
-                    "--add-header", "Referer:https://www.tiktok.com/",
-                    playerURL.absoluteString
+                    "--load-info-json", metadata.path,
                 ],
                 onProgressLine: handleLine
             )
         }
 
         func retryTikTokWithoutWatermark(after originalError: Error) async throws -> String {
+            try Task.checkCancellation()
+            guard VideoDownloadPolicy.platform(for: link) == "tiktok" else { throw originalError }
+            if let error = originalError as? VideoError,
+                [.network, .space, .destination].contains(error.failure)
+            {
+                throw error
+            }
             if let playerURL = await Self.tikTokWatermarkFreeVideoURL(for: link, quality: quality) {
                 do {
                     return try await downloadTikTokPlayerURL(playerURL)
@@ -485,6 +512,8 @@ struct VideoDownloadService: Sendable {
             ))
         }
         let resultURL = isCollection ? collectionDestination : URL(fileURLWithPath: path)
+        try Task.checkCancellation()
+        onProgress(DownloadProgress(currentFileName: tr("Checking the downloaded file…", "กำลังตรวจสอบไฟล์…")))
         if isCollection {
             try await Self.validateCollectionMedia(
                 in: resultURL,
@@ -892,10 +921,13 @@ struct VideoDownloadService: Sendable {
             "Couldn't make this video Mac-compatible.",
             "แปลงวิดีโอนี้ให้ใช้กับ Mac ไม่สำเร็จ"
         )
+        let lifetime = VideoProcessLifetime(process)
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                 process.terminationHandler = { process in
-                    if process.terminationStatus == 0 {
+                    if lifetime.isCancelled {
+                        continuation.resume(throwing: CancellationError())
+                    } else if process.terminationStatus == 0 {
                         continuation.resume()
                     } else {
                         let data = stderr.fileHandleForReading.readDataToEndOfFile()
@@ -904,12 +936,12 @@ struct VideoDownloadService: Sendable {
                         continuation.resume(throwing: VideoError(message: detail ?? conversionFailureMessage))
                     }
                 }
-                do { try process.run() }
-                catch { continuation.resume(throwing: error) }
+                do { try lifetime.start() } catch { continuation.resume(throwing: error) }
             }
         } onCancel: {
-            process.terminate()
+            lifetime.cancel()
         }
+        try Task.checkCancellation()
         _ = try FileManager.default.replaceItemAt(url, withItemAt: temporary)
     }
 
@@ -1069,6 +1101,7 @@ struct VideoDownloadService: Sendable {
         arguments: [String],
         onProgressLine: (@Sendable (String) -> Void)?
     ) async throws -> String {
+        try Task.checkCancellation()
         guard let ytDlpURL else {
             throw VideoError(message: tr(
                 "Video engine is missing from this build.",
@@ -1099,7 +1132,8 @@ struct VideoDownloadService: Sendable {
             errorCollector.ingest(handle.availableData)
         }
 
-        return try await withTaskCancellationHandler {
+        let lifetime = VideoProcessLifetime(process)
+        let output: String = try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 process.terminationHandler = { process in
                     stdoutPipe.fileHandleForReading.readabilityHandler = nil
@@ -1109,7 +1143,7 @@ struct VideoDownloadService: Sendable {
 
                     if process.terminationStatus == 0 {
                         continuation.resume(returning: collector.text)
-                    } else if process.terminationReason == .uncaughtSignal {
+                    } else if lifetime.isCancelled {
                         continuation.resume(throwing: CancellationError())
                     } else {
                         let lastError = errorCollector.text
@@ -1119,14 +1153,16 @@ struct VideoDownloadService: Sendable {
                     }
                 }
                 do {
-                    try process.run()
+                    try lifetime.start()
                 } catch {
                     continuation.resume(throwing: error)
                 }
             }
         } onCancel: {
-            process.terminate()
+            lifetime.cancel()
         }
+        try Task.checkCancellation()
+        return output
     }
 
     /// "[download]  45.2% of ~  12.34MiB at    2.34MiB/s ETA 00:12"

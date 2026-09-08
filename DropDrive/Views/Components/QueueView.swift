@@ -378,6 +378,15 @@ private struct QueueRow: View {
     /// are the product, not decoration.
     private func inlineProgress(_ progress: DownloadProgress) -> some View {
         VStack(alignment: .leading, spacing: 5) {
+            if let startedAt = item.startedAt {
+                HStack {
+                    Text(tr("Elapsed", "เวลาที่ใช้"))
+                    Text(startedAt, style: .timer)
+                        .monospacedDigit().frame(width: 64, alignment: .leading)
+                    Spacer()
+                }
+                .font(.dd(11)).foregroundStyle(.secondary)
+            }
             HStack {
                 Text(progress.currentFileName.isEmpty ? tr("Downloading…", "กำลังดาวน์โหลด…") : progress.currentFileName)
                     .font(.dd(11))

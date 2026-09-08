@@ -985,15 +985,19 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
         let rootFolderURL = Self.resolvedRootFolderURL(
             name: request.customName ?? rootMetadata.name,
             itemID: request.itemID,
+            resumeID: request.resumeID,
             in: request.destinationURL
         )
+        let usesSelectedFolder = rootFolderURL.standardizedFileURL == request.destinationURL.standardizedFileURL
         try FileManager.default.createDirectory(at: rootFolderURL, withIntermediateDirectories: true)
-        Self.writeResumeMarker(itemID: request.itemID, in: rootFolderURL)
+        if !usesSelectedFolder {
+            try Self.writeResumeMarker(itemID: request.itemID, resumeID: request.resumeID, in: rootFolderURL)
+        }
 
         progress(DownloadProgress(currentFileName: request.selectedFolderItems == nil
             ? "Scanning folder contents…"
             : "Preparing selected files…"))
-        let plan: [PlanItem]
+        var plan: [PlanItem]
         var downloadResourceKeys = resourceKeys
         if let selectedFolderItems = request.selectedFolderItems {
             var direct: [PlanItem] = []
@@ -1003,7 +1007,7 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
                 let destinationFolder = relativeDirectory.isEmpty
                     ? rootFolderURL
                     : rootFolderURL.appendingPathComponent(relativeDirectory, isDirectory: true)
-                try FileManager.default.createDirectory(at: destinationFolder, withIntermediateDirectories: true)
+                try Self.createDownloadDirectory(destinationFolder, beneath: rootFolderURL)
                 if let resourceKey = item.resourceKey { downloadResourceKeys[item.id] = resourceKey }
                 direct.append(PlanItem(
                     file: DriveFile(
@@ -1029,7 +1033,13 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
 
         // Half-written files from a run that was killed rather than cancelled:
         // clear them so this attempt restarts those files cleanly.
-        Self.removePartialFiles(in: rootFolderURL)
+        if usesSelectedFolder {
+            // The user selected the source-named folder itself. Reuse it, but
+            // never treat its pre-existing files as downloads from this job.
+            plan = try Self.planInExistingFolder(plan, root: rootFolderURL, request: request)
+        } else {
+            Self.removePartialFiles(in: rootFolderURL)
+        }
 
         // One `stat` per planned file, not three: the totals, the already-done
         // tally, and the remaining work all come out of the same pass. A folder
@@ -1092,8 +1102,12 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
             }
         }
 
-        Self.clearResumeMarker(itemID: request.itemID, in: rootFolderURL)
-        Self.removeEmptyDirectories(in: rootFolderURL)
+        if usesSelectedFolder {
+            try? FileManager.default.removeItem(at: Self.existingFolderManifestURL(request.resumeID, in: rootFolderURL))
+        } else {
+            Self.clearResumeMarker(itemID: request.itemID, in: rootFolderURL)
+            Self.removeEmptyDirectories(in: rootFolderURL)
+        }
         return rootFolderURL
     }
 
@@ -1155,6 +1169,84 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
         /// the whole plan so that the "is it already on disk?" check and the
         /// download itself can never disagree about it.
         var localName: String = ""
+    }
+
+    private struct ExistingFolderManifest: Codable {
+        let itemID: String
+        var paths: [String: String]
+    }
+
+    private static func existingFolderManifestURL(_ resumeID: UUID, in root: URL) -> URL {
+        root.appendingPathComponent(".dropdrive-resume-\(resumeID.uuidString).json")
+    }
+
+    /// A persisted name reservation makes retries idempotent without claiming
+    /// ownership of (or recursively cleaning) the user's selected directory.
+    private static func planInExistingFolder(_ plan: [PlanItem], root: URL, request: DownloadRequest) throws
+        -> [PlanItem]
+    {
+        let fm = FileManager.default
+        let manifestURL = existingFolderManifestURL(request.resumeID, in: root)
+        var manifest = ExistingFolderManifest(itemID: request.itemID, paths: [:])
+        if fm.fileExists(atPath: manifestURL.path) {
+            manifest = try JSONDecoder().decode(ExistingFolderManifest.self, from: Data(contentsOf: manifestURL))
+            guard manifest.itemID == request.itemID else { throw CocoaError(.fileReadCorruptFile) }
+        }
+        var taken = Set(manifest.paths.values.map { $0.lowercased() })
+        var result: [PlanItem] = []
+        for item in plan.sorted(by: { $0.file.id < $1.file.id }) {
+            let candidate = item.destinationFolderURL.appendingPathComponent(item.localName)
+            let chosen: URL
+            if let saved = manifest.paths[item.file.id] {
+                guard !saved.hasPrefix("/"), !saved.split(separator: "/").contains("..") else {
+                    throw CocoaError(.fileReadCorruptFile)
+                }
+                chosen = root.appendingPathComponent(saved)
+                try createDownloadDirectory(chosen.deletingLastPathComponent(), beneath: root)
+            } else {
+                var name = candidate
+                var suffix = 1
+                let ext = candidate.pathExtension
+                let base =
+                    ext.isEmpty ? candidate.lastPathComponent : candidate.deletingPathExtension().lastPathComponent
+                while fm.fileExists(atPath: name.path)
+                    || fm.fileExists(atPath: name.appendingPathExtension(partialExtension).path)
+                    || taken.contains(String(name.path.dropFirst(root.path.count + 1)).lowercased())
+                {
+                    name = candidate.deletingLastPathComponent().appendingPathComponent(
+                        ext.isEmpty ? "\(base) (\(suffix))" : "\(base) (\(suffix)).\(ext)")
+                    suffix += 1
+                }
+                chosen = name
+                let path = String(chosen.path.dropFirst(root.path.count + 1))
+                manifest.paths[item.file.id] = path
+                taken.insert(path.lowercased())
+            }
+            result.append(
+                PlanItem(
+                    file: item.file, destinationFolderURL: chosen.deletingLastPathComponent(),
+                    localName: chosen.lastPathComponent))
+        }
+        try JSONEncoder().encode(manifest).write(to: manifestURL, options: .atomic)
+        return result
+    }
+
+    /// Don't traverse a symlink supplied by an existing destination folder.
+    private static func createDownloadDirectory(_ directory: URL, beneath root: URL) throws {
+        guard
+            directory.standardizedFileURL.path == root.standardizedFileURL.path
+                || directory.standardizedFileURL.path.hasPrefix(root.standardizedFileURL.path + "/")
+        else {
+            throw CocoaError(.fileWriteInvalidFileName)
+        }
+        var cursor = directory.standardizedFileURL
+        while cursor != root.standardizedFileURL {
+            if (try? cursor.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true {
+                throw CocoaError(.fileWriteNoPermission)
+            }
+            cursor.deleteLastPathComponent()
+        }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     }
 
     private static func removeEmptyDirectories(in root: URL) {
@@ -1243,7 +1335,7 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
                         // See `estimateFolderContents`: shortcut cycles.
                         guard visited.insert(child.id).inserted else { continue }
                         let childURL = parentURL.appendingPathComponent(Self.sanitizedName(child.name), isDirectory: true)
-                        try FileManager.default.createDirectory(at: childURL, withIntermediateDirectories: true)
+                        try Self.createDownloadDirectory(childURL, beneath: localFolderURL)
                         next.append(FolderScan(id: child.id, resourceKeys: childKeys, localURL: childURL, relativePath: ""))
                     } else if Self.isDownloadable(mimeType: child.mimeType) {
                         items.append(PlanItem(file: child, destinationFolderURL: parentURL))
@@ -1673,11 +1765,32 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
     /// A brand-new folder download gets a collision-safe unique name (Feature 13). A
     /// folder we're resuming into (marked below) reuses the exact same path instead —
     /// otherwise every resume attempt would uniquify itself into a fresh "(1)", "(2)"...
-    private static func resolvedRootFolderURL(name: String, itemID: String, in destinationURL: URL) -> URL {
+    private static func resolvedRootFolderURL(name: String, itemID: String, resumeID: UUID, in destinationURL: URL)
+        -> URL
+    {
+        if destinationURL.lastPathComponent.trimmingCharacters(in: .whitespacesAndNewlines)
+            .precomposedStringWithCanonicalMapping.localizedCaseInsensitiveCompare(
+                sanitizedName(name).trimmingCharacters(in: .whitespacesAndNewlines).precomposedStringWithCanonicalMapping)
+            == .orderedSame
+        {
+            return destinationURL
+        }
         let candidate = destinationURL.appendingPathComponent(sanitizedName(name), isDirectory: true)
-        let marker = candidate.appendingPathComponent(resumeMarkerName)
-        if let ownerID = try? String(contentsOf: marker, encoding: .utf8), ownerID == itemID {
+        if ownsFolder(candidate, itemID: itemID, resumeID: resumeID) {
             return candidate
+        }
+        // The first attempt may have received a collision suffix. Find its
+        // marker too, rather than creating another sibling on every retry.
+        let children =
+            (try? FileManager.default.contentsOfDirectory(
+                at: destinationURL,
+                includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey])) ?? []
+        for child in children.sorted(by: { $0.path < $1.path }) {
+            guard let values = try? child.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]),
+                values.isDirectory == true, values.isSymbolicLink != true,
+                ownsFolder(child, itemID: itemID, resumeID: resumeID)
+            else { continue }
+            return destinationURL.appendingPathComponent(child.lastPathComponent, isDirectory: true)
         }
         return UniqueDestinationNaming.uniqueURL(for: candidate)
     }
@@ -1689,7 +1802,28 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
     /// carrying the marker is touched — a finished download had its marker cleared,
     /// and a folder the user made themselves never had one, so neither can ever be
     /// deleted here.
-    static func removePartialFolderArtifact(itemID: String, in destinationURL: URL) {
+    static func removePartialFolderArtifact(itemID: String, in destinationURL: URL, resumeID: UUID? = nil) {
+        if let resumeID {
+            let manifestURL = existingFolderManifestURL(resumeID, in: destinationURL)
+            if let data = try? Data(contentsOf: manifestURL),
+                let manifest = try? JSONDecoder().decode(ExistingFolderManifest.self, from: data),
+                manifest.itemID == itemID
+            {
+                for path in manifest.paths.values
+                where !path.hasPrefix("/") && !path.split(separator: "/").contains("..") {
+                    let file = destinationURL.appendingPathComponent(path)
+                    // Preserve completed files in a folder the user owns.
+                    // Only discard this job's incomplete staging file.
+                    if FileManager.default.fileExists(atPath: file.deletingLastPathComponent().path),
+                        (try? createDownloadDirectory(file.deletingLastPathComponent(), beneath: destinationURL)) != nil
+                    {
+                        try? FileManager.default.removeItem(at: file.appendingPathExtension(partialExtension))
+                    }
+                }
+                try? FileManager.default.removeItem(at: manifestURL)
+                return
+            }
+        }
         let contents = (try? FileManager.default.contentsOfDirectory(
             at: destinationURL,
             includingPropertiesForKeys: [.isDirectoryKey],
@@ -1697,9 +1831,10 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
         )) ?? []
 
         for candidate in contents {
-            guard (try? candidate.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else { continue }
-            let marker = candidate.appendingPathComponent(resumeMarkerName)
-            guard let ownerID = try? String(contentsOf: marker, encoding: .utf8), ownerID == itemID else { continue }
+            guard let values = try? candidate.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]),
+                values.isDirectory == true, values.isSymbolicLink != true,
+                ownsFolder(candidate, itemID: itemID, resumeID: resumeID)
+            else { continue }
             try? FileManager.default.removeItem(at: candidate)
         }
     }
@@ -1741,9 +1876,25 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
         }
     }
 
-    private static func writeResumeMarker(itemID: String, in folderURL: URL) {
+    private struct FolderOwner: Codable {
+        let itemID: String
+        let resumeID: UUID
+    }
+
+    private static func ownsFolder(_ folder: URL, itemID: String, resumeID: UUID?) -> Bool {
+        guard (try? folder.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true,
+            let data = try? Data(contentsOf: folder.appendingPathComponent(resumeMarkerName))
+        else { return false }
+        if let owner = try? JSONDecoder().decode(FolderOwner.self, from: data) {
+            return owner.itemID == itemID && (resumeID == nil || owner.resumeID == resumeID)
+        }
+        // Older installed versions wrote only the Drive item ID.
+        return String(data: data, encoding: .utf8) == itemID
+    }
+
+    private static func writeResumeMarker(itemID: String, resumeID: UUID, in folderURL: URL) throws {
         let marker = folderURL.appendingPathComponent(resumeMarkerName)
-        try? itemID.write(to: marker, atomically: true, encoding: .utf8)
+        try JSONEncoder().encode(FolderOwner(itemID: itemID, resumeID: resumeID)).write(to: marker, options: .atomic)
     }
 
     private static func clearResumeMarker(itemID: String, in folderURL: URL) {

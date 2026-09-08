@@ -167,6 +167,11 @@ struct PreferencesView: View {
                 }
             } header: {
                 Text(tr("Bandwidth", "แบนด์วิดท์"))
+            } footer: {
+                Text(
+                    tr(
+                        "Drive and standard video downloads use this limit. Video settings apply on start or resume; some streaming or trimmed media may not support a speed limit.",
+                        "ใช้กับ Drive และวิดีโอทั่วไป วิดีโอใช้ค่าตอนเริ่มหรือทำต่อ บางสตรีมหรือการตัดช่วงอาจไม่รองรับการจำกัดความเร็ว"))
             }
 
             Section {
@@ -217,19 +222,17 @@ struct PreferencesView: View {
 
     private func attentionRow(_ item: QueueItem) -> some View {
         HStack(alignment: .top, spacing: 9) {
-            Image(systemName: item.attentionKind == .destination
-                  ? "externaldrive.badge.exclamationmark"
-                  : "wifi.exclamationmark")
+            Image(systemName: attentionIcon(for: item))
                 .foregroundStyle(.orange)
                 .frame(width: 18)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.displayName)
-                    .font(.dd(11, .semibold))
+                    .font(.dd(12, .semibold))
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Text(attentionMessage(for: item))
-                    .font(.dd(10))
+                    .font(.dd(12))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -238,8 +241,17 @@ struct PreferencesView: View {
                         Button(tr("Retry now", "ลองใหม่ตอนนี้")) { viewModel.retryQueueItem(item.id) }
                             .controlSize(.small)
                     }
-                    if item.attentionKind == .destination {
+                    if item.attentionKind == .destination || item.attentionKind == .space {
                         Button(tr("Change destination", "เปลี่ยนปลายทาง")) { viewModel.changeDestination(for: item.id) }
+                            .controlSize(.small)
+                    }
+                    if item.attentionKind == .authentication || item.attentionKind == .source {
+                        Button(tr("Open source", "เปิดต้นทาง")) {
+                            if let url = URL(string: item.driveLink) { NSWorkspace.shared.open(url) }
+                        }.controlSize(.small)
+                    }
+                    if item.attentionKind == .authentication, item.analysis.isVideo != true {
+                        Button(tr("Add Google account", "เพิ่มบัญชี Google")) { viewModel.signInWithGoogle() }
                             .controlSize(.small)
                     }
                 }
@@ -263,6 +275,16 @@ struct PreferencesView: View {
             )
         }
         return item.errorMessage ?? tr("Retry this download.", "ลองดาวน์โหลดรายการนี้อีกครั้ง")
+    }
+
+    private func attentionIcon(for item: QueueItem) -> String {
+        switch item.attentionKind {
+        case .destination: "externaldrive.badge.exclamationmark"
+        case .space: "internaldrive.fill.trianglebadge.exclamationmark"
+        case .authentication: "person.crop.circle.badge.exclamationmark"
+        case .network: "wifi.exclamationmark"
+        default: "exclamationmark.triangle"
+        }
     }
 
     private var appearanceTab: some View {

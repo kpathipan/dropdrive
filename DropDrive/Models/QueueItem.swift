@@ -59,6 +59,7 @@ struct QueueItem: Identifiable, Equatable, Codable {
     var attentionKind: AttentionKind?
     var retryCount: Int?
     var nextRetryAt: Date?
+    var startedAt: Date?
 
     init(
         id: UUID = UUID(),

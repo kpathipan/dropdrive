@@ -368,247 +368,297 @@ struct AnalyzedPromptView: View {
     @State private var trimEnd = ""
     @State private var selectedFolderFileIDs: Set<String>?
     @State private var showsFolderFiles = false
+    @State private var showsAdvanced = false
+    @State private var showsLargeCover = false
 
     private var effectiveAnalysis: DriveLinkAnalysis {
         analysis.selectingFolderItems(selectedFolderFileIDs)
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if isDuplicate {
-                Label {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(tr("Already downloaded", "เคยดาวน์โหลดแล้ว"))
-                            .font(.dd(12, .semibold))
-                        Text(tr(
-                            "Choose the format you want, then download it again.",
-                            "เลือกรูปแบบที่ต้องการ แล้วดาวน์โหลดอีกครั้งได้เลย"
-                        ))
-                        .font(.dd(10))
-                        .foregroundStyle(.secondary)
-                    }
-                } icon: {
-                    Image(systemName: "arrow.clockwise.circle.fill")
-                        .foregroundStyle(DDTheme.accent)
-                }
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(DDTheme.accent.opacity(0.09), in: RoundedRectangle(cornerRadius: 9))
-            }
-
-            if analysis.isVideo == true, let thumbnail = analysis.thumbnailURL, let url = URL(string: thumbnail) {
-                AsyncImage(url: url) { phase in
-                    if case .success(let image) = phase {
-                        image.resizable().aspectRatio(contentMode: .fill)
-                    } else {
-                        Rectangle().fill(.quaternary)
-                    }
-                }
-                // Taller than it was: this is the one picture on the screen the
-                // user is deciding from, and at 110pt it read as a strip of
-                // decoration beside the text rather than the thing being
-                // confirmed. 150 still leaves the Download button on screen at
-                // the 520pt cap, which a full-bleed poster would not.
-                .frame(maxWidth: .infinity)
-                .frame(height: 150)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(alignment: .bottomTrailing) {
-                    if let duration = analysis.durationSeconds {
-                        Text(Self.timestamp(from: duration))
-                            .font(.dd(11, .medium).monospacedDigit())
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Capsule().fill(.black.opacity(0.65)))
-                            .padding(6)
-                    }
-                }
-                .accessibilityHidden(true)
-            }
-
-            HStack(spacing: 12) {
-                Image(systemName: analysis.isVideo == true
-                        ? "play.rectangle.fill"
-                        : analysis.type == .folder ? "folder.fill" : "doc.fill")
-                    .font(.dd(22))
-                    .foregroundStyle(DDTheme.accent)
-                    .frame(width: 28)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    nameRow
-
-                    HStack(spacing: 4) {
-                        if let totalBytes = effectiveAnalysis.totalBytes {
-                            Text(Formatters.byteCount(totalBytes))
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    if isDuplicate {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(tr("Already downloaded", "เคยดาวน์โหลดแล้ว"))
+                                    .font(.dd(12, .semibold))
+                                Text(
+                                    tr(
+                                        "Choose the format you want, then download it again.",
+                                        "เลือกรูปแบบที่ต้องการ แล้วดาวน์โหลดอีกครั้งได้เลย"
+                                    )
+                                )
+                                .font(.dd(12))
+                                .foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "arrow.clockwise.circle.fill")
+                                .foregroundStyle(DDTheme.accent)
                         }
-                        if let fileCount = effectiveAnalysis.fileCount {
-                            Text(tr("· \(fileCount) \(fileCount == 1 ? "file" : "files")", "· \(fileCount) ไฟล์"))
-                        }
-                        if let ownerName = analysis.ownerName {
-                            Text(tr("· by \(ownerName)", "· โดย \(ownerName)"))
-                        }
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(DDTheme.accent.opacity(0.09), in: RoundedRectangle(cornerRadius: 9))
                     }
-                    .font(.dd(12))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                }
 
-                Spacer(minLength: 8)
-            }
-
-            if analysis.isVideo == true {
-                if !isTikTokPhotoPost {
-                    Picker(tr("Quality", "คุณภาพ"), selection: $videoQuality) {
-                        ForEach(DriveLinkAnalysis.VideoQuality.allCases, id: \.self) { quality in
-                            Text(quality.label + qualityEstimate(quality)).tag(quality)
+                    HStack(spacing: 12) {
+                        if analysis.isVideo == true, analysis.thumbnailURL != nil {
+                            Button {
+                                showsLargeCover.toggle()
+                            } label: {
+                                coverImage.frame(width: 72, height: 54).clipped()
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                            }
+                            .buttonStyle(.plain)
+                            .help(tr("Expand cover preview", "ขยายภาพหน้าปก"))
+                            .accessibilityLabel(tr("Expand cover preview", "ขยายภาพหน้าปก"))
+                        } else {
+                            Image(
+                                systemName: analysis.isVideo == true
+                                    ? "play.rectangle.fill"
+                                    : analysis.type == .folder ? "folder.fill" : "doc.fill"
+                            )
+                            .font(.dd(22))
+                            .foregroundStyle(DDTheme.accent)
+                            .frame(width: 28)
                         }
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            nameRow
+
+                            HStack(spacing: 4) {
+                                if let totalBytes = effectiveAnalysis.totalBytes {
+                                    Text(Formatters.byteCount(totalBytes))
+                                }
+                                if let fileCount = effectiveAnalysis.fileCount {
+                                    Text(
+                                        tr("· \(fileCount) \(fileCount == 1 ? "file" : "files")", "· \(fileCount) ไฟล์"))
+                                }
+                                if let ownerName = analysis.ownerName {
+                                    Text(tr("· by \(ownerName)", "· โดย \(ownerName)"))
+                                }
+                            }
+                            .font(.dd(12))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        }
+
+                        Spacer(minLength: 8)
                     }
-                    .pickerStyle(.menu)
-                    .onChange(of: videoQuality) { _, quality in asAudio = quality == .mp3 }
-                }
 
-                if let details = analysis.videoDetails, details.isCollection {
-                    mediaCollectionSelection(details.mediaItems)
-                }
+                    if showsLargeCover {
+                        coverImage.frame(height: 150).clipped()
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
 
-                if !isTikTokPhotoPost,
-                   let details = analysis.videoDetails, !details.subtitleLanguages.isEmpty, videoQuality != .mp3 {
-                    HStack {
-                        Label(tr("Subtitles", "คำบรรยาย"), systemImage: "captions.bubble")
-                            .font(.dd(11))
-                        Spacer()
-                        Picker("", selection: $subtitleMode) {
-                            ForEach(DriveLinkAnalysis.SubtitleMode.allCases, id: \.self) { mode in
-                                Text(mode.label).tag(mode)
+                    if analysis.isVideo == true {
+                        if !isTikTokPhotoPost {
+                            Picker(tr("Save as", "บันทึกเป็น"), selection: $asAudio) {
+                                Text(tr("Video", "วิดีโอ")).tag(false)
+                                Text(tr("MP3 audio", "เสียง MP3")).tag(true)
+                            }.pickerStyle(.segmented)
+                            if !asAudio {
+                                Picker(tr("Quality", "คุณภาพ"), selection: $videoQuality) {
+                                    ForEach(DriveLinkAnalysis.VideoQuality.allCases.filter { $0 != .mp3 }, id: \.self) {
+                                        quality in
+                                        Text(quality.label + qualityEstimate(quality)).tag(quality)
+                                    }
+                                }
+                                .pickerStyle(.menu)
                             }
                         }
-                        .labelsHidden()
-                        .frame(maxWidth: 130)
-                    }
-                }
 
-                if !isTikTokPhotoPost,
-                   let chapters = analysis.videoDetails?.chapters, !chapters.isEmpty, videoQuality != .mp3 {
-                    Toggle(tr("Split into \(chapters.count) chapters", "แยกเป็น \(chapters.count) ตอน"), isOn: $splitChapters)
-                        .toggleStyle(.checkbox)
-                        .font(.dd(11))
-                }
-
-                if !isTikTokPhotoPost {
-                    Toggle(tr("Save cover image", "บันทึกภาพหน้าปก"), isOn: $saveThumbnail)
-                        .toggleStyle(.checkbox)
-                        .font(.dd(11))
-
-                    Toggle(isOn: $trimEnabled.animation(.easeInOut(duration: 0.15))) {
-                        Text(tr("Trim to a section", "ตัดเฉพาะช่วง"))
-                            .font(.dd(11))
-                    }
-                    .toggleStyle(.checkbox)
-
-                    if trimEnabled {
-                        if let duration = analysis.durationSeconds, duration > 0 {
-                            trimTimeline(duration: duration)
-                        }
-                        HStack(spacing: 8) {
-                            TextField("0:00", text: $trimStart)
-                                .textFieldStyle(.roundedBorder)
-                                .font(.dd(11).monospacedDigit())
-                                .frame(width: 64)
-                                .accessibilityLabel("Trim start time")
-
-                            Text("–").foregroundStyle(.secondary)
-
-                            TextField(analysis.durationSeconds.map(Self.timestamp(from:)) ?? "0:30", text: $trimEnd)
-                                .textFieldStyle(.roundedBorder)
-                                .font(.dd(11).monospacedDigit())
-                                .frame(width: 64)
-                                .accessibilityLabel("Trim end time")
-
-                            Text(tr("min:sec", "นาที:วิ"))
-                                .font(.dd(11))
-                                .foregroundStyle(.secondary)
-
-                            Spacer(minLength: 0)
+                        if let details = analysis.videoDetails, details.isCollection {
+                            mediaCollectionSelection(details.mediaItems)
                         }
 
-                        if trimInvalid {
-                            Text(tr("End must be after start (e.g. 0:10 – 1:30).", "เวลาจบต้องมากกว่าเวลาเริ่ม (เช่น 0:10 – 1:30)"))
-                                .font(.dd(11))
-                                .foregroundStyle(.orange)
+                        if !isTikTokPhotoPost {
+                            DisclosureGroup(tr("More options", "ตัวเลือกเพิ่มเติม"), isExpanded: $showsAdvanced) {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    if let details = analysis.videoDetails, !details.subtitleLanguages.isEmpty, !asAudio
+                                    {
+                                        HStack {
+                                            Label(tr("Subtitles", "คำบรรยาย"), systemImage: "captions.bubble")
+                                                .font(.dd(12))
+                                            Spacer()
+                                            Picker("", selection: $subtitleMode) {
+                                                ForEach(DriveLinkAnalysis.SubtitleMode.allCases, id: \.self) { mode in
+                                                    Text(mode.label).tag(mode)
+                                                }
+                                            }
+                                            .labelsHidden()
+                                            .frame(maxWidth: 130)
+                                        }
+                                    }
+
+                                    if !isTikTokPhotoPost,
+                                        let chapters = analysis.videoDetails?.chapters, !chapters.isEmpty, !asAudio
+                                    {
+                                        Toggle(
+                                            tr("Split into \(chapters.count) chapters", "แยกเป็น \(chapters.count) ตอน"),
+                                            isOn: $splitChapters
+                                        )
+                                        .toggleStyle(.checkbox)
+                                        .font(.dd(12))
+                                    }
+
+                                    if !isTikTokPhotoPost {
+                                        if asAudio {
+                                            Text(
+                                                tr(
+                                                    "Cover and title are embedded in the MP3 when provided by the source.",
+                                                    "ฝังปกและชื่อใน MP3 เมื่อแหล่งต้นทางมีข้อมูลให้")
+                                            )
+                                            .font(.dd(12)).foregroundStyle(.secondary)
+                                        } else {
+                                            Toggle(tr("Save cover image", "บันทึกภาพหน้าปก"), isOn: $saveThumbnail)
+                                                .toggleStyle(.checkbox)
+                                                .font(.dd(12))
+                                        }
+
+                                        Toggle(isOn: $trimEnabled.animation(.easeInOut(duration: 0.15))) {
+                                            Text(tr("Trim to a section", "ตัดเฉพาะช่วง"))
+                                                .font(.dd(12))
+                                        }
+                                        .toggleStyle(.checkbox)
+
+                                        if trimEnabled {
+                                            if let duration = analysis.durationSeconds, duration > 0 {
+                                                trimTimeline(duration: duration)
+                                            }
+                                            HStack(spacing: 8) {
+                                                TextField("0:00", text: $trimStart)
+                                                    .textFieldStyle(.roundedBorder)
+                                                    .font(.dd(12).monospacedDigit())
+                                                    .frame(width: 64)
+                                                    .accessibilityLabel("Trim start time")
+
+                                                Text("–").foregroundStyle(.secondary)
+
+                                                TextField(
+                                                    analysis.durationSeconds.map(Self.timestamp(from:)) ?? "0:30",
+                                                    text: $trimEnd
+                                                )
+                                                .textFieldStyle(.roundedBorder)
+                                                .font(.dd(12).monospacedDigit())
+                                                .frame(width: 64)
+                                                .accessibilityLabel("Trim end time")
+
+                                                Text(tr("min:sec", "นาที:วิ"))
+                                                    .font(.dd(12))
+                                                    .foregroundStyle(.secondary)
+
+                                                Spacer(minLength: 0)
+                                            }
+
+                                            if trimInvalid {
+                                                Text(
+                                                    tr(
+                                                        "End must be after start (e.g. 0:10 – 1:30).",
+                                                        "เวลาจบต้องมากกว่าเวลาเริ่ม (เช่น 0:10 – 1:30)")
+                                                )
+                                                .font(.dd(12))
+                                                .foregroundStyle(.orange)
+                                            }
+                                        }
+                                    }
+                                }
+
+                            }.padding(.top, 8)
                         }
                     }
-                }
+                    if analysis.type == .folder, let items = analysis.folderItems, !items.isEmpty {
+                        folderSelection(items)
+                    }
+
+                }.padding(16)
             }
-
-            if analysis.type == .folder, let items = analysis.folderItems, !items.isEmpty {
-                folderSelection(items)
-            }
-
             Divider()
+            VStack(alignment: .leading, spacing: 10) {
+                DestinationRow(
+                    destinationURL: destinationURL,
+                    isLocked: false,
+                    showsLabel: true,
+                    sourceLink: sourceLink,
+                    category: DestinationStore.category(for: effectiveAnalysis),
+                    onChooseDestination: onChooseDestination,
+                    onSelectDestination: onSelectDestination
+                )
 
-            DestinationRow(
-                destinationURL: destinationURL,
-                isLocked: false,
-                showsLabel: true,
-                sourceLink: sourceLink,
-                category: DestinationStore.category(for: effectiveAnalysis),
-                onChooseDestination: onChooseDestination,
-                onSelectDestination: onSelectDestination
-            )
+                preflightView(preflight(effectiveAnalysis))
 
-            preflightView(preflight(effectiveAnalysis))
+                HStack(spacing: 10) {
+                    Button(tr("Cancel", "ยกเลิก"), role: .cancel, action: onCancel)
+                        .buttonStyle(.bordered)
 
-            HStack(spacing: 10) {
-                Button(tr("Cancel", "ยกเลิก"), role: .cancel, action: onCancel)
-                    .buttonStyle(.bordered)
-
-                Button {
-                    onDownload(
-                        asAudio,
-                        clipSection,
-                        customName,
-                        selectedFolderFileIDs,
-                        videoQuality,
-                        subtitleMode,
-                        splitChapters,
-                        saveThumbnail,
-                        selectedMediaIndexes
+                    Button {
+                        if analysis.isVideo == true, !isTikTokPhotoPost {
+                            VideoDownloadPolicy.saveQuality(asAudio ? .mp3 : videoQuality, for: sourceLink)
+                        }
+                        onDownload(
+                            asAudio,
+                            clipSection,
+                            customName,
+                            selectedFolderFileIDs,
+                            asAudio ? .mp3 : videoQuality,
+                            asAudio ? .none : subtitleMode,
+                            !asAudio && splitChapters,
+                            !asAudio && saveThumbnail,
+                            selectedMediaIndexes
+                        )
+                    } label: {
+                        Label(
+                            primaryActionTitle,
+                            systemImage: startsImmediately ? "arrow.down.circle.fill" : "plus.circle.fill"
+                        )
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(
+                        trimEnabled && trimInvalid
+                            || !preflight(effectiveAnalysis).canQueue
+                            || effectiveAnalysis.fileCount == 0
+                            || selectedMediaIndexes?.isEmpty == true
                     )
-                } label: {
-                    Label(
-                        primaryActionTitle,
-                        systemImage: startsImmediately ? "arrow.down.circle.fill" : "plus.circle.fill"
-                    )
-                    .frame(maxWidth: .infinity)
+                    // Return confirms the card, carrying the format, trim and name
+                    // chosen on it. The paste box deliberately no longer answers
+                    // Return while this card is up: it can't see any of that.
+                    //
+                    // Except while the name is being typed, where Return means
+                    // "done with this field" — the field's own onSubmit and the
+                    // default button would otherwise both fire on one keypress and
+                    // the download would start before the folder could be checked.
+                    .keyboardShortcut(isEditingName ? nil : .defaultAction)
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(trimEnabled && trimInvalid
-                          || !preflight(effectiveAnalysis).canQueue
-                          || effectiveAnalysis.fileCount == 0
-                          || selectedMediaIndexes?.isEmpty == true)
-                // Return confirms the card, carrying the format, trim and name
-                // chosen on it. The paste box deliberately no longer answers
-                // Return while this card is up: it can't see any of that.
-                //
-                // Except while the name is being typed, where Return means
-                // "done with this field" — the field's own onSubmit and the
-                // default button would otherwise both fire on one keypress and
-                // the download would start before the folder could be checked.
-                .keyboardShortcut(isEditingName ? nil : .defaultAction)
-            }
+            }.padding(16)
         }
-        .padding(16)
         .cardBackground()
         .transition(.opacity.combined(with: .move(edge: .top)))
         // The field follows the analysis until it is typed in, and stops the
         // moment it is: the background enrichment replaces `analysis` ~12s into
         // a video card, and re-seeding unconditionally there would wipe a name
         // already typed.
-        .task(id: analysis.itemID) { seedNameIfUntouched() }
+        .task(id: analysis.itemID) {
+            seedNameIfUntouched()
+            let saved = VideoDownloadPolicy.savedQuality(for: sourceLink)
+            asAudio = saved == .mp3
+            videoQuality = VideoDownloadPolicy.savedVideoQuality(for: sourceLink)
+        }
         .onChange(of: analysis.name) { _, _ in seedNameIfUntouched() }
         .onChange(of: trimEnabled) { _, enabled in
             if enabled, trimEnd.isEmpty, let duration = analysis.durationSeconds {
                 trimEnd = Self.timestamp(from: duration)
+            }
+        }
+    }
+
+    private var coverImage: some View {
+        AsyncImage(url: analysis.thumbnailURL.flatMap(URL.init(string:))) { phase in
+            if case .success(let image) = phase {
+                image.resizable().aspectRatio(contentMode: .fill)
+            } else {
+                Rectangle().fill(.quaternary)
             }
         }
     }
@@ -934,7 +984,7 @@ struct AnalyzedPromptView: View {
         // A non-empty, unparsable start is a real wrong input, same as the end field.
         if !trimStart.isEmpty, Self.seconds(from: trimStart) == nil { return true }
         // Empty end = nothing to cut yet; only flag a real, wrong input.
-        guard Self.seconds(from: trimEnd) != nil || !trimEnd.isEmpty else { return false }
+        guard Self.seconds(from: trimEnd) != nil || !trimEnd.isEmpty else { return true }
         return clipSection == nil
     }
 

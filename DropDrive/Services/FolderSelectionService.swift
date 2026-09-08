@@ -11,8 +11,8 @@ struct FolderSelectionService: FolderSelectionServicing {
         let panel = NSOpenPanel()
         panel.title = tr("Choose Destination", "เลือกโฟลเดอร์ปลายทาง")
         panel.message = tr(
-            "Downloaded files will be saved inside a new folder here.",
-            "ไฟล์ที่ดาวน์โหลดจะถูกเก็บในโฟลเดอร์ใหม่ที่นี่"
+            "Choose where to save your downloads. A source folder with the same name will use this folder directly.",
+            "เลือกที่บันทึกไฟล์ หากโฟลเดอร์ต้นทางชื่อเดียวกับแฟ้มนี้ จะบันทึกลงในแฟ้มนี้โดยไม่สร้างซ้ำ"
         )
         panel.prompt = tr("Choose", "เลือก")
         panel.canChooseDirectories = true

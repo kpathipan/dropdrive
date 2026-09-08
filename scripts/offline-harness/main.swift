@@ -421,6 +421,75 @@ pass("deleted files restored", deleted.allSatisfy { FileManager.default.fileExis
 
 // MARK: - 4. Multi-part ranged download of a large file
 
+print("--- selected same-name destination")
+// Finder allows trailing spaces; treat the visually identical name as the
+// chosen folder too, without renaming the user's folder on disk.
+let selectedRoot = sandbox.appendingPathComponent("selected/root ", isDirectory: true)
+try FileManager.default.createDirectory(at: selectedRoot, withIntermediateDirectories: true)
+let existingInvoice = selectedRoot.appendingPathComponent("invoice.pdf")
+let originalInvoice = Data("User's existing document".utf8)
+try originalInvoice.write(to: existingInvoice)
+let unrelatedPartial = selectedRoot.appendingPathComponent("other.dddownload")
+try originalInvoice.write(to: unrelatedPartial)
+let emptyUserFolder = selectedRoot.appendingPathComponent("Keep Empty", isDirectory: true)
+try FileManager.default.createDirectory(at: emptyUserFolder, withIntermediateDirectories: true)
+let borrowedFiles = analysis.folderItems!.filter { duplicateNameIDs.contains($0.id) }
+let borrowedID = UUID()
+let borrowedRequest = DownloadRequest(
+    driveLink: "x", itemID: "root", destinationURL: selectedRoot,
+    resumeID: borrowedID, selectedFileIDs: Set(duplicateNameIDs), selectedFolderItems: borrowedFiles)
+let borrowedResult = try await service.download(borrowedRequest) { _ in }
+check("selected folder used directly", borrowedResult.path, selectedRoot.path)
+pass(
+    "no nested folder with same name",
+    !FileManager.default.fileExists(atPath: selectedRoot.appendingPathComponent("root").path))
+check("existing document unchanged", try Data(contentsOf: existingInvoice), originalInvoice)
+pass("existing empty directory preserved", FileManager.default.fileExists(atPath: emptyUserFolder.path))
+pass("unrelated staging file preserved", FileManager.default.fileExists(atPath: unrelatedPartial.path))
+var reservedPaths: [String: String] = [:]
+for id in duplicateNameIDs {
+    let expected = contents(for: id, size: fileSize)
+    let match = descendants(of: selectedRoot).first { (try? Data(contentsOf: $0)) == expected }
+    pass("collision-safe file saved: \(id)", match != nil)
+    reservedPaths[id] = match!.lastPathComponent
+}
+let manifestURL = selectedRoot.appendingPathComponent(".dropdrive-resume-\(borrowedID.uuidString).json")
+let manifest = try JSONSerialization.data(withJSONObject: ["itemID": "root", "paths": reservedPaths])
+try manifest.write(to: manifestURL)
+let missingBorrowed = selectedRoot.appendingPathComponent(reservedPaths[duplicateNameIDs[0]]!)
+try FileManager.default.removeItem(at: missingBorrowed)
+let borrowedBefore = counter.count("media")
+_ = try await service.download(borrowedRequest) { _ in }
+check("selected-folder resume only fetches missing file", counter.count("media") - borrowedBefore, 1)
+check("selected-folder resume preserves existing document", try Data(contentsOf: existingInvoice), originalInvoice)
+try manifest.write(to: manifestURL)
+let ownedStage = missingBorrowed.appendingPathExtension("dddownload")
+try originalInvoice.write(to: ownedStage)
+GoogleDriveDownloadService.removePartialFolderArtifact(itemID: "root", in: selectedRoot, resumeID: borrowedID)
+pass("cancellation preserves chosen directory", FileManager.default.fileExists(atPath: selectedRoot.path))
+check("cancellation preserves user document", try Data(contentsOf: existingInvoice), originalInvoice)
+pass("cancellation preserves finished file", FileManager.default.fileExists(atPath: missingBorrowed.path))
+pass(
+    "cancellation only removes owned staging",
+    !FileManager.default.fileExists(atPath: ownedStage.path)
+        && FileManager.default.fileExists(atPath: unrelatedPartial.path))
+
+print("--- collision-suffixed folder resume")
+let suffixedID = UUID()
+let suffixedRequest = DownloadRequest(
+    driveLink: "x", itemID: "root", destinationURL: sandbox,
+    resumeID: suffixedID, selectedFileIDs: Set(duplicateNameIDs), selectedFolderItems: borrowedFiles)
+let suffixed = try await service.download(suffixedRequest) { _ in }
+pass("new download avoids completed folder", suffixed != folderURL)
+try JSONSerialization.data(withJSONObject: ["itemID": "root", "resumeID": suffixedID.uuidString])
+    .write(to: suffixed.appendingPathComponent(".dropdrive-inprogress"))
+let missingSuffixed = descendants(of: suffixed, skipsHidden: true).first!
+try FileManager.default.removeItem(at: missingSuffixed)
+let suffixedBefore = counter.count("media")
+let resumedSuffix = try await service.download(suffixedRequest) { _ in }
+check("resume reuses collision-suffixed folder", resumedSuffix.path, suffixed.path)
+check("suffixed resume only fetches missing file", counter.count("media") - suffixedBefore, 1)
+
 print("--- multi-part download")
 counter.reset()
 let bigDest = sandbox.appendingPathComponent("big")
@@ -543,4 +612,6 @@ let untouched = try await service.download(
 check("a name with a real extension is left alone", untouched.lastPathComponent, "big.bin")
 
 print(failures == 0 ? "\nALL PASS" : "\n\(failures) FAILURE(S)")
+// exit() does not unwind top-level defer blocks.
+try? FileManager.default.removeItem(at: sandbox)
 exit(failures == 0 ? 0 : 1)

@@ -342,39 +342,49 @@ struct VideoDownloadService: Sendable {
         // TikTok's normal watch page is sometimes replaced by its WAF challenge
         // before yt-dlp can read the post. TikTok's player API still exposes the
         // original, unbranded rendition, while the public embed page exposes a
-        // visibly watermarked copy. Keep the ordinary extractor first, then use
-        // the player rendition. The embed page is safe only for MP3 extraction,
-        // where its visible watermark is discarded with the video track.
-        func retryTikTokEmbed(after error: Error) async throws -> String {
-            guard let embedURL = await Self.tikTokEmbedURL(for: link) else { throw error }
-
+        // visibly watermarked copy. MP3 can start from that player rendition
+        // immediately instead of waiting for the watch-page extractor to time
+        // out first. The embed page remains safe only for MP3 extraction, where
+        // its visible watermark is discarded with the video track.
+        func argumentsUsingConfirmedTitle() -> [String] {
             var fallbackArguments = arguments.filter { $0 != "--no-playlist" }
             if let outputIndex = fallbackArguments.firstIndex(of: "-o"),
                fallbackArguments.indices.contains(outputIndex + 1) {
-                // The generic embed extractor calls every item "TikTok Embed"
-                // and reports its video extension as `unknown_video`. Pin MP4
-                // for video so trimmed clips have a muxer; audio extraction must
-                // keep a dynamic extension so yt-dlp can finish as a real MP3.
                 let fallbackTitle = customName ?? title
                 let fallbackExtension = audioOnly ? "%(ext)s" : "mp4"
                 fallbackArguments[outputIndex + 1] = "\(Self.escapedForOutputTemplate(fallbackTitle))\(clipSuffix).\(fallbackExtension)"
             }
+            return fallbackArguments
+        }
+
+        func retryTikTokEmbed(after error: Error) async throws -> String {
+            guard let embedURL = await Self.tikTokEmbedURL(for: link) else { throw error }
+
+            // The generic embed extractor calls every item "TikTok Embed" and
+            // reports its video extension as `unknown_video`. Pin MP4 for video
+            // so trimmed clips have a muxer; audio keeps a dynamic extension so
+            // yt-dlp can finish as a real MP3.
+            var fallbackArguments = argumentsUsingConfirmedTitle()
             fallbackArguments += ["--playlist-items", "1", embedURL.absoluteString]
             finalPath.value = nil
             return try await Self.run(arguments: fallbackArguments, onProgressLine: handleLine)
         }
 
+        func downloadTikTokPlayerURL(_ playerURL: URL) async throws -> String {
+            finalPath.value = nil
+            return try await Self.run(
+                arguments: argumentsUsingConfirmedTitle() + [
+                    "--add-header", "Referer:https://www.tiktok.com/",
+                    playerURL.absoluteString
+                ],
+                onProgressLine: handleLine
+            )
+        }
+
         func retryTikTokWithoutWatermark(after originalError: Error) async throws -> String {
             if let playerURL = await Self.tikTokWatermarkFreeVideoURL(for: link, quality: quality) {
-                finalPath.value = nil
                 do {
-                    return try await Self.run(
-                        arguments: arguments + [
-                            "--add-header", "Referer:https://www.tiktok.com/",
-                            playerURL.absoluteString
-                        ],
-                        onProgressLine: handleLine
-                    )
+                    return try await downloadTikTokPlayerURL(playerURL)
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch {
@@ -417,6 +427,40 @@ struct VideoDownloadService: Sendable {
                     throw CancellationError()
                 } catch {
                     output = try await retryTikTokWithoutWatermark(after: error)
+                }
+            }
+        } else if TikTokPlayerMedia.prefersDirectAudioRoute(
+            for: link,
+            audioOnly: audioOnly,
+            hasCachedInfo: false
+        ) {
+            // The card already got its human-readable title from oEmbed. For an
+            // MP3 we only need TikTok's original media stream, so asking the
+            // player API first avoids the slow WAF-prone full metadata pass.
+            // If the fast endpoint is unavailable, retain the complete legacy
+            // path for reliability instead of turning a speed-up into a failure.
+            if let playerURL = await Self.tikTokWatermarkFreeVideoURL(for: link, quality: quality) {
+                do {
+                    output = try await downloadTikTokPlayerURL(playerURL)
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    finalPath.value = nil
+                    do {
+                        output = try await Self.run(arguments: arguments + [link], onProgressLine: handleLine)
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch {
+                        output = try await retryTikTokEmbed(after: error)
+                    }
+                }
+            } else {
+                do {
+                    output = try await Self.run(arguments: arguments + [link], onProgressLine: handleLine)
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    output = try await retryTikTokEmbed(after: error)
                 }
             }
         } else {

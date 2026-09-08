@@ -3,6 +3,20 @@ import Foundation
 /// Selects TikTok's original player rendition instead of the branded copy
 /// exposed by the public embed page.
 enum TikTokPlayerMedia {
+    /// A resolved info-json remains the quickest and richest route. Without
+    /// one, audio-only TikTok downloads can skip the slow watch-page extractor
+    /// and start from the watermark-free player rendition immediately.
+    static func prefersDirectAudioRoute(
+        for link: String,
+        audioOnly: Bool,
+        hasCachedInfo: Bool
+    ) -> Bool {
+        guard audioOnly, !hasCachedInfo,
+              let host = URLComponents(string: link)?.host?.lowercased()
+        else { return false }
+        return host == "tiktok.com" || host.hasSuffix(".tiktok.com")
+    }
+
     static func watermarkFreeVideoURL(
         from data: Data,
         quality: DriveLinkAnalysis.VideoQuality

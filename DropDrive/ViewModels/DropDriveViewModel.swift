@@ -810,6 +810,11 @@ final class DropDriveViewModel {
     ) {
         let startsImmediately = confirmationStartsImmediately
         let trimmedLink = driveLink.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Once the user commits the download, a background metadata enrichment
+        // no longer has a card to update. Stop it before yt-dlp starts so the two
+        // processes do not resolve the same video and compete for network/CPU.
+        enrichmentTask?.cancel()
+        enrichmentTask = nil
         enqueue(
             analysis: analysis,
             driveLink: trimmedLink,

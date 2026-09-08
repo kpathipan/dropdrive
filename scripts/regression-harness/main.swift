@@ -216,6 +216,38 @@ check(
     "TikTok player rejects an untrusted media host",
     TikTokPlayerMedia.watermarkFreeVideoURL(from: untrustedTikTokFixture, quality: .automatic) == nil
 )
+check(
+    "TikTok MP3 without metadata uses the direct player route",
+    TikTokPlayerMedia.prefersDirectAudioRoute(
+        for: "https://www.tiktok.com/@creator/video/1234567890123456789",
+        audioOnly: true,
+        hasCachedInfo: false
+    )
+)
+check(
+    "TikTok MP3 keeps the richer cached route",
+    !TikTokPlayerMedia.prefersDirectAudioRoute(
+        for: "https://www.tiktok.com/@creator/video/1234567890123456789",
+        audioOnly: true,
+        hasCachedInfo: true
+    )
+)
+check(
+    "TikTok video does not enter the MP3 fast route",
+    !TikTokPlayerMedia.prefersDirectAudioRoute(
+        for: "https://www.tiktok.com/@creator/video/1234567890123456789",
+        audioOnly: false,
+        hasCachedInfo: false
+    )
+)
+check(
+    "lookalike TikTok hosts cannot enter the direct route",
+    !TikTokPlayerMedia.prefersDirectAudioRoute(
+        for: "https://tiktok.com.example.com/video/1234567890123456789",
+        audioOnly: true,
+        hasCachedInfo: false
+    )
+)
 
 if failures > 0 { exit(1) }
 print("ALL PASS")

@@ -6,6 +6,11 @@ public sealed class AppSettings
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
     public bool CheckUpdatesAutomatically { get; set; } = true;
     public bool HideToTray { get; set; } = true;
+    public DateTimeOffset? LastAutomaticUpdateCheckUtc { get; set; }
+
+    public bool IsAutomaticUpdateCheckDue(DateTimeOffset now) =>
+        CheckUpdatesAutomatically &&
+        (LastAutomaticUpdateCheckUtc is null || now - LastAutomaticUpdateCheckUtc >= TimeSpan.FromHours(24));
 }
 
 public sealed class DownloadHistoryEntry

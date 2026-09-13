@@ -7,5 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../DropDrive.Windows/Services/LinkInputParser.cs" Link="LinkInputParser.cs" />
+    <Compile Include="../DropDrive.Windows/Models/AppSettings.cs" Link="AppSettings.cs" />
   </ItemGroup>
 </Project>

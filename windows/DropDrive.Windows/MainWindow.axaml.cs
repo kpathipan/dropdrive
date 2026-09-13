@@ -34,7 +34,7 @@ public partial class MainWindow : Window
         HideToTrayToggle.IsChecked = _settings.HideToTray;
         _loadingSettings = false;
         Closing += HandleClosing;
-        Opened += async (_, _) => { if (_settings.CheckUpdatesAutomatically) await CheckForUpdatesAsync(true); };
+        Opened += async (_, _) => await CheckForUpdatesIfDueAsync();
     }
 
     private async void AddDownload(object? sender, RoutedEventArgs e) => await QueueLinksAsync();
@@ -162,6 +162,17 @@ public partial class MainWindow : Window
     }
 
     private async void CheckForUpdates(object? sender, RoutedEventArgs e) => await CheckForUpdatesAsync(false);
+    private async Task CheckForUpdatesIfDueAsync()
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (!_settings.IsAutomaticUpdateCheckDue(now)) return;
+        // Record before the network request so an offline PC does not retry on
+        // every window open. Manual checks always bypass this 24-hour gate.
+        _settings.LastAutomaticUpdateCheckUtc = now;
+        _stateService.SaveSettings(_settings);
+        await CheckForUpdatesAsync(true);
+    }
+
     private async Task CheckForUpdatesAsync(bool silent)
     {
         if (!silent) SetStatus("Checking for updates…");

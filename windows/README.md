@@ -9,12 +9,13 @@ Requires Windows 10/11 and the .NET 10 SDK.
 
 ```powershell
 ./fetch-tools.ps1
-./build-windows.ps1 -Version 0.3.0
+./build-windows.ps1 -Version 0.3.1
 ```
 
 The installer is written to `artifacts/releases/com.dropdrive.windows-win-Setup.exe`.
-Installed builds check the public GitHub release feed on launch. Development
-builds intentionally skip update installation.
+Installed builds check the public GitHub release feed at most once every 24
+hours. Manual checks bypass that interval. Development builds intentionally
+skip update installation.
 
 ## Release
 

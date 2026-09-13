@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup>
+    <Version>0.2.0</Version>
+    <Company>DropDrive</Company>
+    <Product>DropDrive for Windows</Product>
+  </PropertyGroup>
+</Project>

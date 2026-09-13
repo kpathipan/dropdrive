@@ -10,3 +10,7 @@ xcuserdata/
 .swiftpm/
 *.xcworkspace/xcuserdata/
 build-adhoc/
+windows/**/bin/
+windows/**/obj/
+windows/artifacts/
+windows/DropDrive.Windows/Tools/

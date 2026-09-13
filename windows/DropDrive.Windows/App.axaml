@@ -1,0 +1,57 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="DropDrive.Windows.App" RequestedThemeVariant="Light">
+  <Application.Styles>
+    <FluentTheme />
+    <Style Selector="Window">
+      <Setter Property="FontFamily" Value="Inter" />
+      <Setter Property="Background" Value="#F7F9FC" />
+    </Style>
+    <Style Selector="Button.primary">
+      <Setter Property="Background" Value="#1667F2" />
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="Padding" Value="18,11" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Button.quiet">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Foreground" Value="#50617A" />
+    </Style>
+    <Style Selector="Button.small">
+      <Setter Property="Background" Value="#EEF4FF" />
+      <Setter Property="Foreground" Value="#1667F2" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="11,7" />
+      <Setter Property="FontSize" Value="11" />
+    </Style>
+    <Style Selector="Button.small">
+      <Setter Property="Background" Value="#EEF4FF" />
+      <Setter Property="Foreground" Value="#1667F2" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="11,7" />
+      <Setter Property="FontSize" Value="11" />
+    </Style>
+    <Style Selector="Border.card">
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#E1E7F0" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="14" />
+    </Style>
+  </Application.Styles>
+  <TrayIcon.Icons>
+    <TrayIcons>
+      <TrayIcon Icon="/Assets/dropdrive.png" ToolTipText="DropDrive">
+        <TrayIcon.Menu>
+          <NativeMenu>
+            <NativeMenuItem Header="Open DropDrive" Click="ShowWindow" />
+            <NativeMenuItem Header="Quit" Click="QuitApplication" />
+          </NativeMenu>
+        </TrayIcon.Menu>
+      </TrayIcon>
+    </TrayIcons>
+  </TrayIcon.Icons>
+</Application>

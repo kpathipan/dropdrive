@@ -50,7 +50,7 @@ public partial class MainWindow : Window
         foreach (var link in links)
         {
             var uri = new Uri(link);
-            var item = new DownloadItem { Url = link, Name = uri.Host.Replace("www.", "", StringComparison.OrdinalIgnoreCase), Source = uri.Host, AudioOnly = Mp3Toggle.IsChecked == true, Destination = _settings.Destination, Status = "Analyzing", Detail = "Reading link information…" };
+            var item = new DownloadItem { Url = link, Name = uri.Host.Replace("www.", "", StringComparison.OrdinalIgnoreCase), Source = uri.Host, AudioOnly = false, Destination = _settings.Destination, Status = "Analyzing", Detail = "Reading link information…" };
             _downloads.Insert(0, item);
             try
             {
@@ -153,13 +153,12 @@ public partial class MainWindow : Window
 
     private void ShowDownloads(object? sender, RoutedEventArgs e) => ShowPage(DownloadsPage);
     private void ShowHistory(object? sender, RoutedEventArgs e) { RefreshHistory(); ShowPage(RecentPage); }
-    private void ShowAccounts(object? sender, RoutedEventArgs e) => ShowPage(AccountsPage);
     private void ShowSettings(object? sender, RoutedEventArgs e) => ShowPage(SettingsPage);
 
     private void ShowPage(Control page)
     {
         DownloadsPage.IsVisible = page == DownloadsPage; RecentPage.IsVisible = page == RecentPage;
-        AccountsPage.IsVisible = page == AccountsPage; SettingsPage.IsVisible = page == SettingsPage;
+        SettingsPage.IsVisible = page == SettingsPage;
     }
 
     private void ClearHistory(object? sender, RoutedEventArgs e) { _stateService.ClearHistory(); RefreshHistory(); SetStatus("Download history cleared."); }
@@ -174,6 +173,9 @@ public partial class MainWindow : Window
     {
         if (e.Key != Key.Enter) return; e.Handled = true; _ = QueueLinksAsync();
     }
+
+    private void LinkBoxTextChanged(object? sender, TextChangedEventArgs e) =>
+        DownloadButton.IsVisible = !string.IsNullOrWhiteSpace(LinkBox.Text);
 
     private async void CheckForUpdates(object? sender, RoutedEventArgs e) => await CheckForUpdatesAsync(false);
     private async Task CheckForUpdatesIfDueAsync()
@@ -216,7 +218,7 @@ public partial class MainWindow : Window
     }
 
     private void SaveQueue() => _stateService.SaveQueue(_downloads.Where(item => item.Status != "Complete"));
-    private void UpdateQueueSummary() { var active = _downloads.Count(IsInProgress); QueueSummary.Text = active == 0 ? "No active downloads" : $"{active} active"; EmptyState.IsVisible = _downloads.Count == 0; }
+    private void UpdateQueueSummary() { var active = _downloads.Count(IsInProgress); QueueSummary.Text = active == 0 ? "No active downloads" : $"{active} active"; }
     private static bool IsInProgress(DownloadItem item) => item.Status is "Waiting" or "Starting" or "Analyzing" or "Downloading";
     private void SetStatus(string message) => StatusLabel.Text = message;
 }

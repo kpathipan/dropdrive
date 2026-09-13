@@ -1,57 +1,25 @@
-<Application xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             x:Class="DropDrive.Windows.App" RequestedThemeVariant="Light">
+<Application xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="DropDrive.Windows.App">
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+          <Color x:Key="CanvasColor">#F5F5F7</Color><Color x:Key="RailColor">#EDEDEF</Color><Color x:Key="CardColor">#FFFFFF</Color><Color x:Key="BorderColor">#E3E3E6</Color><Color x:Key="TextColor">#202124</Color><Color x:Key="MutedColor">#74777D</Color><Color x:Key="AccentColor">#2563EB</Color><Color x:Key="AccentSoftColor">#EAF0FE</Color>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+          <Color x:Key="CanvasColor">#1A1C20</Color><Color x:Key="RailColor">#17191C</Color><Color x:Key="CardColor">#202327</Color><Color x:Key="BorderColor">#373A40</Color><Color x:Key="TextColor">#F0F1F3</Color><Color x:Key="MutedColor">#9A9DA4</Color><Color x:Key="AccentColor">#4D99FF</Color><Color x:Key="AccentSoftColor">#233A5D</Color>
+        </ResourceDictionary>
+      </ResourceDictionary.ThemeDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
   <Application.Styles>
     <FluentTheme />
-    <Style Selector="Window">
-      <Setter Property="FontFamily" Value="Inter" />
-      <Setter Property="Background" Value="#F7F9FC" />
-    </Style>
-    <Style Selector="Button.primary">
-      <Setter Property="Background" Value="#1667F2" />
-      <Setter Property="Foreground" Value="White" />
-      <Setter Property="CornerRadius" Value="10" />
-      <Setter Property="Padding" Value="18,11" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-    </Style>
-    <Style Selector="Button.quiet">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="Foreground" Value="#50617A" />
-    </Style>
-    <Style Selector="Button.small">
-      <Setter Property="Background" Value="#EEF4FF" />
-      <Setter Property="Foreground" Value="#1667F2" />
-      <Setter Property="CornerRadius" Value="8" />
-      <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="Padding" Value="11,7" />
-      <Setter Property="FontSize" Value="11" />
-    </Style>
-    <Style Selector="Button.small">
-      <Setter Property="Background" Value="#EEF4FF" />
-      <Setter Property="Foreground" Value="#1667F2" />
-      <Setter Property="CornerRadius" Value="8" />
-      <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="Padding" Value="11,7" />
-      <Setter Property="FontSize" Value="11" />
-    </Style>
-    <Style Selector="Border.card">
-      <Setter Property="Background" Value="White" />
-      <Setter Property="BorderBrush" Value="#E1E7F0" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="14" />
-    </Style>
+    <Style Selector="Window"><Setter Property="FontFamily" Value="Segoe UI"/><Setter Property="FontSize" Value="13"/><Setter Property="Background" Value="{DynamicResource CanvasColor}"/></Style>
+    <Style Selector="TextBlock"><Setter Property="Foreground" Value="{DynamicResource TextColor}"/></Style>
+    <Style Selector="Button.primary"><Setter Property="Background" Value="{DynamicResource AccentColor}"/><Setter Property="Foreground" Value="White"/><Setter Property="CornerRadius" Value="9"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="14,9"/><Setter Property="FontWeight" Value="SemiBold"/></Style>
+    <Style Selector="Button.quiet"><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Foreground" Value="{DynamicResource MutedColor}"/><Setter Property="Padding" Value="8,6"/></Style>
+    <Style Selector="Button.small"><Setter Property="Background" Value="{DynamicResource AccentSoftColor}"/><Setter Property="Foreground" Value="{DynamicResource AccentColor}"/><Setter Property="CornerRadius" Value="8"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="9,6"/><Setter Property="FontSize" Value="11"/></Style>
+    <Style Selector="Border.card"><Setter Property="Background" Value="{DynamicResource CardColor}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderColor}"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="12"/></Style>
+    <Style Selector="TextBox.compact"><Setter Property="Background" Value="{DynamicResource RailColor}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderColor}"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="10"/><Setter Property="Padding" Value="10,8"/></Style>
   </Application.Styles>
-  <TrayIcon.Icons>
-    <TrayIcons>
-      <TrayIcon Icon="/Assets/dropdrive.png" ToolTipText="DropDrive">
-        <TrayIcon.Menu>
-          <NativeMenu>
-            <NativeMenuItem Header="Open DropDrive" Click="ShowWindow" />
-            <NativeMenuItem Header="Quit" Click="QuitApplication" />
-          </NativeMenu>
-        </TrayIcon.Menu>
-      </TrayIcon>
-    </TrayIcons>
-  </TrayIcon.Icons>
+  <TrayIcon.Icons><TrayIcons><TrayIcon Icon="/Assets/dropdrive.png" ToolTipText="DropDrive"><TrayIcon.Menu><NativeMenu><NativeMenuItem Header="Open DropDrive" Click="ShowWindow"/><NativeMenuItem Header="Quit" Click="QuitApplication"/></NativeMenu></TrayIcon.Menu></TrayIcon></TrayIcons></TrayIcon.Icons>
 </Application>

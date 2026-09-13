@@ -9,7 +9,7 @@ Requires Windows 10/11 and the .NET 10 SDK.
 
 ```powershell
 ./fetch-tools.ps1
-./build-windows.ps1 -Version 0.3.1
+./build-windows.ps1 -Version 0.4.0
 ```
 
 The installer is written to `artifacts/releases/com.dropdrive.windows-win-Setup.exe`.

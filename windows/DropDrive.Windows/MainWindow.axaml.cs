@@ -33,6 +33,7 @@ public partial class MainWindow : Window
         AutoUpdateToggle.IsChecked = _settings.CheckUpdatesAutomatically;
         HideToTrayToggle.IsChecked = _settings.HideToTray;
         _loadingSettings = false;
+        RestoreQueue();
         Closing += HandleClosing;
         Opened += async (_, _) => await CheckForUpdatesIfDueAsync();
     }
@@ -49,7 +50,7 @@ public partial class MainWindow : Window
         foreach (var link in links)
         {
             var uri = new Uri(link);
-            var item = new DownloadItem { Url = link, Name = uri.Host.Replace("www.", "", StringComparison.OrdinalIgnoreCase), Source = uri.Host, AudioOnly = Mp3Toggle.IsChecked == true, Status = "Analyzing", Detail = "Reading link information…" };
+            var item = new DownloadItem { Url = link, Name = uri.Host.Replace("www.", "", StringComparison.OrdinalIgnoreCase), Source = uri.Host, AudioOnly = Mp3Toggle.IsChecked == true, Destination = _settings.Destination, Status = "Analyzing", Detail = "Reading link information…" };
             _downloads.Insert(0, item);
             try
             {
@@ -57,16 +58,19 @@ public partial class MainWindow : Window
                 var analysis = await _analysisService.AnalyzeAsync(link, timeout.Token);
                 item.Name = analysis.Title;
                 item.Source = analysis.Source;
+                item.EstimatedBytes = analysis.EstimatedBytes;
                 item.Detail = analysis.Detail + (item.AudioOnly ? " · MP3" : "");
-                item.Status = "Waiting";
+                item.Status = "Ready";
+                item.CanStart = true;
+                item.ActionLabel = _downloads.Any(IsInProgress) ? "Queue" : "Download";
             }
-            catch (OperationCanceledException) { item.Detail = "Analysis timed out; download will still be attempted."; item.Status = "Waiting"; }
+            catch (OperationCanceledException) { item.Detail = "Analysis timed out; review and continue."; item.Status = "Ready"; item.CanStart = true; }
             catch (Exception error)
             {
                 item.Status = "Failed"; item.Detail = error.Message; item.CanRetry = true;
                 _stateService.AddHistory(item); RefreshHistory(); continue;
             }
-            _ = RunDownloadAsync(item);
+            SaveQueue();
         }
         DownloadButton.IsEnabled = true;
         HeaderStatus.Text = "Ready";
@@ -77,7 +81,7 @@ public partial class MainWindow : Window
     {
         var cancellation = new CancellationTokenSource();
         _cancellations[item.Id] = cancellation;
-        item.CanCancel = true; item.CanRetry = false;
+        item.CanCancel = true; item.CanRetry = false; item.CanStart = false;
         var enteredGate = false;
         try
         {
@@ -85,7 +89,7 @@ public partial class MainWindow : Window
             enteredGate = true;
             HeaderStatus.Text = "Downloading";
             UpdateQueueSummary();
-            await _downloadService.DownloadAsync(item, _settings.Destination, cancellation.Token);
+            await _downloadService.DownloadAsync(item, item.Destination ?? _settings.Destination, cancellation.Token);
             SetStatus($"Finished: {item.Name}");
         }
         catch (OperationCanceledException)
@@ -106,7 +110,17 @@ public partial class MainWindow : Window
             RefreshHistory();
             HeaderStatus.Text = _downloads.Any(IsInProgress) ? "Downloading" : "Ready";
             UpdateQueueSummary();
+            SaveQueue();
         }
+    }
+
+    private void StartDownload(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: DownloadItem item }) return;
+        item.Status = _downloads.Any(IsInProgress) ? "Waiting" : "Starting";
+        item.ActionLabel = "Queue";
+        _ = RunDownloadAsync(item);
+        SaveQueue();
     }
 
     private void CancelDownload(object? sender, RoutedEventArgs e)
@@ -182,12 +196,27 @@ public partial class MainWindow : Window
 
     private void HandleClosing(object? sender, WindowClosingEventArgs e)
     {
+        SaveQueue();
         if (_settings.HideToTray) { e.Cancel = true; Hide(); SetStatus("DropDrive is still running in the notification area."); }
         else if (Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop) desktop.Shutdown();
     }
 
     private void UpdateDestinationLabels() { DestinationLabel.Text = _settings.Destination; SettingsDestinationLabel.Text = _settings.Destination; }
+    private void RestoreQueue()
+    {
+        foreach (var item in _stateService.LoadQueue())
+        {
+            if (item.Status is "Downloading" or "Waiting" or "Starting") item.Status = "Paused";
+            if (item.Status is "Ready" or "Paused") item.CanStart = true;
+            item.CanCancel = false;
+            item.CanRetry = item.Status is "Failed" or "Cancelled";
+            _downloads.Add(item);
+        }
+        UpdateQueueSummary();
+    }
+
+    private void SaveQueue() => _stateService.SaveQueue(_downloads.Where(item => item.Status != "Complete"));
     private void UpdateQueueSummary() { var active = _downloads.Count(IsInProgress); QueueSummary.Text = active == 0 ? "No active downloads" : $"{active} active"; EmptyState.IsVisible = _downloads.Count == 0; }
-    private static bool IsInProgress(DownloadItem item) => item.Status is "Waiting" or "Analyzing" or "Downloading";
+    private static bool IsInProgress(DownloadItem item) => item.Status is "Waiting" or "Starting" or "Analyzing" or "Downloading";
     private void SetStatus(string message) => StatusLabel.Text = message;
 }

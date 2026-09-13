@@ -19,5 +19,17 @@ settings.LastAutomaticUpdateCheckUtc = now.AddHours(-24);
 Expect(settings.IsAutomaticUpdateCheckDue(now), "automatic update must become due at 24 hours");
 settings.CheckUpdatesAutomatically = false;
 Expect(!settings.IsAutomaticUpdateCheckDue(now), "disabled automatic updates must never be due");
+var stateFolder = Path.Combine(Path.GetTempPath(), $"dropdrive-check-{Guid.NewGuid():N}");
+try
+{
+    var state = new AppStateService(stateFolder);
+    state.SaveSettings(new AppSettings { Destination = "D:\\Media", CheckUpdatesAutomatically = false });
+    Expect(state.LoadSettings().Destination == "D:\\Media", "settings must persist across launches");
+    state.SaveQueue([new DownloadItem { Url = "https://example.com/a.mp4", Name = "A", Status = "Ready", Destination = "D:\\Media" }]);
+    var restored = state.LoadQueue();
+    Expect(restored.Count == 1 && restored[0].Destination == "D:\\Media", "queue destination must persist per item");
+}
+finally { if (Directory.Exists(stateFolder)) Directory.Delete(stateFolder, true); }
 Console.WriteLine("PASS link parsing and duplicate protection");
 Console.WriteLine("PASS 24-hour automatic update cadence");
+Console.WriteLine("PASS settings and queue persistence");

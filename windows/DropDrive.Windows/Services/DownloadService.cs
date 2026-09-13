@@ -14,6 +14,7 @@ public sealed partial class DownloadService
     public async Task DownloadAsync(DownloadItem item, string destination, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(destination);
+        TransferGuard.EnsureSpace(destination, item.EstimatedBytes);
         item.Status = "Downloading";
         item.CanCancel = true;
         item.CanRetry = false;

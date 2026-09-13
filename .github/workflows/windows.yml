@@ -6,7 +6,7 @@ on:
       version:
         description: SemVer for the Windows installer
         required: true
-        default: 0.3.1
+        default: 0.4.0
   push:
     tags:
       - windows-v*

@@ -6,8 +6,13 @@ namespace DropDrive.Windows.Services;
 public sealed class AppStateService
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
-    private readonly string _folder = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DropDrive");
+    private readonly string _folder;
+
+    public AppStateService(string? folder = null)
+    {
+        _folder = folder ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DropDrive");
+    }
 
     public AppSettings LoadSettings() => Load("settings.json", new AppSettings());
 
@@ -27,6 +32,10 @@ public sealed class AppStateService
     }
 
     public void ClearHistory() => Save("history.json", new List<DownloadHistoryEntry>());
+
+    public List<DownloadItem> LoadQueue() => Load("queue.json", new List<DownloadItem>());
+
+    public void SaveQueue(IEnumerable<DownloadItem> items) => Save("queue.json", items.Take(100).ToList());
 
     private T Load<T>(string file, T fallback)
     {

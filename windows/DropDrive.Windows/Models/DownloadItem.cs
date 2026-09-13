@@ -11,17 +11,23 @@ public sealed class DownloadItem : INotifyPropertyChanged
     private string _detail = "";
     private bool _canCancel;
     private bool _canRetry;
+    private bool _canStart;
+    private string _actionLabel = "Download";
     public Guid Id { get; init; } = Guid.NewGuid();
     public required string Url { get; init; }
     public string Name { get => _name; set => Set(ref _name, value); }
     public string Source { get; set; } = "Link";
     public bool AudioOnly { get; set; }
+    public string? Destination { get; set; }
+    public long? EstimatedBytes { get; set; }
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.Now;
     public double Progress { get => _progress; set => Set(ref _progress, value); }
     public string Status { get => _status; set => Set(ref _status, value); }
     public string Detail { get => _detail; set => Set(ref _detail, value); }
     public bool CanCancel { get => _canCancel; set => Set(ref _canCancel, value); }
     public bool CanRetry { get => _canRetry; set => Set(ref _canRetry, value); }
+    public bool CanStart { get => _canStart; set => Set(ref _canStart, value); }
+    public string ActionLabel { get => _actionLabel; set => Set(ref _actionLabel, value); }
     public event PropertyChangedEventHandler? PropertyChanged;
 
     private void Set<T>(ref T field, T value, [CallerMemberName] string? property = null)

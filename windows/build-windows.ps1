@@ -1,4 +1,4 @@
-param([string]$Version = "0.3.1")
+param([string]$Version = "0.4.0")
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $project = Join-Path $root "DropDrive.Windows/DropDrive.Windows.csproj"

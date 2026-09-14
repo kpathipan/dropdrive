@@ -138,6 +138,7 @@ public partial class MainWindow : Window
 
     private async Task LoadThumbnailAsync(DownloadItem item)
     {
+        if (item.Thumbnail != null) return;
         item.Thumbnail = await _thumbnails.GetAsync(item.ThumbnailUrl, _lifetime.Token);
         item.Notify(nameof(item.Thumbnail));
         if (_review == item) ReviewThumbnail.Source = item.Thumbnail;
@@ -194,6 +195,7 @@ public partial class MainWindow : Window
     private async Task LoadEntryThumbnailsAsync(DownloadItem item)
     {
         await Task.WhenAll(item.Entries.Take(100).Select(async entry => {
+            if (entry.Thumbnail != null) return;
             entry.Thumbnail = await _thumbnails.GetAsync(entry.ThumbnailUrl, _lifetime.Token);
             entry.RefreshThumbnail();
         }));

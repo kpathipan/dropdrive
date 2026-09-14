@@ -26,7 +26,7 @@
   </Application.Resources>
   <Application.Styles>
     <FluentTheme />
-    <Style Selector="Window"><Setter Property="FontFamily" Value="Segoe UI"/><Setter Property="FontSize" Value="13"/><Setter Property="Background" Value="{DynamicResource CanvasColor}"/></Style>
+    <Style Selector="Window"><Setter Property="FontFamily" Value="avares://DropDrive/Assets/Fonts#Noto Sans Thai, Segoe UI"/><Setter Property="FontSize" Value="13"/><Setter Property="Background" Value="{DynamicResource CanvasColor}"/></Style>
     <Style Selector="TextBlock"><Setter Property="Foreground" Value="{DynamicResource TextColor}"/></Style>
     <Style Selector="TextBlock.muted"><Setter Property="Foreground" Value="{DynamicResource MutedColor}"/></Style>
     <Style Selector="TextBlock.metric"><Setter Property="Foreground" Value="{DynamicResource MutedColor}"/><Setter Property="FontFamily" Value="Cascadia Mono,Consolas"/><Setter Property="FontSize" Value="10"/><Setter Property="TextAlignment" Value="Right"/><Setter Property="TextTrimming" Value="CharacterEllipsis"/></Style>

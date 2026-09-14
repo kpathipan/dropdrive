@@ -196,6 +196,24 @@ try
     Expect((string?)queueWindow.FindControl<Button>("ReviewDownloadButton")!.Content == "ดาวน์โหลด", "review action returns to download when queue becomes idle");
     queueWindow.Close();
     Console.WriteLine("PASS production UI download pipeline, saved history, fixed metrics, dynamic download/queue action");
+    if (args.Contains("--live-drive"))
+    {
+        // Public one-document fixture maintained by the gdown project.
+        const string url = "https://drive.google.com/drive/folders/12zxlvJtuHFV6awc3AINaNHnfvRttPv0i";
+        using var networkDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var task = new PublicDriveService().AnalyzeAsync(url, networkDeadline.Token);
+        Complete(task);
+        var result = task.Result;
+        Expect(result.IsCollection && result.Entries?.Count == 1, "live public Drive fixture enumerates its single document");
+        var liveFolder = Path.Combine(stateFolder, "live-drive");
+        Directory.CreateDirectory(liveFolder);
+        var liveItem = new DownloadItem { Url = url, Name = result.Title, IsDrive = true, IsCollection = true, IsMedia = false, Entries = result.Entries!, Destination = liveFolder };
+        Complete(new DownloadService().DownloadAsync(liveItem, liveFolder, networkDeadline.Token));
+        var downloaded = Directory.GetFiles(liveFolder);
+        Expect(downloaded.Length == 1 && downloaded[0].EndsWith(".pptx", StringComparison.OrdinalIgnoreCase), "live Drive document export saves the proper extension without a duplicate folder");
+        Expect(File.ReadAllBytes(downloaded[0]).Take(2).SequenceEqual(new byte[] { 80, 75 }), "live exported document is ZIP/PPTX, never an HTML login page");
+        Console.WriteLine("PASS live public Drive folder listing and real Google Slides export");
+    }
     Console.WriteLine("PASS media metadata, options, file safety and tagged progress");
     Console.WriteLine("PASS production UI: Thai layout, navigation, select-all/individual, card sizes, search, MP3");
     Console.WriteLine("PASS direct HTTP download, repeat protection, unplugged destination, ETag resume");

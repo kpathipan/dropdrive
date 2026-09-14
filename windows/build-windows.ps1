@@ -10,6 +10,9 @@ dotnet publish $project -c Release -r win-x64 --self-contained true -p:Version=$
 if (!(Test-Path (Join-Path $publish "Tools/yt-dlp.exe"))) {
   throw "Tools/yt-dlp.exe is missing. Run fetch-tools.ps1 first."
 }
+if (!(Test-Path (Join-Path $publish "Tools/qjs.exe"))) {
+  throw "Tools/qjs.exe is missing. YouTube needs the bundled JavaScript runtime."
+}
 
 dotnet tool restore --tool-manifest (Join-Path $root ".config/dotnet-tools.json")
 Push-Location $root

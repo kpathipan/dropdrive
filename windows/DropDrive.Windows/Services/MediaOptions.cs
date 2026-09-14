@@ -71,10 +71,16 @@ public static class MediaOptions
         args.Add("--embed-chapters");
         if (item.SplitChapters) args.Add("--split-chapters");
         if (item.SaveThumbnail) args.AddRange(["--write-thumbnail", "--convert-thumbnails", "jpg"]);
-        var deno = Path.Combine(toolsPath, "deno.exe");
-        if (File.Exists(deno)) args.AddRange(["--js-runtimes", $"deno:{deno}"]);
+        AddRuntimeArguments(args, toolsPath);
         args.AddRange(["--", item.Url]);
         return args;
+    }
+    public static void AddRuntimeArguments(List<string> args, string toolsPath)
+    {
+        var quickJs = Path.Combine(toolsPath, "qjs.exe");
+        var deno = Path.Combine(toolsPath, "deno.exe");
+        if (File.Exists(quickJs)) args.AddRange(["--js-runtimes", $"quickjs:{quickJs}"]);
+        else if (File.Exists(deno)) args.AddRange(["--js-runtimes", $"deno:{deno}"]);
     }
 
     // A stable job suffix resumes the same task, but an explicit repeat creates

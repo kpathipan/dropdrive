@@ -47,3 +47,10 @@ CI runs the production UI + core regression checks on Windows, saves six
 rendered screenshots, and smoke-tests the packaged executable before publishing
 a tag. Checks cover real control interactions and an HTTP download fixture
 through the actual queue. See parity-checklist.md for exact limitations.
+
+The optional --live-drive check additionally downloads a public Google Slides
+fixture through the production Drive folder path. It verifies a real PPTX, not
+an HTML permission page, with no duplicate destination wrapper.
+YouTube's JavaScript runtime is bundled (QuickJS-NG 0.16.2, SHA-256 verified at
+build time) so the user does not have to install Node/Deno separately.
+The bundled Noto Sans Thai font avoids differences in Thai fallback fonts.

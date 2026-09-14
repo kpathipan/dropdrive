@@ -30,25 +30,30 @@ public sealed partial class PublicDriveService(HttpClient? client = null)
             var html = await GetHtmlAsync(url, token);
             var doc = new HtmlParser().ParseDocument(html);
             var title = doc.QuerySelector("meta[property='og:title']")?.GetAttribute("content") ?? doc.Title;
-            if (string.IsNullOrWhiteSpace(title) || title.Contains("Sign in", StringComparison.OrdinalIgnoreCase) || doc.QuerySelector("input[type='password']") != null)
+            if (string.IsNullOrWhiteSpace(title) || title.Contains("Sign in", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains("Access Denied", StringComparison.OrdinalIgnoreCase) ||
+                doc.Body?.TextContent.Contains("You need access", StringComparison.OrdinalIgnoreCase) == true ||
+                doc.QuerySelector("input[type='password']") != null)
                 throw new InvalidOperationException("ไฟล์นี้ต้องมีสิทธิ์เข้าถึง Windows รองรับเฉพาะ Drive ที่เปิดแชร์สาธารณะ");
             title = title.Replace(" - Google Drive", "", StringComparison.Ordinal);
             return new(title, "Google Drive", "ไฟล์ Drive สาธารณะ", $"https://drive.google.com/thumbnail?id={Uri.EscapeDataString(id)}&sz=w320", null, false);
         }
         List<MediaEntry> files = [];
         var visited = new HashSet<string>(StringComparer.Ordinal);
-        async Task<string> Walk(string folderId, string relative, int depth)
+        async Task<string> Walk(string folderId, string relative, int depth, string? resourceKey = null)
         {
             if (depth > 20 || files.Count > 2000) throw new InvalidOperationException("โฟลเดอร์นี้ใหญ่หรือซับซ้อนเกินไป กรุณาเลือกลิงก์โฟลเดอร์ย่อย");
             if (!visited.Add(folderId)) throw new InvalidOperationException("พบโฟลเดอร์ที่วนซ้ำ กรุณาเลือกลิงก์โฟลเดอร์ย่อย");
-            var html = await GetHtmlAsync($"https://drive.google.com/embeddedfolderview?id={Uri.EscapeDataString(folderId)}", token);
+            var html = await GetHtmlAsync($"https://drive.google.com/embeddedfolderview?id={Uri.EscapeDataString(folderId)}" +
+                (resourceKey != null ? "&resourcekey=" + Uri.EscapeDataString(resourceKey) : ""), token);
             var (title, children) = ParseFolder(html);
             foreach (var child in children)
             {
                 if (IsFolder(child.Url))
-                    await Walk(FileId(child.Url)!, Path.Combine(relative, MediaOptions.SafeName(child.Title)), depth + 1);
+                    await Walk(FileId(child.Url)!, Path.Combine(relative, MediaOptions.SafeName(child.Title)), depth + 1, ResourceKey(child.Url));
                 else
                 {
+                    if (files.Count >= 2000) throw new InvalidOperationException("โฟลเดอร์มีไฟล์มากเกินไป กรุณาเลือกลิงก์โฟลเดอร์ย่อยเพื่อให้ได้ไฟล์ครบ");
                     var ext = Path.GetExtension(child.Title).ToLowerInvariant();
                     var kind = ext is ".mp4" or ".mov" or ".mkv" or ".webm" ? "video" :
                         ext is ".jpg" or ".jpeg" or ".png" or ".webp" or ".gif" ? "image" :
@@ -59,7 +64,7 @@ public sealed partial class PublicDriveService(HttpClient? client = null)
             }
             return title;
         }
-        var name = await Walk(id, "", 0);
+        var name = await Walk(id, "", 0, ResourceKey(url));
         if (files.Count == 0) throw new InvalidOperationException("โฟลเดอร์ว่าง หรือไม่มีไฟล์ที่เปิดแชร์สาธารณะ");
         return new(name, "Google Drive", $"Google Drive · {files.Count} ไฟล์", files.FirstOrDefault(entry => entry.ThumbnailUrl != null)?.ThumbnailUrl, null, false, true, files);
     }
@@ -111,6 +116,11 @@ public sealed partial class PublicDriveService(HttpClient? client = null)
         var keyMatch = ResourceKeyPattern().Match(url);
         return $"https://drive.usercontent.google.com/download?id={id}&export=download" +
             (keyMatch.Success ? "&resourcekey=" + keyMatch.Groups[1].Value : "");
+    }
+    private static string? ResourceKey(string url)
+    {
+        var match = ResourceKeyPattern().Match(url);
+        return match.Success ? match.Groups[1].Value : null;
     }
 
     public static string ConfirmationUrl(string html)

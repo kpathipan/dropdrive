@@ -4,6 +4,16 @@ $tools = Join-Path $root "DropDrive.Windows/Tools"
 New-Item -ItemType Directory -Force $tools | Out-Null
 
 Invoke-WebRequest "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile (Join-Path $tools "yt-dlp.exe")
+# Small standalone JS runtime required for YouTube's challenge solver. Pin and
+# verify it rather than depending on Node/Deno installed on the user's PC.
+$quickJs = Join-Path $tools "qjs.exe"
+Invoke-WebRequest "https://github.com/quickjs-ng/quickjs/releases/download/v0.16.2/qjs-windows-x86_64.exe" -OutFile $quickJs
+if ((Get-FileHash $quickJs -Algorithm SHA256).Hash -ne "7B27412DE844403545BD151FBE49191B4D5B91A9E15B5DB7C863FEA54639A82B") {
+  throw "QuickJS checksum mismatch."
+}
+Invoke-WebRequest "https://raw.githubusercontent.com/quickjs-ng/quickjs/v0.16.2/LICENSE" -OutFile (Join-Path $tools "LICENSE-quickjs.txt")
+& $quickJs -e "console.log('DropDrive JavaScript runtime ready')"
+if ($LASTEXITCODE -ne 0) { throw "QuickJS runtime did not start." }
 $archive = Join-Path $env:TEMP "ffmpeg-master-latest-win64-gpl-shared.zip"
 Invoke-WebRequest "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl-shared.zip" -OutFile $archive
 $expanded = Join-Path $env:TEMP "dropdrive-ffmpeg"

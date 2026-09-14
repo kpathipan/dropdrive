@@ -25,8 +25,7 @@ public sealed class MediaAnalysisService
         var args = new List<string> { "--dump-single-json", "--skip-download", "--flat-playlist", "--socket-timeout", "15", "--retries", "1" };
         if (uri.AbsolutePath != "/playlist" && (uri.Host.EndsWith("youtube.com", StringComparison.OrdinalIgnoreCase) || uri.Host == "youtu.be"))
             args.Add("--no-playlist");
-        var deno = Path.Combine(AppContext.BaseDirectory, "Tools", "deno.exe");
-        if (File.Exists(deno)) args.AddRange(["--js-runtimes", $"deno:{deno}"]);
+        MediaOptions.AddRuntimeArguments(args, Path.Combine(AppContext.BaseDirectory, "Tools"));
         foreach (var argument in args.Concat(["--", url])) startInfo.ArgumentList.Add(argument);
         using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("ไม่สามารถเริ่มวิเคราะห์ลิงก์ได้");
         using var registration = cancellationToken.Register(() => { try { process.Kill(true); } catch (InvalidOperationException) { } });

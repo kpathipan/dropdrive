@@ -99,7 +99,14 @@ public sealed class MediaEntry : INotifyPropertyChanged
     public long? Size { get; init; }
     public bool Selected { get => _selected; set { if (_selected == value) return; _selected = value; PropertyChanged?.Invoke(this, new(nameof(Selected))); } }
     [JsonIgnore] public Bitmap? Thumbnail { get; set; }
-    [JsonIgnore] public string Icon => Kind switch { "audio" => "♫", "image" => "▧", "video" => "▷", _ => "▤" };
+    [JsonIgnore] public string Icon => Kind switch {
+        "audio" => "♫", "image" => "▧", "video" => "▷",
+        _ => Path.GetExtension(Title).ToLowerInvariant() switch {
+            ".pdf" => "PDF", ".doc" or ".docx" => "DOC",
+            ".xls" or ".xlsx" or ".csv" => "XLS", ".ppt" or ".pptx" => "PPT",
+            ".zip" or ".rar" or ".7z" => "ZIP", ".txt" or ".md" => "TXT", _ => "▤"
+        }
+    };
     public event PropertyChangedEventHandler? PropertyChanged;
     public void RefreshThumbnail() => PropertyChanged?.Invoke(this, new(nameof(Thumbnail)));
 }

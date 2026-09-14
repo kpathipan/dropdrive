@@ -88,7 +88,7 @@ public static class MediaOptions
     public static string OutputTemplate(DownloadItem item)
     {
         var title = item.IsCollection ? "%(title).140s" : SafeName(item.Name).Replace("%", "%%");
-        return $"{title} [%(id)s]-{item.Id.ToString("N")[..6]}.%(ext)s";
+        return $"{title} [%(id)s]-{item.Id:N}.%(ext)s";
     }
 
     public static string SafeName(string name)

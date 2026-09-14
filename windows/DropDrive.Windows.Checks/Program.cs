@@ -81,7 +81,9 @@ try
 
     // Use the real window and controls, with no account, network, updater or user state.
     var uiState = new AppStateService(Path.Combine(stateFolder, "ui"));
-    uiState.SaveSettings(new AppSettings { Destination = stateFolder, CheckUpdatesAutomatically = false, HideToTray = false });
+    var uiDestination = Path.Combine(stateFolder, "PSN");
+    Directory.CreateDirectory(uiDestination);
+    uiState.SaveSettings(new AppSettings { Destination = uiDestination, CheckUpdatesAutomatically = false, HideToTray = false });
     var window = new MainWindow(uiState, false);
     window.Show();
     Dispatcher.UIThread.RunJobs();
@@ -92,7 +94,7 @@ try
     void Click(string name) => Control<Button>(name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
     Capture("01-empty-thai");
     Expect(!Control<Grid>("QueueHeading").IsVisible, "empty screen has no redundant queue heading");
-    Expect(Control<TextBlock>("DestinationLabel").Text == Path.GetFileName(stateFolder), "compact destination is folder name only");
+    Expect(Control<TextBlock>("DestinationLabel").Text == "PSN", "compact destination is folder name only");
     Control<TextBox>("LinkBox").Text = "https://example.com/test";
     Dispatcher.UIThread.RunJobs();
     Expect(Control<Button>("DownloadButton").IsVisible, "analyze appears after typing");
@@ -102,10 +104,14 @@ try
     Click("SettingsButton");
     Expect(Control<ScrollViewer>("SettingsPage").IsVisible, "settings navigates within the same window");
     Capture("02-settings-thai");
+    Control<ComboBox>("ThemeChoice").SelectedIndex = 2;
+    Dispatcher.UIThread.RunJobs();
+    Expect(window.ActualThemeVariant == Application.Current!.ActualThemeVariant, "system theme follows the OS/application, not a forced dark parent");
+    Control<ComboBox>("ThemeChoice").SelectedIndex = 0;
     Click("SettingsButton");
     Expect(Control<ScrollViewer>("DownloadsPage").IsVisible, "gear toggles back from settings");
     var review = new DownloadItem { Url = "https://example.com/test", Name = "คลิปทดสอบสำหรับเลือกไฟล์", Detail = "YouTube · 3 ไฟล์", Status = "Ready",
-        Destination = stateFolder, IsCollection = true, Entries = [
+        Destination = uiDestination, IsCollection = true, Entries = [
             new() { Index = 1, Title = "วิดีโอเบื้องหลัง.mp4" },
             new() { Index = 2, Title = "ภาพปก.jpg", Kind = "image" },
             new() { Index = 3, Title = "ดนตรี.wav", Kind = "audio" }] };

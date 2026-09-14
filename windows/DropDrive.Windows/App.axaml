@@ -1,4 +1,4 @@
-<Application xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="DropDrive.Windows.App" RequestedThemeVariant="Dark">
+<Application xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="DropDrive.Windows.App" RequestedThemeVariant="Default">
   <Application.Resources>
     <ResourceDictionary>
       <StreamGeometry x:Key="DownloadIcon">M12,1 A11,11 0 1 1 11.99,1 M12,5 L12,17 M7,12 L12,17 17,12</StreamGeometry>
@@ -36,6 +36,7 @@
     <Style Selector="Button.tab TextBlock"><Setter Property="Foreground" Value="{DynamicResource MutedColor}"/></Style>
     <Style Selector="Button.tab.selected"><Setter Property="Foreground" Value="{DynamicResource TextColor}"/></Style>
     <Style Selector="Button.tab.selected TextBlock"><Setter Property="Foreground" Value="{DynamicResource TextColor}"/></Style>
+    <Style Selector="Button.tab.selected Path"><Setter Property="Stroke" Value="{DynamicResource TextColor}"/></Style>
     <Style Selector="TextBox.name"><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="0,2"/><Setter Property="FontSize" Value="12"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="MinHeight" Value="24"/></Style>
     <Style Selector="CheckBox"><Setter Property="FontSize" Value="11"/><Setter Property="MinHeight" Value="28"/></Style>
     <Style Selector="ComboBox"><Setter Property="FontSize" Value="11"/><Setter Property="MinHeight" Value="30"/><Setter Property="Padding" Value="8,5"/><Setter Property="CornerRadius" Value="7"/></Style>

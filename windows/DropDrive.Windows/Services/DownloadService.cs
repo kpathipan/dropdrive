@@ -191,7 +191,10 @@ public sealed class DownloadService
         await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
         if (process.ExitCode != 0) throw new InvalidOperationException(FriendlyError(string.Join('\n', errors)));
         }
-        finally { if (infoPath != null) File.Delete(infoPath); }
+        finally
+        {
+            if (infoPath != null) try { File.Delete(infoPath); } catch (IOException) { }
+        }
     }
 
     public static void ParseProgress(DownloadItem item, string line)
@@ -205,7 +208,7 @@ public sealed class DownloadService
         if (line.StartsWith("DDPROGRESS:", StringComparison.Ordinal))
         {
             var fields = line[11..].Split('|');
-            if (double.TryParse(fields[0].Trim().TrimEnd('%'), NumberStyles.Float, CultureInfo.InvariantCulture, out var percent))
+            if (double.TryParse(fields[0].Trim().TrimEnd('%'), NumberStyles.Float, CultureInfo.InvariantCulture, out var percent) && double.IsFinite(percent))
                 item.Progress = Math.Clamp(percent, 0, 99.9);
             if (fields.Length > 1) item.Speed = fields[1].Trim();
             if (fields.Length > 2) item.Eta = fields[2].Trim();
@@ -228,7 +231,7 @@ public sealed class DownloadService
         foreach (var entry in item.Entries)
             if (entry.Transfer is { } child) { child.Status = "Paused"; CleanupPartials(child); }
         if (item.IsDrive || !item.IsMedia || item.Destination == null || !Directory.Exists(item.Destination)) return;
-        var suffix = "-" + item.Id.ToString("N")[..6] + ".";
+        var suffix = "-" + item.Id.ToString("N") + ".";
         foreach (var path in Directory.EnumerateFiles(item.Destination))
         {
             var name = Path.GetFileName(path);
@@ -236,6 +239,21 @@ public sealed class DownloadService
             if (name.EndsWith(".part", StringComparison.Ordinal) || name.EndsWith(".ytdl", StringComparison.Ordinal) || name.Contains(".part-Frag", StringComparison.Ordinal))
                 File.Delete(path);
         }
+    }
+
+    public static void CleanupStaleMetadata()
+    {
+        try
+        {
+            foreach (var path in Directory.EnumerateFiles(Path.GetTempPath(), "dropdrive-info-*.json"))
+            {
+                var name = Path.GetFileNameWithoutExtension(path);
+                if (Guid.TryParseExact(name["dropdrive-info-".Length..], "N", out _) &&
+                    DateTime.UtcNow - File.GetLastWriteTimeUtc(path) > TimeSpan.FromDays(1))
+                    try { File.Delete(path); } catch (IOException) { }
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
     }
 
     public static string DescribeFailure(Exception error) => error switch

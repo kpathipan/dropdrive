@@ -17,7 +17,7 @@ The macOS source, not the first Windows prototype, is the reference.
 | History search/open/reveal/copy/repeat | Saved result path and UI controls; shell actions need desktop integration testing |
 | Media quality/MP3, subtitles, clip, chapters, artwork | Argument fixtures; live providers not all end-to-end tested |
 | TikTok original-video route | Player fixture excludes download_addr; live availability not guaranteed |
-| 24-hour updates, manual bypass, idle installation | Cadence checks and packaged startup smoke; no live destructive update test |
+| 24-hour updates, manual bypass, idle installation | Cadence and packaged startup checks; CI installs 0.5.1 then upgrades in-place and verifies retained settings/queue |
 | Bandwidth, compatible video, theme, open folder preference | Persisted controls and argument fixtures |
 
 By product choice Windows supports public Drive shares without login.
@@ -30,6 +30,7 @@ language switching (interface is Thai).
 - Warnings treated as errors; core and actual-control checks pass on Windows.
 - Inspect CI-rendered empty, settings, cards, list, history, active-transfer images.
 - Packaged executable opens; Velopack feed and packages exist.
+- Disposable runner verifies a real installed upgrade; remote automatic-feed download remains a separate integration path.
 - Release notes disclose remaining gaps; never describe this as full parity.
 
 ## Regression / rollback

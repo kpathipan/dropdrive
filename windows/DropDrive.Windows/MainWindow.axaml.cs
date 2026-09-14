@@ -34,6 +34,7 @@ public partial class MainWindow : Window
     private bool _analyzing;
     private bool _pumping;
     private bool _checkingUpdate;
+    private bool _manualUpdateQueued;
     private bool _selectingAll;
     private bool _quitting;
     private readonly bool _backgroundServices;
@@ -73,6 +74,7 @@ public partial class MainWindow : Window
         Closed += (_, _) => { _updateTimer.Stop(); _lifetime.Cancel(); };
         if (backgroundServices)
         {
+            DownloadService.CleanupStaleMetadata();
             _updateTimer.Tick += async (_, _) => await CheckForUpdatesIfDueAsync();
             Opened += async (_, _) => { _updateTimer.Start(); await CheckForUpdatesIfDueAsync(); };
         }
@@ -85,6 +87,8 @@ public partial class MainWindow : Window
         if (_analyzing) return;
         var links = LinkInputParser.Parse(input);
         if (links.Count == 0) { SetStatus("วางลิงก์เว็บที่ถูกต้องก่อน"); return; }
+        if (links.Count + _downloads.Count(item => item.Status != "Complete") > 100)
+        { SetStatus("คิวรองรับ 100 รายการพร้อมกัน รอให้งานเสร็จหรือแบ่งลิงก์เป็นชุดก่อน"); return; }
         _analyzing = true;
         LinkBox.Text = "";
         DownloadButton.IsEnabled = false;
@@ -146,6 +150,8 @@ public partial class MainWindow : Window
 
     private void AddItem(DownloadItem item)
     {
+        foreach (var old in _downloads.Where(entry => entry.Status == "Complete").Reverse().Skip(50).ToArray())
+        { old.PropertyChanged -= ItemChanged; _downloads.Remove(old); }
         item.PropertyChanged += ItemChanged;
         _downloads.Add(item);
         UpdateQueueSummary();
@@ -491,9 +497,14 @@ public partial class MainWindow : Window
                 image.Bind(Image.SourceProperty, new Avalonia.Data.Binding(nameof(MediaEntry.Thumbnail)));
                 panel.Children.Add(new Border { CornerRadius = new CornerRadius(6), ClipToBounds = true,
                     Background = new SolidColorBrush(Color.Parse("#17191C")), Child = new Grid {
-                        Children = { new TextBlock { Text = entry.Icon, FontSize = 24, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }, image } } });
+                        Children = { new TextBlock { Text = entry.Icon, FontSize = entry.Kind == "document" ? 13 : 24, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }, image } } });
             }
-            panel.Children.Add(new TextBlock { Text = entry.Title, FontSize = 10, TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 2, TextWrapping = TextWrapping.Wrap });
+            else
+            {
+                panel.Orientation = Orientation.Horizontal;
+                panel.Children.Add(new TextBlock { Text = entry.Icon, FontSize = 12, Width = 30, VerticalAlignment = VerticalAlignment.Center });
+            }
+            panel.Children.Add(new TextBlock { Text = entry.Title, FontSize = 10, MaxWidth = LayoutChoice.SelectedIndex == 1 ? 210 : width - 35, TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 2, TextWrapping = TextWrapping.Wrap });
             check.Content = panel; ToolTip.SetTip(check, entry.Title);
             check.KeyDown += async (_, args) => {
                 if (args.Key != Key.Space) return;
@@ -511,6 +522,7 @@ public partial class MainWindow : Window
     private async Task CheckForUpdatesIfDueAsync()
     {
         if (_downloads.Any(item => item.IsActive) || _analyzing || _checkingUpdate || _review != null) return;
+        if (_manualUpdateQueued) { _manualUpdateQueued = false; await CheckForUpdatesAsync(false); return; }
         if (!_updateService.HasPendingUpdate && !_settings.IsAutomaticUpdateCheckDue(DateTimeOffset.UtcNow)) return;
         if (!_updateService.HasPendingUpdate) { _settings.LastAutomaticUpdateCheckUtc = DateTimeOffset.UtcNow; PersistSettings(); }
         await CheckForUpdatesAsync(true);
@@ -518,7 +530,11 @@ public partial class MainWindow : Window
     private async Task CheckForUpdatesAsync(bool silent)
     {
         if (_checkingUpdate) return;
-        if (_downloads.Any(item => item.IsActive) || _analyzing) { if (!silent) SetStatus("รอให้งานดาวน์โหลดเสร็จก่อนติดตั้งอัปเดต"); return; }
+        if (_downloads.Any(item => item.IsActive) || _analyzing)
+        {
+            if (!silent) { _manualUpdateQueued = true; SetStatus("จะตรวจหาอัปเดตให้อัตโนมัติหลังงานดาวน์โหลดเสร็จ"); }
+            return;
+        }
         _checkingUpdate = true; CheckUpdateButton.IsEnabled = false;
         try
         {
@@ -550,6 +566,8 @@ public partial class MainWindow : Window
         {
             if (item.IsActive) item.Status = "Paused";
             if (item.Status is "Paused" or "Ready") item.AnalysisCompleted = true;
+            item.IsDrive = PublicDriveService.IsDriveUrl(item.Url);
+            if (item.IsDrive || DownloadService.IsDirectFile(item.Url)) item.IsMedia = false;
             if (item.Status == "Analyzing") { item.Status = "Failed"; item.Detail = "การวิเคราะห์ถูกขัดจังหวะ กดลองใหม่"; }
             item.CanStart = item.Status is "Ready" or "Paused";
             item.CanRetry = item.Status is "Failed" or "Cancelled"; item.CanCancel = false;

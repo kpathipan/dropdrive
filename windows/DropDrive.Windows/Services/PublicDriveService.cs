@@ -36,6 +36,13 @@ public sealed partial class PublicDriveService(HttpClient? client = null)
                 doc.QuerySelector("input[type='password']") != null)
                 throw new InvalidOperationException("ไฟล์นี้ต้องมีสิทธิ์เข้าถึง Windows รองรับเฉพาะ Drive ที่เปิดแชร์สาธารณะ");
             title = title.Replace(" - Google Drive", "", StringComparison.Ordinal);
+            var path = new Uri(url).AbsolutePath;
+            var extension = path.StartsWith("/document/", StringComparison.Ordinal) ? ".docx" :
+                path.StartsWith("/spreadsheets/", StringComparison.Ordinal) ? ".xlsx" :
+                path.StartsWith("/presentation/", StringComparison.Ordinal) ? ".pptx" : "";
+            foreach (var suffix in new[] { " - Google Docs", " - Google Sheets", " - Google Slides" })
+                if (title.EndsWith(suffix, StringComparison.Ordinal)) title = title[..^suffix.Length];
+            if (extension.Length > 0 && !title.EndsWith(extension, StringComparison.OrdinalIgnoreCase)) title += extension;
             return new(title, "Google Drive", "ไฟล์ Drive สาธารณะ", $"https://drive.google.com/thumbnail?id={Uri.EscapeDataString(id)}&sz=w320", null, false);
         }
         List<MediaEntry> files = [];

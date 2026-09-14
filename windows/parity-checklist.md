@@ -20,7 +20,8 @@ The macOS source, not the first Windows prototype, is the reference.
 | 24-hour updates, manual bypass, idle installation | Cadence checks and packaged startup smoke; no live destructive update test |
 | Bandwidth, compatible video, theme, open folder preference | Persisted controls and argument fixtures |
 
-Still absent: private/multiple Google accounts, TikTok photo-carousel parity,
+By product choice Windows supports public Drive shares without login.
+Still absent: TikTok photo-carousel parity,
 Drive changed-only snapshots, phone inbox, OS toast/sound, launch at login,
 language switching (interface is Thai).
 

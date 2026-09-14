@@ -34,8 +34,10 @@ pause/resume/retry queue, queue ordering, recent search/open/reveal/copy/repeat,
 fixed metric columns, bandwidth/compatible-video/theme preferences, and
 24-hour update checks while running with installation deferred until idle.
 
-This is **not full Mac feature parity**. Private/multiple Google accounts,
-Drive changed-only snapshots, playable remote-video Quick Look, phone inbox,
+Windows intentionally has no login and supports public Drive shares only
+(confirmed product choice, 2026-09-14).
+This is **not full Mac feature parity**. Drive changed-only snapshots,
+playable remote-video Quick Look, phone inbox,
 OS toast/sound notifications and launch-at-login remain unimplemented.
 Space preview shows a thumbnail, not remote video playback. Public Drive's
 anonymous HTML listing is not the authenticated Drive API; inaccessible or
@@ -54,3 +56,8 @@ an HTML permission page, with no duplicate destination wrapper.
 YouTube's JavaScript runtime is bundled (QuickJS-NG 0.16.2, SHA-256 verified at
 build time) so the user does not have to install Node/Deno separately.
 The bundled Noto Sans Thai font avoids differences in Thai fallback fonts.
+
+The disposable Windows runner also installs 0.5.1, installs the new build over
+it, verifies the stable executable/updater paths and retained settings/queue,
+and opens the installed app. This tests installer upgrades, not the remote
+GitHub auto-update download path.

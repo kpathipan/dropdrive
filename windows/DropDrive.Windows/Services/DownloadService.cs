@@ -16,7 +16,7 @@ public sealed class DownloadService
     public async Task DownloadAsync(DownloadItem item, string destination, CancellationToken cancellationToken)
     {
         // Never recreate a missing user-selected destination (e.g. an unplugged drive).
-        TransferGuard.EnsureSpace(destination, item.EstimatedBytes);
+        TransferGuard.EnsureSpace(destination, item.IsMedia ? null : item.EstimatedBytes);
         item.Status = "Downloading"; item.CanCancel = true; item.CanRetry = false;
         if (item.IsDrive && item.IsCollection) await DownloadDriveFolderAsync(item, destination, cancellationToken);
         else if (item.IsDrive || IsDirectFile(item.Url)) await DownloadDirectAsync(item, destination, cancellationToken);
@@ -237,6 +237,15 @@ public sealed class DownloadService
                 File.Delete(path);
         }
     }
+
+    public static string DescribeFailure(Exception error) => error switch
+    {
+        DirectoryNotFoundException => "ไม่พบโฟลเดอร์ปลายทาง เชื่อมต่อไดรฟ์หรือเลือกโฟลเดอร์ใหม่",
+        UnauthorizedAccessException => "ไม่มีสิทธิ์เขียนไฟล์ในโฟลเดอร์นี้ เลือกโฟลเดอร์ใหม่",
+        IOException io when (io.HResult & 0xFFFF) is 39 or 112 => "พื้นที่ว่างไม่พอ เลือกโฟลเดอร์ใหม่แล้วลองอีกครั้ง",
+        HttpRequestException => "การเชื่อมต่อขาดหายหรือไฟล์ไม่พร้อม กดลองใหม่",
+        _ => error.Message
+    };
 
     public static string FriendlyError(string? detail)
     {

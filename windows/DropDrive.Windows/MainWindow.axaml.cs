@@ -227,7 +227,7 @@ public partial class MainWindow : Window
             item.CompatibleVideo = _settings.CompatibleVideo; item.BandwidthLimit = _settings.BandwidthLimit;
             if (item.IsMedia) _ = MediaOptions.Section(item);
             if (item.IsCollection && !item.Entries.Any(entry => entry.Selected)) { SetStatus("เลือกอย่างน้อย 1 ไฟล์"); return; }
-            TransferGuard.EnsureSpace(item.Destination ?? _settings.Destination, item.EstimatedBytes);
+            TransferGuard.EnsureSpace(item.Destination ?? _settings.Destination, item.IsMedia ? null : item.EstimatedBytes);
             if (!string.IsNullOrWhiteSpace(ReviewName.Text)) item.Name = ReviewName.Text.Trim();
             _settings.PlatformQuality[new Uri(item.Url).Host] = item.Quality;
             PersistSettings();
@@ -263,7 +263,7 @@ public partial class MainWindow : Window
                 }
                 catch (Exception error)
                 {
-                    item.Status = "Failed"; item.Detail = error.Message; item.CanRetry = true;
+                    item.Status = "Failed"; item.Detail = DownloadService.DescribeFailure(error); item.CanRetry = true;
                     SetStatus($"ต้องตรวจสอบ: {item.Name}"); _stateService.AddHistory(item);
                 }
                 finally
@@ -412,7 +412,8 @@ public partial class MainWindow : Window
     }
     private async void CopyLink(object? sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: DownloadHistoryEntry item } && Clipboard != null) { await Clipboard.SetTextAsync(item.Url); SetStatus("คัดลอกลิงก์แล้ว"); }
+        try { if (sender is Button { Tag: DownloadHistoryEntry item } && Clipboard != null) { await Clipboard.SetTextAsync(item.Url); SetStatus("คัดลอกลิงก์แล้ว"); } }
+        catch (Exception) { SetStatus("คลิปบอร์ดยังไม่พร้อม กดลองอีกครั้ง"); }
     }
     private void OpenResult(object? sender, RoutedEventArgs e) => LaunchPath(ResultPath(sender));
     private void RevealResult(object? sender, RoutedEventArgs e)
@@ -434,11 +435,18 @@ public partial class MainWindow : Window
     }
     private async void PasteLink(object? sender, RoutedEventArgs e)
     {
-        if (Clipboard != null) LinkBox.Text = await Clipboard.TryGetTextAsync();
+        try { if (Clipboard != null) LinkBox.Text = await Clipboard.TryGetTextAsync(); }
+        catch (Exception) { SetStatus("อ่านคลิปบอร์ดไม่ได้ กด Ctrl+V เพื่อวางลิงก์"); }
         LinkBox.Focus();
     }
+    private void ClearLink(object? sender, RoutedEventArgs e) { LinkBox.Text = ""; LinkBox.Focus(); }
     private void LinkBoxKeyDown(object? sender, KeyEventArgs e) { if (e.Key == Key.Enter) { e.Handled = true; _ = AnalyzeLinksAsync(LinkBox.Text); } }
-    private void LinkBoxTextChanged(object? sender, TextChangedEventArgs e) { if (DownloadButton != null) DownloadButton.IsVisible = !string.IsNullOrWhiteSpace(LinkBox.Text); }
+    private void LinkBoxTextChanged(object? sender, TextChangedEventArgs e)
+    {
+        if (DownloadButton == null || PasteButton == null || ClearLinkButton == null) return;
+        var hasText = !string.IsNullOrWhiteSpace(LinkBox.Text);
+        DownloadButton.IsVisible = hasText; ClearLinkButton.IsVisible = hasText; PasteButton.IsVisible = !hasText;
+    }
     private void ReviewOptionsChanged(object? sender, SelectionChangedEventArgs e) { }
 
     private void SelectAllFiles(object? sender, RoutedEventArgs e)

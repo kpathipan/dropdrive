@@ -63,7 +63,7 @@ public static class MediaOptions
                 : $"bv*{cap}+ba/b{cap}";
             args.AddRange(["-f", format, "--merge-output-format", item.CompatibleVideo ? "mp4" : "mkv"]);
         }
-        if (item.SubtitleMode > 0)
+        if (item.SubtitleMode > 0 && !item.AudioOnly && item.Quality != 5)
         {
             args.AddRange(["--write-subs", "--write-auto-subs", "--sub-langs", "th.*,en.*"]);
             args.AddRange(item.SubtitleMode == 2 ? ["--embed-subs"] : ["--sub-format", "srt/best", "--convert-subs", "srt"]);

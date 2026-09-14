@@ -36,6 +36,7 @@
                 <Button Name="PasteButton" Classes="icon" Width="28" Margin="0,0,4,0" HorizontalAlignment="Right" ToolTip.Tip="วางลิงก์จากคลิปบอร์ด" AutomationProperties.Name="วางลิงก์จากคลิปบอร์ด" Click="PasteLink">
                   <Path Stroke="{DynamicResource MutedColor}" Stretch="Uniform" Fill="Transparent" StrokeThickness="1.7" Data="{StaticResource CopyIcon}" Width="13" Height="13"/>
                 </Button>
+                <Button Name="ClearLinkButton" IsVisible="False" Classes="icon" Content="×" Width="28" Margin="0,0,4,0" HorizontalAlignment="Right" ToolTip.Tip="ล้างลิงก์" AutomationProperties.Name="ล้างลิงก์" Click="ClearLink"/>
               </Grid>
               <Button Grid.Column="1" Name="DownloadButton" Classes="primary" Content="วิเคราะห์" IsVisible="False" Click="AddDownload"/>
             </Grid>

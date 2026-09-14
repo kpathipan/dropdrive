@@ -22,7 +22,7 @@ public sealed partial class DownloadService
         else await DownloadMediaAsync(item, destination, cancellationToken);
         item.Progress = 100;
         item.Status = "Complete";
-        item.Detail = item.AudioOnly ? "Saved as MP3" : "Saved to destination folder";
+        item.Detail = item.AudioOnly ? "บันทึกเป็น MP3 แล้ว" : "บันทึกในโฟลเดอร์ปลายทางแล้ว";
         item.CanCancel = false;
     }
 
@@ -59,7 +59,7 @@ public sealed partial class DownloadService
     private static async Task DownloadMediaAsync(DownloadItem item, string destination, CancellationToken cancellationToken)
     {
         var tool = Path.Combine(AppContext.BaseDirectory, "Tools", "yt-dlp.exe");
-        if (!File.Exists(tool)) throw new FileNotFoundException("yt-dlp.exe is missing. Reinstall DropDrive.", tool);
+        if (!File.Exists(tool)) throw new FileNotFoundException("ไม่พบตัวดาวน์โหลด กรุณาติดตั้ง DropDrive ใหม่", tool);
         var arguments = new List<string> {
             "--newline", "--no-playlist", "--windows-filenames", "--concurrent-fragments", "4",
             "--retries", "3", "--fragment-retries", "3",
@@ -79,7 +79,7 @@ public sealed partial class DownloadService
             RedirectStandardError = true, CreateNoWindow = true
         };
         foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
-        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start downloader.");
+        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("ไม่สามารถเริ่มตัวดาวน์โหลดได้");
         var errors = new StringBuilder();
         process.OutputDataReceived += (_, e) => UpdateProgress(item, e.Data);
         process.ErrorDataReceived += (_, e) => {
@@ -112,17 +112,17 @@ public sealed partial class DownloadService
     {
         var text = detail ?? "";
         if (text.Contains("Unsupported URL", StringComparison.OrdinalIgnoreCase))
-            return "This website is not supported yet.";
+            return "ยังไม่รองรับเว็บไซต์นี้";
         if (text.Contains("Private video", StringComparison.OrdinalIgnoreCase) ||
             text.Contains("Sign in", StringComparison.OrdinalIgnoreCase) ||
             text.Contains("login", StringComparison.OrdinalIgnoreCase))
-            return "This item is private or requires an account.";
+            return "รายการนี้เป็นส่วนตัวหรือต้องมีสิทธิ์เข้าถึง";
         if (text.Contains("not available", StringComparison.OrdinalIgnoreCase) ||
             text.Contains("removed", StringComparison.OrdinalIgnoreCase))
-            return "This item is unavailable or was removed.";
+            return "รายการนี้ใช้งานไม่ได้หรือถูกลบแล้ว";
         if (text.Contains("HTTP Error 403", StringComparison.OrdinalIgnoreCase))
-            return "Access was refused. Update DropDrive or check the link permissions.";
-        return "The link could not be downloaded. Check the link and your connection.";
+            return "ถูกปฏิเสธการเข้าถึง กรุณาตรวจสิทธิ์ของลิงก์หรืออัปเดต DropDrive";
+        return "ดาวน์โหลดลิงก์นี้ไม่ได้ กรุณาตรวจลิงก์และการเชื่อมต่ออินเทอร์เน็ต";
     }
 
     private static string UniquePath(string folder, string name)

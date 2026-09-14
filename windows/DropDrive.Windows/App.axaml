@@ -21,5 +21,5 @@
     <Style Selector="Border.card"><Setter Property="Background" Value="{DynamicResource CardColor}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderColor}"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="12"/></Style>
     <Style Selector="TextBox.compact"><Setter Property="Background" Value="{DynamicResource RailColor}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderColor}"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="10"/><Setter Property="Padding" Value="10,8"/></Style>
   </Application.Styles>
-  <TrayIcon.Icons><TrayIcons><TrayIcon Icon="/Assets/dropdrive.png" ToolTipText="DropDrive"><TrayIcon.Menu><NativeMenu><NativeMenuItem Header="Open DropDrive" Click="ShowWindow"/><NativeMenuItem Header="Quit" Click="QuitApplication"/></NativeMenu></TrayIcon.Menu></TrayIcon></TrayIcons></TrayIcon.Icons>
+  <TrayIcon.Icons><TrayIcons><TrayIcon Icon="/Assets/dropdrive.png" ToolTipText="DropDrive"><TrayIcon.Menu><NativeMenu><NativeMenuItem Header="เปิด DropDrive" Click="ShowWindow"/><NativeMenuItem Header="ออก" Click="QuitApplication"/></NativeMenu></TrayIcon.Menu></TrayIcon></TrayIcons></TrayIcon.Icons>
 </Application>

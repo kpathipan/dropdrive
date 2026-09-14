@@ -21,4 +21,7 @@ public sealed class DownloadHistoryEntry
     public bool AudioOnly { get; init; }
     public required string Status { get; init; }
     public DateTimeOffset FinishedAt { get; init; } = DateTimeOffset.Now;
+    public string DisplayStatus => Status switch {
+        "Complete" => "เสร็จแล้ว", "Failed" => "ไม่สำเร็จ", "Cancelled" => "ยกเลิกแล้ว", _ => Status
+    };
 }

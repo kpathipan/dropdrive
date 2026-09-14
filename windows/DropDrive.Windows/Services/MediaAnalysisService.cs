@@ -11,17 +11,17 @@ public sealed class MediaAnalysisService
     {
         var uri = new Uri(url);
         if (DownloadService.IsDirectFile(url))
-            return new MediaAnalysis(Path.GetFileName(uri.LocalPath), uri.Host, "Direct file", null, null);
+            return new MediaAnalysis(Path.GetFileName(uri.LocalPath), uri.Host, "ไฟล์โดยตรง", null, null);
 
         var tool = Path.Combine(AppContext.BaseDirectory, "Tools", "yt-dlp.exe");
-        if (!File.Exists(tool)) return new MediaAnalysis(uri.Host, uri.Host, "Media link", null, null);
+        if (!File.Exists(tool)) return new MediaAnalysis(uri.Host, uri.Host, "ลิงก์สื่อ", null, null);
         var startInfo = new ProcessStartInfo(tool) {
             UseShellExecute = false, RedirectStandardOutput = true,
             RedirectStandardError = true, CreateNoWindow = true
         };
         foreach (var argument in new[] { "--dump-single-json", "--no-playlist", "--skip-download", url })
             startInfo.ArgumentList.Add(argument);
-        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start link analysis.");
+        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("ไม่สามารถเริ่มวิเคราะห์ลิงก์ได้");
         var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
         var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
         await process.WaitForExitAsync(cancellationToken);

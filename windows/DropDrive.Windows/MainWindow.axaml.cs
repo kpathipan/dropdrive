@@ -43,14 +43,14 @@ public partial class MainWindow : Window
     private async Task QueueLinksAsync()
     {
         var links = LinkInputParser.Parse(LinkBox.Text);
-        if (links.Count == 0) { SetStatus("Paste a valid web link first."); return; }
+        if (links.Count == 0) { SetStatus("วางลิงก์เว็บที่ถูกต้องก่อน"); return; }
         LinkBox.Text = "";
         DownloadButton.IsEnabled = false;
-        HeaderStatus.Text = "Analyzing";
+        HeaderStatus.Text = "กำลังวิเคราะห์";
         foreach (var link in links)
         {
             var uri = new Uri(link);
-            var item = new DownloadItem { Url = link, Name = uri.Host.Replace("www.", "", StringComparison.OrdinalIgnoreCase), Source = uri.Host, AudioOnly = false, Destination = _settings.Destination, Status = "Analyzing", Detail = "Reading link information…" };
+            var item = new DownloadItem { Url = link, Name = uri.Host.Replace("www.", "", StringComparison.OrdinalIgnoreCase), Source = uri.Host, AudioOnly = false, Destination = _settings.Destination, Status = "Analyzing", Detail = "กำลังอ่านข้อมูลลิงก์…" };
             _downloads.Insert(0, item);
             try
             {
@@ -62,9 +62,9 @@ public partial class MainWindow : Window
                 item.Detail = analysis.Detail + (item.AudioOnly ? " · MP3" : "");
                 item.Status = "Ready";
                 item.CanStart = true;
-                item.ActionLabel = _downloads.Any(IsInProgress) ? "Queue" : "Download";
+                item.ActionLabel = _downloads.Any(IsInProgress) ? "เข้าคิว" : "ดาวน์โหลด";
             }
-            catch (OperationCanceledException) { item.Detail = "Analysis timed out; review and continue."; item.Status = "Ready"; item.CanStart = true; }
+            catch (OperationCanceledException) { item.Detail = "วิเคราะห์ใช้เวลานานเกินไป ตรวจสอบแล้วดำเนินการต่อได้"; item.Status = "Ready"; item.CanStart = true; }
             catch (Exception error)
             {
                 item.Status = "Failed"; item.Detail = error.Message; item.CanRetry = true;
@@ -73,7 +73,7 @@ public partial class MainWindow : Window
             SaveQueue();
         }
         DownloadButton.IsEnabled = true;
-        HeaderStatus.Text = "Ready";
+        HeaderStatus.Text = "พร้อมใช้งาน";
         UpdateQueueSummary();
     }
 
@@ -87,15 +87,15 @@ public partial class MainWindow : Window
         {
             await _downloadGate.WaitAsync(cancellation.Token);
             enteredGate = true;
-            HeaderStatus.Text = "Downloading";
+            HeaderStatus.Text = "กำลังดาวน์โหลด";
             UpdateQueueSummary();
             await _downloadService.DownloadAsync(item, item.Destination ?? _settings.Destination, cancellation.Token);
-            SetStatus($"Finished: {item.Name}");
+            SetStatus($"ดาวน์โหลดเสร็จแล้ว: {item.Name}");
         }
         catch (OperationCanceledException)
         {
-            item.Status = "Cancelled"; item.Detail = "Download cancelled"; item.CanCancel = false; item.CanRetry = true;
-            SetStatus($"Cancelled: {item.Name}");
+            item.Status = "Cancelled"; item.Detail = "ยกเลิกการดาวน์โหลดแล้ว"; item.CanCancel = false; item.CanRetry = true;
+            SetStatus($"ยกเลิกแล้ว: {item.Name}");
         }
         catch (Exception error)
         {
@@ -108,7 +108,7 @@ public partial class MainWindow : Window
             _cancellations.Remove(item.Id);
             if (item.Status is "Complete" or "Failed" or "Cancelled") _stateService.AddHistory(item);
             RefreshHistory();
-            HeaderStatus.Text = _downloads.Any(IsInProgress) ? "Downloading" : "Ready";
+            HeaderStatus.Text = _downloads.Any(IsInProgress) ? "กำลังดาวน์โหลด" : "พร้อมใช้งาน";
             UpdateQueueSummary();
             SaveQueue();
         }
@@ -118,7 +118,7 @@ public partial class MainWindow : Window
     {
         if (sender is not Button { Tag: DownloadItem item }) return;
         item.Status = _downloads.Any(IsInProgress) ? "Waiting" : "Starting";
-        item.ActionLabel = "Queue";
+        item.ActionLabel = "เข้าคิว";
         _ = RunDownloadAsync(item);
         SaveQueue();
     }
@@ -131,16 +131,16 @@ public partial class MainWindow : Window
     private void RetryDownload(object? sender, RoutedEventArgs e)
     {
         if (sender is not Button { Tag: DownloadItem item }) return;
-        item.Progress = 0; item.Status = "Waiting"; item.Detail = item.AudioOnly ? "Waiting · MP3" : "Waiting";
+        item.Progress = 0; item.Status = "Waiting"; item.Detail = item.AudioOnly ? "รอคิว · MP3" : "รอคิว";
         _ = RunDownloadAsync(item);
     }
 
     private async void ChooseFolder(object? sender, RoutedEventArgs e)
     {
-        var choices = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions { Title = "Choose download folder", AllowMultiple = false });
+        var choices = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions { Title = "เลือกโฟลเดอร์ดาวน์โหลด", AllowMultiple = false });
         var path = choices.FirstOrDefault()?.TryGetLocalPath();
         if (string.IsNullOrWhiteSpace(path)) return;
-        _settings.Destination = path; _stateService.SaveSettings(_settings); UpdateDestinationLabels(); SetStatus("Download folder updated.");
+        _settings.Destination = path; _stateService.SaveSettings(_settings); UpdateDestinationLabels(); SetStatus("เปลี่ยนโฟลเดอร์ดาวน์โหลดแล้ว");
     }
 
     private void SettingsChanged(object? sender, RoutedEventArgs e)
@@ -148,7 +148,7 @@ public partial class MainWindow : Window
         if (_loadingSettings) return;
         _settings.CheckUpdatesAutomatically = AutoUpdateToggle.IsChecked == true;
         _settings.HideToTray = HideToTrayToggle.IsChecked == true;
-        _stateService.SaveSettings(_settings); SetStatus("Settings saved.");
+        _stateService.SaveSettings(_settings); SetStatus("บันทึกการตั้งค่าแล้ว");
     }
 
     private void ShowDownloads(object? sender, RoutedEventArgs e) => ShowPage(DownloadsPage);
@@ -161,7 +161,7 @@ public partial class MainWindow : Window
         SettingsPage.IsVisible = page == SettingsPage;
     }
 
-    private void ClearHistory(object? sender, RoutedEventArgs e) { _stateService.ClearHistory(); RefreshHistory(); SetStatus("Download history cleared."); }
+    private void ClearHistory(object? sender, RoutedEventArgs e) { _stateService.ClearHistory(); RefreshHistory(); SetStatus("ล้างประวัติการดาวน์โหลดแล้ว"); }
 
     private void RefreshHistory()
     {
@@ -191,7 +191,7 @@ public partial class MainWindow : Window
 
     private async Task CheckForUpdatesAsync(bool silent)
     {
-        if (!silent) SetStatus("Checking for updates…");
+        if (!silent) SetStatus("กำลังตรวจหาอัปเดต…");
         var result = await _updateService.CheckDownloadAndRestartAsync();
         if (!silent || result.Restarting || result.IsError) SetStatus(result.Message);
     }
@@ -199,7 +199,7 @@ public partial class MainWindow : Window
     private void HandleClosing(object? sender, WindowClosingEventArgs e)
     {
         SaveQueue();
-        if (_settings.HideToTray) { e.Cancel = true; Hide(); SetStatus("DropDrive is still running in the notification area."); }
+        if (_settings.HideToTray) { e.Cancel = true; Hide(); SetStatus("DropDrive ยังทำงานอยู่ในถาดระบบ"); }
         else if (Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop) desktop.Shutdown();
     }
 
@@ -209,7 +209,7 @@ public partial class MainWindow : Window
         foreach (var item in _stateService.LoadQueue())
         {
             if (item.Status is "Downloading" or "Waiting" or "Starting") item.Status = "Paused";
-            if (item.Status is "Ready" or "Paused") item.CanStart = true;
+            if (item.Status is "Ready" or "Paused") { item.CanStart = true; item.ActionLabel = "ดาวน์โหลด"; }
             item.CanCancel = false;
             item.CanRetry = item.Status is "Failed" or "Cancelled";
             _downloads.Add(item);
@@ -218,7 +218,7 @@ public partial class MainWindow : Window
     }
 
     private void SaveQueue() => _stateService.SaveQueue(_downloads.Where(item => item.Status != "Complete"));
-    private void UpdateQueueSummary() { var active = _downloads.Count(IsInProgress); QueueSummary.Text = active == 0 ? "No active downloads" : $"{active} active"; }
+    private void UpdateQueueSummary() { var active = _downloads.Count(IsInProgress); QueueSummary.Text = active == 0 ? "ยังไม่มีรายการ" : $"กำลังทำงาน {active} รายการ"; }
     private static bool IsInProgress(DownloadItem item) => item.Status is "Waiting" or "Starting" or "Analyzing" or "Downloading";
     private void SetStatus(string message) => StatusLabel.Text = message;
 }

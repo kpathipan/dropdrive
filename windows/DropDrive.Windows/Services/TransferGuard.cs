@@ -11,6 +11,6 @@ public static class TransferGuard
         if (string.IsNullOrWhiteSpace(root)) return;
         var available = new DriveInfo(root).AvailableFreeSpace;
         if (available - ReserveBytes < requiredBytes)
-            throw new IOException("There is not enough free space for this download.");
+            throw new IOException("พื้นที่ว่างไม่เพียงพอสำหรับการดาวน์โหลดนี้");
     }
 }

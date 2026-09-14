@@ -7,12 +7,12 @@ public sealed class DownloadItem : INotifyPropertyChanged
 {
     private double _progress;
     private string _status = "Waiting";
-    private string _name = "Download";
+    private string _name = "ดาวน์โหลด";
     private string _detail = "";
     private bool _canCancel;
     private bool _canRetry;
     private bool _canStart;
-    private string _actionLabel = "Download";
+    private string _actionLabel = "ดาวน์โหลด";
     public Guid Id { get; init; } = Guid.NewGuid();
     public required string Url { get; init; }
     public string Name { get => _name; set => Set(ref _name, value); }
@@ -22,7 +22,21 @@ public sealed class DownloadItem : INotifyPropertyChanged
     public long? EstimatedBytes { get; set; }
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.Now;
     public double Progress { get => _progress; set => Set(ref _progress, value); }
-    public string Status { get => _status; set => Set(ref _status, value); }
+    public string Status {
+        get => _status;
+        set {
+            if (_status == value) return;
+            _status = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Status)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DisplayStatus)));
+        }
+    }
+    public string DisplayStatus => Status switch {
+        "Ready" => "พร้อม", "Waiting" => "รอคิว", "Starting" => "กำลังเริ่ม",
+        "Analyzing" => "กำลังวิเคราะห์", "Downloading" => "กำลังดาวน์โหลด",
+        "Complete" => "เสร็จแล้ว", "Failed" => "ไม่สำเร็จ", "Cancelled" => "ยกเลิกแล้ว",
+        "Paused" => "หยุดชั่วคราว", _ => Status
+    };
     public string Detail { get => _detail; set => Set(ref _detail, value); }
     public bool CanCancel { get => _canCancel; set => Set(ref _canCancel, value); }
     public bool CanRetry { get => _canRetry; set => Set(ref _canRetry, value); }

@@ -1,6 +1,19 @@
 <Application xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="DropDrive.Windows.App" RequestedThemeVariant="Dark">
   <Application.Resources>
     <ResourceDictionary>
+      <StreamGeometry x:Key="DownloadIcon">M12,1 A11,11 0 1 1 11.99,1 M12,5 L12,17 M7,12 L12,17 17,12</StreamGeometry>
+      <StreamGeometry x:Key="FolderIcon">M2,5 L9,5 11,7 22,7 22,20 2,20 Z M2,10 L22,10</StreamGeometry>
+      <StreamGeometry x:Key="LinkIcon">M10,15 L15,10 M8,13 L5,16 C1,20 5,24 9,20 L12,17 M12,7 L15,4 C19,0 24,5 20,9 L17,12</StreamGeometry>
+      <StreamGeometry x:Key="CopyIcon">M8,8 L21,8 21,22 8,22 Z M16,5 L16,2 2,2 2,16 5,16</StreamGeometry>
+      <StreamGeometry x:Key="HistoryIcon">M3,11 A9,9 0 1 1 5,19 M3,5 L3,11 9,11 M12,6 L12,12 16,14</StreamGeometry>
+      <StreamGeometry x:Key="SettingsIcon">M9,2 L15,2 16,6 20,6 22,11 19,14 20,18 15,21 12,18 8,21 3,18 4,14 1,11 3,6 7,6 Z M16,11 A4,4 0 1 1 8,11 A4,4 0 1 1 16,11</StreamGeometry>
+      <SolidColorBrush x:Key="ExpanderHeaderBackground">Transparent</SolidColorBrush>
+      <SolidColorBrush x:Key="ExpanderHeaderBorderBrush">Transparent</SolidColorBrush>
+      <SolidColorBrush x:Key="ExpanderContentBackground">Transparent</SolidColorBrush>
+      <Thickness x:Key="ExpanderHeaderPadding">0</Thickness>
+      <Thickness x:Key="ExpanderContentPadding">0</Thickness>
+      <Thickness x:Key="ExpanderContentDownBorderThickness">0</Thickness>
+      <x:Double x:Key="ExpanderMinHeight">30</x:Double>
       <ResourceDictionary.ThemeDictionaries>
         <ResourceDictionary x:Key="Light">
           <Color x:Key="CanvasColor">#F5F5F7</Color><Color x:Key="RailColor">#EDEDEF</Color><Color x:Key="CardColor">#FFFFFF</Color><Color x:Key="BorderColor">#E3E3E6</Color><Color x:Key="TextColor">#202124</Color><Color x:Key="MutedColor">#74777D</Color><Color x:Key="AccentColor">#2563EB</Color><Color x:Key="AccentSoftColor">#EAF0FE</Color>
@@ -15,6 +28,18 @@
     <FluentTheme />
     <Style Selector="Window"><Setter Property="FontFamily" Value="Segoe UI"/><Setter Property="FontSize" Value="13"/><Setter Property="Background" Value="{DynamicResource CanvasColor}"/></Style>
     <Style Selector="TextBlock"><Setter Property="Foreground" Value="{DynamicResource TextColor}"/></Style>
+    <Style Selector="TextBlock.muted"><Setter Property="Foreground" Value="{DynamicResource MutedColor}"/></Style>
+    <Style Selector="TextBlock.metric"><Setter Property="Foreground" Value="{DynamicResource MutedColor}"/><Setter Property="FontFamily" Value="Cascadia Mono,Consolas"/><Setter Property="FontSize" Value="10"/><Setter Property="TextAlignment" Value="Right"/><Setter Property="TextTrimming" Value="CharacterEllipsis"/></Style>
+    <Style Selector="Button.icon"><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Foreground" Value="{DynamicResource MutedColor}"/><Setter Property="Width" Value="26"/><Setter Property="Height" Value="30"/><Setter Property="Padding" Value="4"/><Setter Property="HorizontalContentAlignment" Value="Center"/></Style>
+    <Style Selector="Button.link"><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Foreground" Value="{DynamicResource AccentColor}"/><Setter Property="Padding" Value="2,3"/><Setter Property="FontSize" Value="11"/></Style>
+    <Style Selector="Button.tab"><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Foreground" Value="{DynamicResource MutedColor}"/><Setter Property="CornerRadius" Value="0"/></Style>
+    <Style Selector="Button.tab TextBlock"><Setter Property="Foreground" Value="{DynamicResource MutedColor}"/></Style>
+    <Style Selector="Button.tab.selected"><Setter Property="Foreground" Value="{DynamicResource TextColor}"/></Style>
+    <Style Selector="Button.tab.selected TextBlock"><Setter Property="Foreground" Value="{DynamicResource TextColor}"/></Style>
+    <Style Selector="TextBox.name"><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="0,2"/><Setter Property="FontSize" Value="12"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="MinHeight" Value="24"/></Style>
+    <Style Selector="CheckBox"><Setter Property="FontSize" Value="11"/><Setter Property="MinHeight" Value="28"/></Style>
+    <Style Selector="ComboBox"><Setter Property="FontSize" Value="11"/><Setter Property="MinHeight" Value="30"/><Setter Property="Padding" Value="8,5"/><Setter Property="CornerRadius" Value="7"/></Style>
+    <Style Selector="Expander"><Setter Property="FontSize" Value="11"/><Setter Property="MinHeight" Value="30"/></Style>
     <Style Selector="Button.primary"><Setter Property="Background" Value="{DynamicResource AccentColor}"/><Setter Property="Foreground" Value="White"/><Setter Property="CornerRadius" Value="9"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="14,9"/><Setter Property="FontWeight" Value="SemiBold"/></Style>
     <Style Selector="Button.quiet"><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Foreground" Value="{DynamicResource MutedColor}"/><Setter Property="Padding" Value="8,6"/></Style>
     <Style Selector="Button.small"><Setter Property="Background" Value="{DynamicResource AccentSoftColor}"/><Setter Property="Foreground" Value="{DynamicResource AccentColor}"/><Setter Property="CornerRadius" Value="8"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="9,6"/><Setter Property="FontSize" Value="11"/></Style>

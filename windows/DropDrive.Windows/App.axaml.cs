@@ -32,6 +32,6 @@ public partial class App : Application
 
     private void QuitApplication(object? sender, EventArgs e)
     {
-        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop) desktop.Shutdown();
+        _window?.Quit();
     }
 }

@@ -6,9 +6,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="../DropDrive.Windows/Services/LinkInputParser.cs" Link="LinkInputParser.cs" />
-    <Compile Include="../DropDrive.Windows/Models/AppSettings.cs" Link="AppSettings.cs" />
-    <Compile Include="../DropDrive.Windows/Models/DownloadItem.cs" Link="DownloadItem.cs" />
-    <Compile Include="../DropDrive.Windows/Services/AppStateService.cs" Link="AppStateService.cs" />
+    <ProjectReference Include="../DropDrive.Windows/DropDrive.Windows.csproj" />
+    <PackageReference Include="Avalonia.Headless" Version="12.1.2" />
   </ItemGroup>
 </Project>

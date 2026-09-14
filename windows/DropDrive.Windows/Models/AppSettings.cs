@@ -6,6 +6,14 @@ public sealed class AppSettings
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
     public bool CheckUpdatesAutomatically { get; set; } = true;
     public bool HideToTray { get; set; } = true;
+    public bool OpenFolderOnComplete { get; set; }
+    public bool CompatibleVideo { get; set; } = true;
+    public long? BandwidthLimit { get; set; }
+    public int Theme { get; set; }
+    public int CardSize { get; set; } = 1;
+    public int FileLayout { get; set; }
+    public Dictionary<string, int> PlatformQuality { get; set; } = [];
+    public List<string> RecentDestinations { get; set; } = [];
     public DateTimeOffset? LastAutomaticUpdateCheckUtc { get; set; }
 
     public bool IsAutomaticUpdateCheckDue(DateTimeOffset now) =>
@@ -19,6 +27,10 @@ public sealed class DownloadHistoryEntry
     public required string Name { get; init; }
     public required string Source { get; init; }
     public bool AudioOnly { get; init; }
+    public string? ResultPath { get; init; }
+    public string? Destination { get; init; }
+    public int Quality { get; init; }
+    public bool CanOpen => Status == "Complete" && !string.IsNullOrWhiteSpace(ResultPath);
     public required string Status { get; init; }
     public DateTimeOffset FinishedAt { get; init; } = DateTimeOffset.Now;
     public string DisplayStatus => Status switch {

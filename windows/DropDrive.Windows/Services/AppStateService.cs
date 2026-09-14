@@ -25,7 +25,8 @@ public sealed class AppStateService
         var history = LoadHistory();
         history.Insert(0, new DownloadHistoryEntry {
             Url = item.Url, Name = item.Name, Source = item.Source,
-            AudioOnly = item.AudioOnly, Status = item.Status
+            AudioOnly = item.AudioOnly, Status = item.Status, ResultPath = item.ResultPath,
+            Destination = item.Destination, Quality = item.Quality
         });
         if (history.Count > 100) history.RemoveRange(100, history.Count - 100);
         Save("history.json", history);

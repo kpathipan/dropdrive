@@ -6,7 +6,7 @@ on:
       version:
         description: SemVer for the Windows installer
         required: true
-        default: 0.6.0
+        default: 0.7.0
   push:
     tags:
       - windows-v*
@@ -40,6 +40,8 @@ jobs:
           name: DropDrive-Windows-UI-${{ env.DROPDRIVE_WINDOWS_VERSION }}
           path: windows/artifacts/ui-checks/*.png
           if-no-files-found: error
+      - name: Check native Windows notifications and integration
+        run: dotnet run --project windows/DropDrive.Windows.Checks/DropDrive.Windows.Checks.csproj -c Release -- --windows-shell
       - name: Build EXE and installer
         shell: pwsh
         run: ./windows/build-windows.ps1 -Version $env:DROPDRIVE_WINDOWS_VERSION
@@ -79,3 +81,18 @@ jobs:
           --token $env:GITHUB_TOKEN
           --publish true
           --tag ${{ github.ref_name }}
+
+  verify-public-update:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/windows-v')
+    runs-on: windows-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify installed previous app updates through the public feed
+        shell: pwsh
+        run: |
+          $version = '${{ github.ref_name }}' -replace '^windows-v', ''
+          ./windows/test-auto-update.ps1 -ExpectedVersion $version

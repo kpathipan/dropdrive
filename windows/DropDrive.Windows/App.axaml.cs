@@ -7,6 +7,7 @@ namespace DropDrive.Windows;
 
 public partial class App : Application
 {
+    public static Services.SingleInstance? Instance { get; set; }
     private MainWindow? _window;
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
@@ -18,6 +19,11 @@ public partial class App : Application
             _window = new MainWindow();
             desktop.MainWindow = _window;
             _window.Show();
+            if (Instance != null) _ = Instance.ListenAsync(_window.ReceiveActivation);
+            if (desktop.Args?.Any(arg => arg.StartsWith("dropdrive:", StringComparison.OrdinalIgnoreCase)) == true)
+                Avalonia.Threading.Dispatcher.UIThread.Post(() => _window.ReceiveActivation(desktop.Args));
+            if (desktop.Args?.Contains("--background") == true)
+                Avalonia.Threading.Dispatcher.UIThread.Post(() => _window.Hide());
         }
         base.OnFrameworkInitializationCompleted();
     }

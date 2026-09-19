@@ -69,7 +69,7 @@ public static class MediaOptions
             args.AddRange(item.SubtitleMode == 2 ? ["--embed-subs"] : ["--sub-format", "srt/best", "--convert-subs", "srt"]);
         }
         args.Add("--embed-chapters");
-        if (item.SplitChapters) args.Add("--split-chapters");
+        if (item.SplitChapters) args.AddRange(["--split-chapters", "-o", $"chapter:%(title).100s - %(section_number)03d %(section_title).50s-{item.Id:N}.%(ext)s"]);
         if (item.SaveThumbnail) args.AddRange(["--write-thumbnail", "--convert-thumbnails", "jpg"]);
         AddRuntimeArguments(args, toolsPath);
         args.AddRange(["--", item.Url]);

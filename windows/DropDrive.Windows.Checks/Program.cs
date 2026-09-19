@@ -11,6 +11,8 @@ using System.Net;
 using System.Net.Http.Headers;
 using Avalonia.VisualTree;
 
+if (args.Contains("--windows-shell")) { WindowsShellChecks.Run(args); return; }
+
 AppBuilder.Configure<App>().UseSkia()
     .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).SetupWithoutStarting();
 
@@ -78,6 +80,28 @@ try
     Expect(TikTokMediaService.OriginalUrl(playerJson, 0) == "https://v.tiktokcdn.com/original.mp4", "TikTok original player rendition");
     Expect(TikTokMediaService.OriginalUrl(playerJson, 4) == "https://v.tiktokcdn.com/small.mp4", "TikTok size preference");
     Expect(TikTokMediaService.OriginalUrl("""{"items":[{"video_info":{"download_addr":{"url_list":["https://v.tiktokcdn.com/watermarked.mp4"]}}}]}""", 0) == null, "never silently choose watermarked download_addr");
+    var photoPost = TikTokMediaService.PhotoAnalysis("""{"items":[{"desc":"Photos","image_post_info":{"images":[{"display_image":{"url_list":["https://p.tiktokcdn.com/one.jpg"]}},{"display_image":{"url_list":["https://p.tiktokcdn.com/two.webp"]}}]},"video_info":{"url_list":["https://v.tiktokcdn.com/music.m4a"]}}]}""", "https://www.tiktok.com/@creator/photo/1234567890123456789");
+    Expect(photoPost?.Entries?.Count == 3 && photoPost.Entries[1].Title.EndsWith(".webp") && photoPost.Entries[2].Kind == "audio", "TikTok photo collection keeps original images and soundtrack separate");
+    Expect(!TikTokMediaService.IsTrustedCdn("tiktokcdn.com.evil.test"), "photo CDN host boundary");
+    Expect(MediaValidator.IsPlayable("""{"format":{"duration":"2.5"},"streams":[{"codec_type":"audio"}]}""", true), "MP3 validator accepts audio stream");
+    Expect(!MediaValidator.IsPlayable("""{"format":{"duration":"0"},"streams":[{"codec_type":"audio"}]}""", true), "empty media rejected");
+    var collection = new DownloadItem { Url = "https://fixture.test/list", IsCollection = true, Entries = [
+        new() { Index = 1, Title = "One", StableId = "one" }, new() { Index = 2, Title = "Two", StableId = "two", Selected = false }] };
+    state.RecordCompletion(collection);
+    var receipt = state.LoadReceipts()[collection.Url];
+    Expect(receipt.State(collection.Entries[0]) == "โหลดแล้ว" && receipt.State(collection.Entries[1]) == "ใหม่", "partial collection receipt never marks unselected entries completed");
+    Expect(receipt.State(new() { Index = 1, Title = "Renamed", StableId = "one" }) == "เปลี่ยนแปลง", "changed source metadata detected");
+    Expect(PhoneInboxService.ExtractLinks("<plist><string>https://example.com/a?x=1&amp;y=2</string></plist>").Single() == "https://example.com/a?x=1&y=2", "phone inbox understands webloc escaped URLs");
+    var inboxFolder = Path.Combine(stateFolder, "inbox"); Directory.CreateDirectory(inboxFolder);
+    var input = Path.Combine(inboxFolder, "from-phone.txt"); File.WriteAllText(input, "https://example.com/a"); File.SetLastWriteTimeUtc(input, DateTime.UtcNow.AddMinutes(-1));
+    var inbox = new PhoneInboxService();
+    Complete(inbox.ScanAsync(inboxFolder, _ => Task.FromResult(false), CancellationToken.None));
+    Expect(File.Exists(input), "failed durable receipt keeps original phone input");
+    Complete(inbox.ScanAsync(inboxFolder, _ => Task.FromResult(true), CancellationToken.None));
+    Expect(!File.Exists(input) && File.Exists(Path.Combine(inboxFolder, "Processed", "from-phone.txt")), "accepted input is moved, not copied or deleted");
+    File.WriteAllText(input, "https://example.com/a"); File.SetLastWriteTimeUtc(input, DateTime.UtcNow.AddMinutes(-1));
+    Complete(inbox.ScanAsync(inboxFolder, _ => { File.WriteAllText(input, "https://example.com/new"); return Task.FromResult(true); }, CancellationToken.None));
+    Expect(File.Exists(input), "phone input changed during processing must not be consumed");
 
     // Use the real window and controls, with no account, network, updater or user state.
     var uiState = new AppStateService(Path.Combine(stateFolder, "ui"));
@@ -110,6 +134,11 @@ try
     Control<ComboBox>("ThemeChoice").SelectedIndex = 0;
     Click("SettingsButton");
     Expect(Control<ScrollViewer>("DownloadsPage").IsVisible, "gear toggles back from settings");
+    Expect(window.Height == 300, "returning to empty home restores the compact window");
+    Control<ComboBox>("LanguageChoice").SelectedIndex = 1; Dispatcher.UIThread.RunJobs();
+    Expect(Control<TextBox>("LinkBox").PlaceholderText == "Paste a download link", "language setting updates actual UI resources");
+    Capture("07-empty-english");
+    Control<ComboBox>("LanguageChoice").SelectedIndex = 0;
     var review = new DownloadItem { Url = "https://example.com/test", Name = "คลิปทดสอบสำหรับเลือกไฟล์", Detail = "YouTube · 3 ไฟล์", Status = "Ready",
         Destination = uiDestination, IsCollection = true, Entries = [
             new() { Index = 1, Title = "วิดีโอเบื้องหลัง.mp4" },
@@ -117,6 +146,7 @@ try
             new() { Index = 3, Title = "ดนตรี.wav", Kind = "audio" }] };
     window.OpenReview(review);
     Control<Expander>("FileSelector").IsExpanded = true;
+    Control<ScrollViewer>("DownloadsPage").Offset = new Vector(0, 310);
     Capture("03-folder-cards-thai");
     var master = Control<CheckBox>("SelectAllCheck");
     master.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -130,6 +160,11 @@ try
     foreach (var size in new[] { 0, 1, 2 }) { Control<ComboBox>("SizeChoice").SelectedIndex = size; Dispatcher.UIThread.RunJobs(); }
     Control<ComboBox>("LayoutChoice").SelectedIndex = 1;
     Capture("04-file-list-thai");
+    uiState.RecordCompletion(new DownloadItem { Url = review.Url, IsCollection = true, Entries = [review.Entries[0]] });
+    window.OpenReview(review); Control<Expander>("FileSelector").IsExpanded = true;
+    Click("SelectNewButton");
+    Expect(!review.Entries[0].Selected && review.Entries[1].Selected && review.Entries[2].Selected, "select new uses completed receipt, not last selection");
+    review.Entries[0].Selected = true;
     Control<TextBox>("FileSearch").Text = "ดนตรี";
     Dispatcher.UIThread.RunJobs();
     Expect(Control<WrapPanel>("FileCards").Children.Count == 1, "search filters without altering selection");
@@ -201,6 +236,12 @@ try
     Expect(queueState.LoadHistory().Single().ResultPath == queued.ResultPath, "completed file path reaches history");
     Expect((string?)queueWindow.FindControl<Button>("ReviewDownloadButton")!.Content == "ดาวน์โหลด", "review action returns to download when queue becomes idle");
     queueWindow.Close();
+    var renameJob = new DownloadItem { Url = "https://fixture.test/media" };
+    var oldMediaPath = Path.Combine(destination, $"clip [id]-{renameJob.Id:N}.mp4");
+    File.WriteAllBytes(oldMediaPath, payload); renameJob.OutputPaths.Add(oldMediaPath); renameJob.ResultPath = oldMediaPath;
+    DownloadService.FinalizeMediaNames(renameJob, destination);
+    Expect(renameJob.ResultPath == Path.Combine(destination, "clip [id].mp4") && !File.Exists(oldMediaPath), "final media naming moves rather than duplicates the file");
+    Console.WriteLine("PASS parity additions: receipts, select-new, photo carousel, playback validation, phone inbox durability, English UI, compact resize, final filenames");
     Console.WriteLine("PASS production UI download pipeline, saved history, fixed metrics, dynamic download/queue action");
     if (args.Contains("--live-drive"))
     {

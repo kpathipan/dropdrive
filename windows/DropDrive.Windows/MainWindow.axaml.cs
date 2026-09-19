@@ -52,16 +52,21 @@ public partial class MainWindow : Window
         _backgroundServices = backgroundServices;
         _settings = _stateService.LoadSettings();
         _downloadService.Checkpoint = SaveQueue;
+        _downloadService.BandwidthProvider = () => _settings.BandwidthLimit;
         DownloadList.ItemsSource = _downloads;
         HistoryList.ItemsSource = _history;
-        QualityChoice.ItemsSource = MediaOptions.Qualities;
-        SubtitleChoice.ItemsSource = MediaOptions.Subtitles;
+        Locale.Apply(_settings.Language == "en");
+        QualityChoice.ItemsSource = MediaOptions.Qualities.Select(Locale.Text).ToArray();
+        SubtitleChoice.ItemsSource = MediaOptions.Subtitles.Select(Locale.Text).ToArray();
         AutoUpdateToggle.IsChecked = _settings.CheckUpdatesAutomatically;
         HideToTrayToggle.IsChecked = _settings.HideToTray;
         OpenFolderCheck.IsChecked = _settings.OpenFolderOnComplete;
+        InitializeParitySettings();
         CompatibleCheck.IsChecked = _settings.CompatibleVideo;
         ThemeChoice.SelectedIndex = Math.Clamp(_settings.Theme, 0, 2);
-        BandwidthChoice.SelectedIndex = _settings.BandwidthLimit switch { 1_048_576 => 1, 5_242_880 => 2, 10_485_760 => 3, _ => 0 };
+        CustomBandwidth.Value = (decimal)(_settings.BandwidthLimit ?? 1_048_576) / 1_048_576;
+        BandwidthChoice.SelectedIndex = _settings.BandwidthLimit switch { 1_048_576 => 1, 5_242_880 => 2, 10_485_760 => 3, null => 0, _ => 4 };
+        CustomBandwidth.IsVisible = BandwidthChoice.SelectedIndex == 4;
         LayoutChoice.SelectedIndex = Math.Clamp(_settings.FileLayout, 0, 1);
         SizeChoice.SelectedIndex = Math.Clamp(_settings.CardSize, 0, 2);
         VersionLabel.Text = $"v{typeof(MainWindow).Assembly.GetName().Version?.ToString(3)} · Windows";
@@ -71,18 +76,18 @@ public partial class MainWindow : Window
         RefreshHistory();
         RestoreQueue();
         Closing += HandleClosing;
-        Closed += (_, _) => { _updateTimer.Stop(); _lifetime.Cancel(); };
+        Closed += (_, _) => { _updateTimer.Stop(); _lifetime.Cancel(); StopParityServices(); };
         if (backgroundServices)
         {
             DownloadService.CleanupStaleMetadata();
             _updateTimer.Tick += async (_, _) => await CheckForUpdatesIfDueAsync();
-            Opened += async (_, _) => { _updateTimer.Start(); await CheckForUpdatesIfDueAsync(); };
+            Opened += async (_, _) => { StartParityServices(); _updateTimer.Start(); await CheckForUpdatesIfDueAsync(); };
         }
     }
 
     private async void AddDownload(object? sender, RoutedEventArgs e) => await AnalyzeLinksAsync(LinkBox.Text);
 
-    public async Task AnalyzeLinksAsync(string? input)
+    public async Task AnalyzeLinksAsync(string? input, bool showReview = true)
     {
         if (_analyzing) return;
         var links = LinkInputParser.Parse(input);
@@ -97,8 +102,10 @@ public partial class MainWindow : Window
         {
             foreach (var link in links)
             {
+                if (_downloads.Any(existing => LinkIdentity.Key(existing.Url) == LinkIdentity.Key(link) && existing.Status != "Complete"))
+                { SetStatus("ลิงก์นี้อยู่ในคิวแล้ว"); continue; }
                 var uri = new Uri(link);
-                var quality = _settings.PlatformQuality.GetValueOrDefault(uri.Host);
+                var quality = _settings.PlatformQuality.GetValueOrDefault(LinkIdentity.Platform(link), _settings.PlatformQuality.GetValueOrDefault(uri.Host));
                 var item = new DownloadItem { Url = link, Name = uri.Host, Source = uri.Host,
                     Destination = _settings.Destination, Status = "Analyzing", Detail = "กำลังอ่านข้อมูลลิงก์…",
                     Quality = quality, AudioOnly = quality == 5 };
@@ -125,7 +132,8 @@ public partial class MainWindow : Window
             DownloadButton.IsEnabled = true;
             UpdateQueueSummary();
         }
-        if (firstReady != null) OpenReview(firstReady);
+        if (showReview && firstReady != null && links.Count == 1) OpenReview(firstReady);
+        else if (links.Count > 1) { ShowPage(DownloadsPage); UpdateQueueSummary(); }
     }
 
     private static void ApplyAnalysis(DownloadItem item, MediaAnalysis analysis)
@@ -134,6 +142,7 @@ public partial class MainWindow : Window
         item.EstimatedBytes = analysis.EstimatedBytes; item.ThumbnailUrl = analysis.ThumbnailUrl;
         item.IsMedia = analysis.IsMedia; item.IsCollection = analysis.IsCollection;
         item.IsDrive = PublicDriveService.IsDriveUrl(item.Url);
+        item.IsPhotoCollection = analysis.Source == "TikTok Photos";
         item.AnalysisCompleted = true;
         item.Entries = analysis.Entries ?? [];
         item.Status = "Ready"; item.CanStart = true; item.CanRetry = false;
@@ -173,6 +182,8 @@ public partial class MainWindow : Window
         if (item.IsActive || item.Status == "Analyzing") return;
         if (!_downloads.Contains(item)) AddItem(item);
         _review = item;
+        ClosePreview(null, new RoutedEventArgs());
+        ApplyReceipts(item);
         ReviewName.Text = item.Name;
         ReviewDetail.Text = item.Detail;
         ReviewThumbnail.Source = item.Thumbnail;
@@ -181,14 +192,15 @@ public partial class MainWindow : Window
         ClipStartBox.Text = item.ClipStart; ClipEndBox.Text = item.ClipEnd;
         SaveThumbnailCheck.IsChecked = item.SaveThumbnail; SplitChaptersCheck.IsChecked = item.SplitChapters;
         MediaOptionsPanel.IsVisible = item.IsMedia;
-        DuplicateNotice.IsVisible = _stateService.LoadHistory().Any(entry => entry.Url == item.Url && entry.Status == "Complete");
+        DuplicateNotice.IsVisible = _stateService.LoadHistory().Any(entry => LinkIdentity.Key(entry.Url) == LinkIdentity.Key(item.Url) && entry.Status == "Complete");
         FileSelector.IsVisible = item.IsCollection && item.Entries.Count > 0;
         FileSelector.IsExpanded = false;
+        SnapshotNotice.Text = item.IsDrive ? "เทียบชื่อและข้อมูลสาธารณะกับครั้งก่อน · Drive อาจไม่แสดงการแก้ไขเนื้อหาทุกครั้ง" : "เลือกเฉพาะรายการใหม่ที่ยังไม่เคยดาวน์โหลดได้";
         FileSearch.Text = "";
         foreach (var entry in item.Entries) { entry.PropertyChanged -= EntryChanged; entry.PropertyChanged += EntryChanged; }
         NewDownloadForm.IsVisible = false; ReviewPanel.IsVisible = true; DownloadList.IsVisible = false;
         ReviewActions.IsVisible = true;
-        ReviewDownloadButton.Content = _downloads.Any(i => i.IsActive) ? "เข้าคิว" : "ดาวน์โหลด";
+        ReviewDownloadButton.Content = Locale.Text(_downloads.Any(i => i.IsActive) ? "เข้าคิว" : "ดาวน์โหลด");
         UpdateDestinationLabels();
         UpdateSelection();
         RenderFiles();
@@ -219,6 +231,7 @@ public partial class MainWindow : Window
         ReviewPanel.IsVisible = false; NewDownloadForm.IsVisible = true; DownloadList.IsVisible = true;
         ReviewActions.IsVisible = false;
         UpdateQueueSummary();
+        ResizeForPage();
     }
 
     private async void ConfirmReview(object? sender, RoutedEventArgs e)
@@ -235,10 +248,12 @@ public partial class MainWindow : Window
             if (item.IsCollection && !item.Entries.Any(entry => entry.Selected)) { SetStatus("เลือกอย่างน้อย 1 ไฟล์"); return; }
             TransferGuard.EnsureSpace(item.Destination ?? _settings.Destination, item.IsMedia ? null : item.EstimatedBytes);
             if (!string.IsNullOrWhiteSpace(ReviewName.Text)) item.Name = ReviewName.Text.Trim();
-            _settings.PlatformQuality[new Uri(item.Url).Host] = item.Quality;
+            _settings.PlatformQuality[LinkIdentity.Platform(item.Url)] = item.Quality;
             PersistSettings();
             item.Status = "Waiting"; item.CanStart = false; item.CanRetry = false; item.CanCancel = true;
             item.Detail = item.AudioOnly ? "รอคิว · MP3" : "รอคิว";
+            item.RetryAttempt = 0; item.RetryAfter = null; item.WaitForDestination = false;
+            _settings.QueuePaused = false; PersistSettings();
             CloseReview(); SaveQueue();
             await PumpQueueAsync();
         }
@@ -251,29 +266,39 @@ public partial class MainWindow : Window
         _pumping = true;
         try
         {
-            while (_downloads.FirstOrDefault(item => item.Status == "Waiting") is { } item && !_quitting)
+            while (!_settings.QueuePaused && _downloads.FirstOrDefault(item => item.Status == "Waiting") is { } item && !_quitting)
             {
                 using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
                 _cancellations[item.Id] = cancellation;
                 item.Status = "Starting";
+                if (_backgroundServices) WindowsIntegration.KeepAwake(true);
                 try
                 {
                     await _downloadService.DownloadAsync(item, item.Destination ?? _settings.Destination, cancellation.Token);
                     SetStatus($"ดาวน์โหลดเสร็จแล้ว: {item.Name}");
                     _stateService.AddHistory(item);
+                    _stateService.RecordCompletion(item);
+                    if (_settings.NotifyOnComplete) NotifyResult(item, false);
                     if (_settings.OpenFolderOnComplete) LaunchPath(item.ResultPath is { } path ? Path.GetDirectoryName(path) : item.Destination);
                 }
                 catch (OperationCanceledException)
                 {
-                    item.Status = "Paused"; item.Detail = "หยุดชั่วคราว · กดตรวจรายการเพื่อดาวน์โหลดต่อ"; item.CanStart = true;
+                    if (_restartForBandwidth.Remove(item.Id) && !_settings.QueuePaused && !_quitting)
+                    { item.Status = "Waiting"; item.Detail = "รอคิว"; item.CanStart = false; }
+                    else { item.Status = "Paused"; item.Detail = "หยุดชั่วคราว · กดตรวจรายการเพื่อดาวน์โหลดต่อ"; item.CanStart = true; }
                 }
                 catch (Exception error)
                 {
                     item.Status = "Failed"; item.Detail = DownloadService.DescribeFailure(error); item.CanRetry = true;
+                    item.WaitForDestination = error is DirectoryNotFoundException;
+                    if (error is HttpRequestException && item.RetryAttempt < 3)
+                    { item.RetryAttempt++; item.RetryAfter = DateTimeOffset.UtcNow.AddSeconds(15 * Math.Pow(2, item.RetryAttempt - 1)); item.Detail += " · จะลองใหม่อัตโนมัติ"; }
+                    NotifyResult(item, true);
                     SetStatus($"ต้องตรวจสอบ: {item.Name}"); _stateService.AddHistory(item);
                 }
                 finally
                 {
+                    if (_backgroundServices) WindowsIntegration.KeepAwake(false);
                     item.CanCancel = false; _cancellations.Remove(item.Id);
                     RefreshHistory(); UpdateQueueSummary(); SaveQueue();
                 }
@@ -286,6 +311,7 @@ public partial class MainWindow : Window
     private void PauseDownload(object? sender, RoutedEventArgs e)
     {
         if (sender is not Button { Tag: DownloadItem item }) return;
+        item.RetryAfter = null; item.WaitForDestination = false;
         if (_cancellations.TryGetValue(item.Id, out var token)) token.Cancel();
         else if (item.Status == "Waiting") { item.Status = "Paused"; item.CanStart = true; item.CanCancel = false; SaveQueue(); }
     }
@@ -310,6 +336,7 @@ public partial class MainWindow : Window
         catch (IOException) { SetStatus("เอารายการออกไม่ได้ ยังล้างไฟล์ชั่วคราวไม่สำเร็จ ตรวจไดรฟ์แล้วลองใหม่"); return; }
         item.PropertyChanged -= ItemChanged;
         _downloads.Remove(item); SaveQueue(); UpdateQueueSummary();
+        ResizeForPage();
     }
     private void MoveUp(object? sender, RoutedEventArgs e)
     {
@@ -379,8 +406,18 @@ public partial class MainWindow : Window
         _settings.HideToTray = HideToTrayToggle.IsChecked == true;
         _settings.OpenFolderOnComplete = OpenFolderCheck.IsChecked == true;
         _settings.CompatibleVideo = CompatibleCheck.IsChecked == true;
+        SaveParitySettings();
         _settings.Theme = Math.Max(0, ThemeChoice.SelectedIndex);
-        _settings.BandwidthLimit = BandwidthChoice.SelectedIndex switch { 1 => 1_048_576, 2 => 5_242_880, 3 => 10_485_760, _ => null };
+        var previousLimit = _settings.BandwidthLimit;
+        _settings.BandwidthLimit = BandwidthChoice.SelectedIndex switch { 1 => 1_048_576, 2 => 5_242_880, 3 => 10_485_760, 4 => (long)((CustomBandwidth.Value ?? 1) * 1_048_576), _ => null };
+        CustomBandwidth.IsVisible = BandwidthChoice.SelectedIndex == 4;
+        if (_settings.BandwidthLimit != previousLimit)
+            foreach (var item in _downloads.Where(item => item.IsActive))
+            {
+                item.BandwidthLimit = _settings.BandwidthLimit;
+                if (item.IsMedia && _cancellations.TryGetValue(item.Id, out var cancellation))
+                { _restartForBandwidth.Add(item.Id); cancellation.Cancel(); }
+            }
         ApplyTheme(); PersistSettings();
     }
     private void ApplyTheme() => RequestedThemeVariant = _settings.Theme switch { 1 => ThemeVariant.Light, 2 => ThemeVariant.Default, _ => ThemeVariant.Dark };
@@ -397,9 +434,10 @@ public partial class MainWindow : Window
         DownloadsIndicator.IsVisible = page == DownloadsPage; HistoryIndicator.IsVisible = page == RecentPage;
         DownloadsTab.Classes.Set("selected", page == DownloadsPage); HistoryTab.Classes.Set("selected", page == RecentPage);
         if (page != DownloadsPage) Height = Math.Max(Height, 570);
+        ResizeForPage();
     }
     private void DismissStatus(object? sender, RoutedEventArgs e) => StatusBanner.IsVisible = false;
-    private void SetStatus(string message) { StatusLabel.Text = message; StatusBanner.IsVisible = !string.IsNullOrWhiteSpace(message); }
+    private void SetStatus(string message) { StatusLabel.Text = Locale.Text(message); StatusBanner.IsVisible = !string.IsNullOrWhiteSpace(message); }
 
     private void ClearHistory(object? sender, RoutedEventArgs e) { _stateService.ClearHistory(); RefreshHistory(); SetStatus("ล้างประวัติแล้ว ไฟล์ที่ดาวน์โหลดยังอยู่"); }
     private void HistorySearchChanged(object? sender, TextChangedEventArgs e) { if (!_loadingSettings) RefreshHistory(); }
@@ -409,7 +447,7 @@ public partial class MainWindow : Window
         _history.Clear();
         foreach (var entry in _stateService.LoadHistory().Where(entry => (entry.Name + " " + entry.Source).Contains(query, StringComparison.OrdinalIgnoreCase))) _history.Add(entry);
         HistoryEmpty.IsVisible = _history.Count == 0;
-        HistoryEmpty.Text = query.Length == 0 ? "ยังไม่มีประวัติการดาวน์โหลด" : "ไม่พบรายการที่ค้นหา";
+        HistoryEmpty.Text = Locale.Text(query.Length == 0 ? "ยังไม่มีประวัติการดาวน์โหลด" : "ไม่พบรายการที่ค้นหา");
     }
     private async void RepeatHistory(object? sender, RoutedEventArgs e)
     {
@@ -470,7 +508,7 @@ public partial class MainWindow : Window
         if (_review == null) return;
         var count = _review.Entries.Count(entry => entry.Selected);
         SelectAllCheck.IsChecked = count == 0 ? false : count == _review.Entries.Count ? true : null;
-        SelectionCount.Text = $"{count}/{_review.Entries.Count} ไฟล์";
+        SelectionCount.Text = Locale.Choose($"{count}/{_review.Entries.Count} ไฟล์", $"{count}/{_review.Entries.Count} files");
         ReviewDownloadButton.IsEnabled = !_review.IsCollection || count > 0;
     }
     private void FileSearchChanged(object? sender, TextChangedEventArgs e) => RenderFiles();
@@ -506,14 +544,13 @@ public partial class MainWindow : Window
             }
             panel.Children.Add(new TextBlock { Text = entry.Title, FontSize = 10, MaxWidth = LayoutChoice.SelectedIndex == 1 ? 210 : width - 35, TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 2, TextWrapping = TextWrapping.Wrap });
             check.Content = panel; ToolTip.SetTip(check, entry.Title);
-            check.KeyDown += async (_, args) => {
+            check.AddHandler(InputElement.KeyDownEvent, async (_, args) => {
                 if (args.Key != Key.Space) return;
                 args.Handled = true;
-                if (entry.Thumbnail == null) { SetStatus("ไม่มีภาพตัวอย่างสำหรับไฟล์นี้"); return; }
-                var preview = new Window { Title = entry.Title, Width = 540, Height = 360, Content = new Image { Source = entry.Thumbnail, Stretch = Stretch.Uniform }, WindowStartupLocation = WindowStartupLocation.CenterOwner };
-                preview.KeyDown += (_, key) => { if (key.Key is Key.Space or Key.Escape) preview.Close(); };
-                await preview.ShowDialog(this);
-            };
+                await PreviewEntryAsync(entry);
+            }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+            check.AddHandler(InputElement.KeyUpEvent, (_, args) => { if (args.Key == Key.Space) args.Handled = true; }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+            panel.Children.Add(new TextBlock { Text = Locale.Text(entry.SnapshotState), FontSize = 9, Opacity = 0.65 });
             FileCards.Children.Add(check);
         }
     }
@@ -582,12 +619,13 @@ public partial class MainWindow : Window
         var active = _downloads.Count(item => item.IsActive);
         var analyzing = _downloads.Any(item => item.Status == "Analyzing");
         QueueHeading.IsVisible = _downloads.Count > 0 && _review == null;
-        QueueSummary.Text = active > 0 ? $"กำลังทำงาน {active} รายการ" : $"{_downloads.Count} รายการ";
-        HeaderStatus.Text = active > 0 ? "กำลังดาวน์โหลด" : analyzing ? "กำลังวิเคราะห์" : "พร้อมใช้งาน";
-        if (_review != null) ReviewDownloadButton.Content = active > 0 ? "เข้าคิว" : "ดาวน์โหลด";
+        QueueSummary.Text = Locale.Choose(active > 0 ? $"กำลังทำงาน {active} รายการ" : $"{_downloads.Count} รายการ", active > 0 ? $"{active} active" : $"{_downloads.Count} items");
+        HeaderStatus.Text = Locale.Text(active > 0 ? "กำลังดาวน์โหลด" : analyzing ? "กำลังวิเคราะห์" : "พร้อมใช้งาน");
+        if (_review != null) ReviewDownloadButton.Content = Locale.Text(active > 0 ? "เข้าคิว" : "ดาวน์โหลด");
         var attention = _downloads.Where(item => item.NeedsAttention).ToArray();
         AttentionBanner.IsVisible = attention.Length > 0 && _review == null;
-        AttentionBanner.Content = $"!  มี {attention.Length} รายการที่ต้องตรวจสอบ";
+        AttentionBanner.Content = Locale.Choose($"!  มี {attention.Length} รายการที่ต้องตรวจสอบ", $"!  {attention.Length} items need attention");
         AttentionList.ItemsSource = attention; AttentionEmpty.IsVisible = attention.Length == 0;
+        UpdateParitySummary();
     }
 }

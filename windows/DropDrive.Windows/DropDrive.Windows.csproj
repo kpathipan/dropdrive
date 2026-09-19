@@ -23,5 +23,6 @@
   <ItemGroup>
     <AvaloniaResource Include="Assets/**" />
     <None Include="Tools/**" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Assets/dropdrive.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

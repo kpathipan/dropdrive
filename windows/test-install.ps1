@@ -4,8 +4,8 @@ if ($env:GITHUB_ACTIONS -ne "true") { throw "Run installer integration tests on 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $appRoot = Join-Path $env:LOCALAPPDATA "com.dropdrive.windows"
 $stateRoot = Join-Path $env:LOCALAPPDATA "DropDrive"
-$oldSetup = Join-Path $env:RUNNER_TEMP "dropdrive-previous-0.5.1.exe"
-Invoke-WebRequest "https://github.com/kpathipan/dropdrive/releases/download/windows-v0.5.1/com.dropdrive.windows-win-Setup.exe" -OutFile $oldSetup
+$oldSetup = Join-Path $env:RUNNER_TEMP "dropdrive-previous-0.6.0.exe"
+Invoke-WebRequest "https://github.com/kpathipan/dropdrive/releases/download/windows-v0.6.0/com.dropdrive.windows-win-Setup.exe" -OutFile $oldSetup
 
 function Install-DropDrive([string]$setup) {
     $process = Start-Process $setup -ArgumentList "--silent" -PassThru
@@ -41,7 +41,10 @@ try {
     $process.Refresh()
     if ($process.HasExited -or $process.MainWindowTitle -ne "DropDrive") { throw "Installed upgraded app did not open." }
     if (!(Test-Path (Join-Path $appRoot "Update.exe"))) { throw "Installed updater is missing." }
-    Write-Host "PASS installed upgrade: 0.5.1 -> $version; settings and paused queue retained; installed app opens."
+    $second = Start-Process $exe -PassThru
+    if (!$second.WaitForExit(10000)) { $second.Kill($true); throw "A second app instance stayed running." }
+    if ($process.HasExited) { throw "Activation closed the original app." }
+    Write-Host "PASS installed upgrade: 0.6.0 -> $version; settings/queue retained; app opens; second launch reuses the original process."
 } finally {
     if (!$process.HasExited) { Stop-Process -Id $process.Id -Force }
 }

@@ -11,9 +11,9 @@
         <TextBlock Grid.Column="1" Text="DropDrive" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="5" Margin="3,0,0,0" VerticalAlignment="Center">
           <Ellipse Width="5" Height="5" Fill="#55CE81"/>
-          <TextBlock Name="HeaderStatus" Text="พร้อมใช้งาน" Width="112" FontSize="10" Classes="muted" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+          <TextBlock Name="HeaderStatus" Text="{DynamicResource LB7AE14B4E288}" Width="112" FontSize="10" Classes="muted" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
         </StackPanel>
-        <Button Grid.Column="3" Name="SettingsButton" Classes="icon" ToolTip.Tip="การตั้งค่า" AutomationProperties.Name="การตั้งค่า" Click="ShowSettings">
+        <Button Grid.Column="3" Name="SettingsButton" Classes="icon" ToolTip.Tip="{DynamicResource LEA17E934452B}" AutomationProperties.Name="{DynamicResource LEA17E934452B}" Click="ShowSettings">
           <Path Stroke="{DynamicResource MutedColor}" Stretch="Uniform" Fill="Transparent" StrokeThickness="1.7" Data="{StaticResource SettingsIcon}" Width="17" Height="17"/>
         </Button>
       </Grid>
@@ -23,30 +23,30 @@
         <StackPanel Margin="26,22" Spacing="12">
           <StackPanel Name="NewDownloadForm" Spacing="12">
             <Grid ColumnDefinitions="*,Auto">
-              <TextBlock Text="ดาวน์โหลดใหม่" FontSize="11" FontWeight="SemiBold" Classes="muted"/>
+              <TextBlock Text="{DynamicResource LFB2C1EA5074F}" FontSize="11" FontWeight="SemiBold" Classes="muted"/>
               <TextBlock Grid.Column="1" Text="Ctrl+V" FontSize="10" Classes="muted"/>
             </Grid>
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
               <Grid>
                 <TextBox Name="LinkBox" Classes="compact" Padding="30,9,32,9" MinHeight="38"
-                         PlaceholderText="วางลิงก์ที่ต้องการดาวน์โหลด"
-                         AutomationProperties.Name="ลิงก์ดาวน์โหลด"
+                         PlaceholderText="{DynamicResource L7C3647D8F674}"
+                         AutomationProperties.Name="{DynamicResource LDBE75369934B}"
                          KeyDown="LinkBoxKeyDown" TextChanged="LinkBoxTextChanged"/>
                 <Path Stretch="Uniform" Fill="Transparent" StrokeThickness="1.7" Data="{StaticResource LinkIcon}" Width="16" Height="16" Margin="10,0" HorizontalAlignment="Left" IsHitTestVisible="False" Stroke="{DynamicResource MutedColor}"/>
-                <Button Name="PasteButton" Classes="icon" Width="28" Margin="0,0,4,0" HorizontalAlignment="Right" ToolTip.Tip="วางลิงก์จากคลิปบอร์ด" AutomationProperties.Name="วางลิงก์จากคลิปบอร์ด" Click="PasteLink">
+                <Button Name="PasteButton" Classes="icon" Width="28" Margin="0,0,4,0" HorizontalAlignment="Right" ToolTip.Tip="{DynamicResource L82F2A43D670E}" AutomationProperties.Name="{DynamicResource L82F2A43D670E}" Click="PasteLink">
                   <Path Stroke="{DynamicResource MutedColor}" Stretch="Uniform" Fill="Transparent" StrokeThickness="1.7" Data="{StaticResource CopyIcon}" Width="13" Height="13"/>
                 </Button>
-                <Button Name="ClearLinkButton" IsVisible="False" Classes="icon" Content="×" Width="28" Margin="0,0,4,0" HorizontalAlignment="Right" ToolTip.Tip="ล้างลิงก์" AutomationProperties.Name="ล้างลิงก์" Click="ClearLink"/>
+                <Button Name="ClearLinkButton" IsVisible="False" Classes="icon" Content="×" Width="28" Margin="0,0,4,0" HorizontalAlignment="Right" ToolTip.Tip="{DynamicResource LC6963E776E4E}" AutomationProperties.Name="{DynamicResource LC6963E776E4E}" Click="ClearLink"/>
               </Grid>
-              <Button Grid.Column="1" Name="DownloadButton" Classes="primary" Content="วิเคราะห์" IsVisible="False" Click="AddDownload"/>
+              <Button Grid.Column="1" Name="DownloadButton" Classes="primary" Content="{DynamicResource LD41BA93D0E80}" IsVisible="False" Click="AddDownload"/>
             </Grid>
             <Grid ColumnDefinitions="Auto,16,*,Auto" ColumnSpacing="7">
-              <TextBlock Text="บันทึกที่" FontSize="11" FontWeight="SemiBold" Classes="muted" VerticalAlignment="Center"/>
+              <TextBlock Text="{DynamicResource LAD10FF493AF1}" FontSize="11" FontWeight="SemiBold" Classes="muted" VerticalAlignment="Center"/>
               <Path Stretch="Uniform" Fill="Transparent" StrokeThickness="1.7" Grid.Column="1" Data="{StaticResource FolderIcon}" Width="15" Height="15" Stroke="{DynamicResource AccentColor}"/>
               <TextBlock Grid.Column="2" Name="DestinationLabel" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
-              <Button Grid.Column="3" Classes="link" Content="เปลี่ยน⌄" Click="ChooseFolder"/>
+              <Button Grid.Column="3" Classes="link" Content="{DynamicResource LB93D17E7636A}" Click="ShowDestinations"/>
             </Grid>
-            <TextBlock Text="Drive, YouTube, TikTok, Facebook, Instagram · วางหลายลิงก์ได้" FontSize="10" Classes="muted" TextWrapping="Wrap"/>
+            <TextBlock Text="{DynamicResource L88282C71320F}" FontSize="10" Classes="muted" TextWrapping="Wrap"/>
           </StackPanel>
           <Button Name="AttentionBanner" IsVisible="False" Classes="small" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="ShowAttention"/>
           <StackPanel Name="ReviewPanel" IsVisible="False" Spacing="12">
@@ -57,63 +57,74 @@
                     <Grid><Path Stretch="Uniform" Fill="Transparent" StrokeThickness="1.7" Data="{StaticResource DownloadIcon}" Width="24" Height="24" Stroke="{DynamicResource AccentColor}"/><Image Name="ReviewThumbnail" Stretch="UniformToFill"/></Grid>
                   </Border>
                   <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
-                    <TextBox Name="ReviewName" Classes="name" AutomationProperties.Name="ชื่อไฟล์"/>
+                    <TextBox Name="ReviewName" Classes="name" AutomationProperties.Name="{DynamicResource L6EC1B80B53C0}"/>
                     <TextBlock Name="ReviewDetail" FontSize="10" Classes="muted" TextWrapping="Wrap"/>
                   </StackPanel>
                 </Grid>
-                <TextBlock Name="DuplicateNotice" IsVisible="False" Text="เคยดาวน์โหลดลิงก์นี้แล้ว เลือกรูปแบบใหม่หรือดาวน์โหลดซ้ำได้" Classes="muted" FontSize="11" TextWrapping="Wrap"/>
+                <TextBlock Name="DuplicateNotice" IsVisible="False" Text="{DynamicResource LD4D4CDFA686A}" Classes="muted" FontSize="11" TextWrapping="Wrap"/>
                 <Border Height="1" Background="{DynamicResource BorderColor}"/>
                 <Grid ColumnDefinitions="Auto,16,*,Auto" ColumnSpacing="7">
-                  <TextBlock Text="บันทึกที่" FontSize="11" FontWeight="SemiBold" Classes="muted" VerticalAlignment="Center"/>
+                  <TextBlock Text="{DynamicResource LAD10FF493AF1}" FontSize="11" FontWeight="SemiBold" Classes="muted" VerticalAlignment="Center"/>
                   <Path Stretch="Uniform" Fill="Transparent" StrokeThickness="1.7" Grid.Column="1" Data="{StaticResource FolderIcon}" Width="15" Height="15" Stroke="{DynamicResource AccentColor}"/>
                   <TextBlock Grid.Column="2" Name="ReviewDestination" FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
-                  <Button Grid.Column="3" Classes="link" Content="เปลี่ยน⌄" Click="ChooseFolder"/>
+                  <Button Grid.Column="3" Classes="link" Content="{DynamicResource LB93D17E7636A}" Click="ShowDestinations"/>
                 </Grid>
                 <StackPanel Name="MediaOptionsPanel" Spacing="9">
                   <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
-                    <TextBlock Text="รูปแบบ" FontSize="11" Classes="muted" VerticalAlignment="Center"/>
-                    <ComboBox Grid.Column="1" Name="QualityChoice" HorizontalAlignment="Stretch" SelectionChanged="ReviewOptionsChanged" AutomationProperties.Name="คุณภาพและ MP3"/>
+                    <TextBlock Text="{DynamicResource L03A0D55556AB}" FontSize="11" Classes="muted" VerticalAlignment="Center"/>
+                    <ComboBox Grid.Column="1" Name="QualityChoice" HorizontalAlignment="Stretch" SelectionChanged="ReviewOptionsChanged" AutomationProperties.Name="{DynamicResource LBB156FAA4B5D}"/>
                   </Grid>
-                  <Expander Header="ตัวเลือกเพิ่มเติม" HorizontalAlignment="Stretch">
+                  <Expander Header="{DynamicResource LCC2A2A7F2313}" HorizontalAlignment="Stretch">
                     <StackPanel Spacing="9" Margin="0,8,0,0">
-                      <ComboBox Name="SubtitleChoice" HorizontalAlignment="Stretch" AutomationProperties.Name="คำบรรยาย"/>
+                      <ComboBox Name="SubtitleChoice" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource L6814252CACB9}"/>
                       <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
-                        <TextBox Name="ClipStartBox" Classes="compact" PlaceholderText="เริ่ม เช่น 0:30" AutomationProperties.Name="เวลาเริ่ม"/>
-                        <TextBox Grid.Column="1" Name="ClipEndBox" Classes="compact" PlaceholderText="จบ เช่น 1:30" AutomationProperties.Name="เวลาสิ้นสุด"/>
+                        <TextBox Name="ClipStartBox" Classes="compact" PlaceholderText="{DynamicResource L9CC661FCA9EE}" AutomationProperties.Name="{DynamicResource L00CFEA836515}"/>
+                        <TextBox Grid.Column="1" Name="ClipEndBox" Classes="compact" PlaceholderText="{DynamicResource L52368E6274F3}" AutomationProperties.Name="{DynamicResource L377E249DD399}"/>
                       </Grid>
-                      <CheckBox Name="SaveThumbnailCheck" Content="บันทึกภาพปกด้วย" FontSize="11"/>
-                      <CheckBox Name="SplitChaptersCheck" Content="แยกไฟล์ตามบท (ถ้ามี)" FontSize="11"/>
+                      <CheckBox Name="SaveThumbnailCheck" Content="{DynamicResource LE764C2F7EECA}" FontSize="11"/>
+                      <CheckBox Name="SplitChaptersCheck" Content="{DynamicResource LFF079DF4C6E2}" FontSize="11"/>
                     </StackPanel>
                   </Expander>
                 </StackPanel>
                 <TextBlock Name="SpaceLabel" FontSize="10" Classes="muted" TextWrapping="Wrap"/>
-                <Expander Name="FileSelector" IsVisible="False" Header="เลือกดาวน์โหลดเฉพาะไฟล์" HorizontalAlignment="Stretch">
+                <Expander Name="FileSelector" IsVisible="False" Header="{DynamicResource LE2E5A226DD93}" HorizontalAlignment="Stretch">
                   <StackPanel Spacing="8" Margin="0,8,0,0">
                     <Grid ColumnDefinitions="*,Auto">
-                      <CheckBox Name="SelectAllCheck" Content="เลือกทั้งหมด" IsChecked="True" IsThreeState="True" Click="SelectAllFiles" FontSize="11"/>
+                      <CheckBox Name="SelectAllCheck" Content="{DynamicResource L8BBE465CBBA8}" IsChecked="True" IsThreeState="True" Click="SelectAllFiles" FontSize="11"/>
                       <TextBlock Grid.Column="1" Name="SelectionCount" FontSize="10" Classes="muted" VerticalAlignment="Center"/>
                     </Grid>
+                    <Button Name="SelectNewButton" Classes="link" Content="{DynamicResource L95B334397F7E}" Click="SelectNewFiles"/>
+                    <TextBlock Name="SnapshotNotice" Classes="muted" FontSize="10" TextWrapping="Wrap"/>
                     <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
-                      <ComboBox Name="LayoutChoice" SelectedIndex="0" SelectionChanged="FileLayoutChanged" HorizontalAlignment="Stretch" AutomationProperties.Name="รูปแบบรายการ"><ComboBoxItem Content="การ์ด"/><ComboBoxItem Content="รายการ"/></ComboBox>
-                      <ComboBox Grid.Column="1" Name="SizeChoice" SelectedIndex="1" SelectionChanged="FileLayoutChanged" HorizontalAlignment="Stretch" AutomationProperties.Name="ขนาดการ์ด"><ComboBoxItem Content="เล็ก"/><ComboBoxItem Content="กลาง"/><ComboBoxItem Content="ใหญ่"/></ComboBox>
+                      <ComboBox Name="LayoutChoice" SelectedIndex="0" SelectionChanged="FileLayoutChanged" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource LE96F593546DA}"><ComboBoxItem Content="{DynamicResource LBF108E1D8435}"/><ComboBoxItem Content="{DynamicResource LC50C8E353ACE}"/></ComboBox>
+                      <ComboBox Grid.Column="1" Name="SizeChoice" SelectedIndex="1" SelectionChanged="FileLayoutChanged" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource L990F6875CD9E}"><ComboBoxItem Content="{DynamicResource LBA7291A6F90B}"/><ComboBoxItem Content="{DynamicResource L39E647827F5E}"/><ComboBoxItem Content="{DynamicResource LC0CFFF2AFA7F}"/></ComboBox>
                     </Grid>
-                    <TextBox Name="FileSearch" Classes="compact" PlaceholderText="ค้นหาชื่อไฟล์" TextChanged="FileSearchChanged"/>
+                    <TextBox Name="FileSearch" Classes="compact" PlaceholderText="{DynamicResource L7A7206B0F739}" TextChanged="FileSearchChanged"/>
+                    <Border Name="InlinePreview" Classes="card" Padding="8" IsVisible="False">
+                      <StackPanel Spacing="6">
+                        <Grid ColumnDefinitions="*,Auto"><TextBlock Name="PreviewTitle" TextTrimming="CharacterEllipsis"/><Button Grid.Column="1" Classes="icon" Content="×" Click="ClosePreview" AutomationProperties.Name="{DynamicResource L30A2204E1D21}"/></Grid>
+                        <Grid Height="130"><TextBlock Name="PreviewIcon" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="28"/><Image Name="PreviewImage" Stretch="Uniform"/></Grid>
+                      </StackPanel>
+                    </Border>
                     <ScrollViewer MaxHeight="280" HorizontalScrollBarVisibility="Disabled"><WrapPanel Name="FileCards" Orientation="Horizontal"/></ScrollViewer>
-                    <TextBlock Text="เลือกการ์ดแล้วกด Space เพื่อดูภาพตัวอย่าง" FontSize="10" Classes="muted" TextWrapping="Wrap"/>
+                    <TextBlock Text="{DynamicResource LC434FB0E8E96}" FontSize="10" Classes="muted" TextWrapping="Wrap"/>
                   </StackPanel>
                 </Expander>
               </StackPanel>
             </Border>
           </StackPanel>
-          <Grid Name="QueueHeading" IsVisible="False" ColumnDefinitions="*,Auto">
+          <Button Name="BatchDownloadButton" IsVisible="False" Classes="small" Content="{DynamicResource L656AA65884B8}" Click="DownloadReadyBatch"/>
+          <Grid Name="QueueHeading" IsVisible="False" ColumnDefinitions="*,Auto,Auto">
             <TextBlock Name="QueueSummary" FontSize="11" Classes="muted" VerticalAlignment="Center"/>
-            <Button Grid.Column="1" Classes="link" Content="ล้างที่เสร็จแล้ว" Click="ClearCompleted"/>
+            <Button Grid.Column="1" Name="PauseQueueButton" Classes="link" Content="{DynamicResource L77FB9E0A30EA}" Click="ToggleQueue" Margin="0,0,8,0"/>
+            <Button Grid.Column="2" Classes="link" Content="{DynamicResource L2F8180BFDD9B}" Click="ClearCompleted"/>
           </Grid>
           <ItemsControl Name="DownloadList">
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="model:DownloadItem">
                 <Border Classes="card" Padding="12" Margin="0,0,0,8">
                   <StackPanel Spacing="9">
+                    <CheckBox Content="{DynamicResource L90FA1575E843}" IsChecked="{Binding BatchSelected, Mode=TwoWay}" IsVisible="{Binding CanStart}"/>
                     <Grid ColumnDefinitions="40,*,Auto" ColumnSpacing="10">
                       <Border Width="40" Height="40" CornerRadius="9" Background="{DynamicResource RailColor}" ClipToBounds="True">
                         <Grid><Path Stretch="Uniform" Fill="Transparent" StrokeThickness="1.7" Data="{StaticResource DownloadIcon}" Width="20" Height="20" Stroke="{DynamicResource MutedColor}"/><Image Source="{Binding Thumbnail}" Stretch="UniformToFill"/></Grid>
@@ -123,13 +134,13 @@
                         <TextBlock Text="{Binding Detail}" FontSize="10" Classes="muted" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Detail}"/>
                       </StackPanel>
                       <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="3">
-                        <Button Classes="icon" Content="↑" Tag="{Binding}" IsVisible="{Binding CanReorder}" ToolTip.Tip="เลื่อนคิวขึ้น" Click="MoveUp"/>
-                        <Button Classes="icon" Content="↓" Tag="{Binding}" IsVisible="{Binding CanReorder}" ToolTip.Tip="เลื่อนคิวลง" Click="MoveDown"/>
-                        <Button Classes="icon" Content="Ⅱ" Tag="{Binding}" IsVisible="{Binding CanCancel}" ToolTip.Tip="หยุดชั่วคราว" Click="PauseDownload"/>
-                        <Button Classes="small" Content="ตรวจรายการ" Tag="{Binding}" IsVisible="{Binding CanStart}" Click="ReviewItem"/>
-                        <Button Classes="icon" Content="↻" Tag="{Binding}" IsVisible="{Binding CanRetry}" ToolTip.Tip="ตรวจแล้วลองใหม่" Click="RetryDownload"/>
-                        <Button Classes="icon" Tag="{Binding}" IsVisible="{Binding CanOpen}" ToolTip.Tip="เปิดไฟล์" Click="OpenResult"><Path Stroke="{DynamicResource MutedColor}" Stretch="Uniform" Fill="Transparent" StrokeThickness="1.7" Data="{StaticResource FolderIcon}" Width="16" Height="16"/></Button>
-                        <Button Classes="icon" Content="×" Tag="{Binding}" IsVisible="{Binding CanRemove}" ToolTip.Tip="เอาออกจากคิว" Click="RemoveDownload"/>
+                        <Button Classes="icon" Content="↑" Tag="{Binding}" IsVisible="{Binding CanReorder}" ToolTip.Tip="{DynamicResource L6BBFE5CEEB9D}" Click="MoveUp"/>
+                        <Button Classes="icon" Content="↓" Tag="{Binding}" IsVisible="{Binding CanReorder}" ToolTip.Tip="{DynamicResource L2747CBFC6F05}" Click="MoveDown"/>
+                        <Button Classes="icon" Content="Ⅱ" Tag="{Binding}" IsVisible="{Binding CanCancel}" ToolTip.Tip="{DynamicResource L4DFD25D36D66}" Click="PauseDownload"/>
+                        <Button Classes="small" Content="{DynamicResource L88A8CE03D47C}" Tag="{Binding}" IsVisible="{Binding CanStart}" Click="ReviewItem"/>
+                        <Button Classes="icon" Content="↻" Tag="{Binding}" IsVisible="{Binding CanRetry}" ToolTip.Tip="{DynamicResource L240EF83E6127}" Click="RetryDownload"/>
+                        <Button Classes="icon" Tag="{Binding}" IsVisible="{Binding CanOpen}" ToolTip.Tip="{DynamicResource LBFC0EE19620D}" Click="OpenResult"><Path Stroke="{DynamicResource MutedColor}" Stretch="Uniform" Fill="Transparent" StrokeThickness="1.7" Data="{StaticResource FolderIcon}" Width="16" Height="16"/></Button>
+                        <Button Classes="icon" Content="×" Tag="{Binding}" IsVisible="{Binding CanRemove}" ToolTip.Tip="{DynamicResource L00831DE27EF7}" Click="RemoveDownload"/>
                       </StackPanel>
                     </Grid>
                     <StackPanel IsVisible="{Binding IsActive}" Spacing="7">
@@ -150,9 +161,9 @@
       </ScrollViewer>
       <ScrollViewer Name="RecentPage" IsVisible="False">
         <StackPanel Margin="22,20" Spacing="12">
-          <Grid ColumnDefinitions="*,Auto"><TextBlock Text="ล่าสุด" FontSize="14" FontWeight="SemiBold"/><Button Grid.Column="1" Classes="link" Content="ล้างประวัติ" Click="ClearHistory"/></Grid>
-          <TextBox Name="HistorySearch" Classes="compact" PlaceholderText="ค้นหาชื่อหรือเว็บไซต์" TextChanged="HistorySearchChanged"/>
-          <TextBlock Text="ประวัติ 100 รายการล่าสุด · ล้างประวัติไม่ลบไฟล์" FontSize="10" Classes="muted"/>
+          <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{DynamicResource L5ABE2EC96AF2}" FontSize="14" FontWeight="SemiBold"/><Button Grid.Column="1" Classes="link" Content="{DynamicResource LBEE4520EA4D7}" Click="ClearHistory"/></Grid>
+          <TextBox Name="HistorySearch" Classes="compact" PlaceholderText="{DynamicResource L16D5EA7F391A}" TextChanged="HistorySearchChanged"/>
+          <TextBlock Text="{DynamicResource L1A94BC3C8044}" FontSize="10" Classes="muted"/>
           <ItemsControl Name="HistoryList">
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="model:DownloadHistoryEntry">
@@ -163,10 +174,10 @@
                     <Grid ColumnDefinitions="*,Auto">
                       <TextBlock Text="{Binding FinishedAt, StringFormat={}{0:dd/MM HH:mm}}" FontSize="10" Classes="muted" VerticalAlignment="Center"/>
                       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="3">
-                        <Button Classes="link" Content="เปิด" Tag="{Binding}" IsVisible="{Binding CanOpen}" Click="OpenResult"/>
-                        <Button Classes="icon" Tag="{Binding}" IsVisible="{Binding CanOpen}" ToolTip.Tip="แสดงใน Explorer" Click="RevealResult"><Path Stroke="{DynamicResource MutedColor}" Stretch="Uniform" Fill="Transparent" StrokeThickness="1.7" Data="{StaticResource FolderIcon}" Width="14" Height="14"/></Button>
-                        <Button Classes="icon" Tag="{Binding}" ToolTip.Tip="คัดลอกลิงก์" Click="CopyLink"><Path Stroke="{DynamicResource MutedColor}" Stretch="Uniform" Fill="Transparent" StrokeThickness="1.7" Data="{StaticResource CopyIcon}" Width="14" Height="14"/></Button>
-                        <Button Classes="icon" Content="↻" Tag="{Binding}" ToolTip.Tip="ดาวน์โหลดอีกครั้ง" Click="RepeatHistory"/>
+                        <Button Classes="link" Content="{DynamicResource LD776A1904113}" Tag="{Binding}" IsVisible="{Binding CanOpen}" Click="OpenResult"/>
+                        <Button Classes="icon" Tag="{Binding}" IsVisible="{Binding CanOpen}" ToolTip.Tip="{DynamicResource L80722856939E}" Click="RevealResult"><Path Stroke="{DynamicResource MutedColor}" Stretch="Uniform" Fill="Transparent" StrokeThickness="1.7" Data="{StaticResource FolderIcon}" Width="14" Height="14"/></Button>
+                        <Button Classes="icon" Tag="{Binding}" ToolTip.Tip="{DynamicResource L7EA77E01DE17}" Click="CopyLink"><Path Stroke="{DynamicResource MutedColor}" Stretch="Uniform" Fill="Transparent" StrokeThickness="1.7" Data="{StaticResource CopyIcon}" Width="14" Height="14"/></Button>
+                        <Button Classes="icon" Content="↻" Tag="{Binding}" ToolTip.Tip="{DynamicResource L9056FA5324A5}" Click="RepeatHistory"/>
                       </StackPanel>
                     </Grid>
                   </StackPanel>
@@ -174,61 +185,78 @@
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
-          <TextBlock Name="HistoryEmpty" Text="ยังไม่มีประวัติการดาวน์โหลด" FontSize="11" Classes="muted" HorizontalAlignment="Center" Margin="0,30"/>
+          <TextBlock Name="HistoryEmpty" Text="{DynamicResource LE945226B5565}" FontSize="11" Classes="muted" HorizontalAlignment="Center" Margin="0,30"/>
         </StackPanel>
       </ScrollViewer>
       <ScrollViewer Name="SettingsPage" IsVisible="False">
         <StackPanel Margin="22,20" Spacing="12">
-          <Grid ColumnDefinitions="*,Auto"><TextBlock Text="การตั้งค่า" FontSize="14" FontWeight="SemiBold"/><TextBlock Grid.Column="1" Name="VersionLabel" FontSize="10" Classes="muted"/></Grid>
+          <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{DynamicResource LEA17E934452B}" FontSize="14" FontWeight="SemiBold"/><TextBlock Grid.Column="1" Name="VersionLabel" FontSize="10" Classes="muted"/></Grid>
           <Border Classes="card" Padding="14">
             <StackPanel Spacing="10">
               <Grid ColumnDefinitions="*,Auto">
-                <StackPanel><TextBlock Text="โฟลเดอร์ดาวน์โหลด" FontSize="12"/><TextBlock Name="SettingsDestinationLabel" FontSize="10" Classes="muted" TextTrimming="CharacterEllipsis"/></StackPanel>
-                <Button Grid.Column="1" Classes="link" Content="เปลี่ยน" Click="ChooseFolder"/>
+                <StackPanel><TextBlock Text="{DynamicResource LBB1119FB9B00}" FontSize="12"/><TextBlock Name="SettingsDestinationLabel" FontSize="10" Classes="muted" TextTrimming="CharacterEllipsis"/></StackPanel>
+                <Button Grid.Column="1" Classes="link" Content="{DynamicResource L655600B6CFF3}" Click="ChooseFolder"/>
               </Grid>
-              <CheckBox Name="OpenFolderCheck" Content="เปิดโฟลเดอร์เมื่อดาวน์โหลดเสร็จ" Click="SettingsChanged"/>
-              <CheckBox Name="CompatibleCheck" Content="วิดีโอที่เปิดได้ทั่วไป · MP4" Click="SettingsChanged"/>
-              <Grid ColumnDefinitions="*,Auto"><TextBlock Text="จำกัดความเร็ว" VerticalAlignment="Center"/><ComboBox Grid.Column="1" Name="BandwidthChoice" SelectionChanged="PreferenceSelectionChanged"><ComboBoxItem Content="ไม่จำกัด"/><ComboBoxItem Content="1 MB/s"/><ComboBoxItem Content="5 MB/s"/><ComboBoxItem Content="10 MB/s"/></ComboBox></Grid>
-              <Grid ColumnDefinitions="*,Auto"><TextBlock Text="ธีม" VerticalAlignment="Center"/><ComboBox Grid.Column="1" Name="ThemeChoice" SelectionChanged="PreferenceSelectionChanged"><ComboBoxItem Content="มืด"/><ComboBoxItem Content="สว่าง"/><ComboBoxItem Content="ตามระบบ"/></ComboBox></Grid>
+              <CheckBox Name="OpenFolderCheck" Content="{DynamicResource L978A18DDB6AD}" Click="SettingsChanged"/>
+              <CheckBox Name="NotifyCheck" Content="{DynamicResource LC81A725D25BA}" Click="SettingsChanged"/>
+              <CheckBox Name="SoundCheck" Content="{DynamicResource LC7937E49BC30}" Click="SettingsChanged"/>
+              <CheckBox Name="LaunchCheck" Content="{DynamicResource L81AC217890A9}" Click="SettingsChanged"/>
+              <TextBlock Name="ShortcutLabel" Text="{DynamicResource LBED868478D81}" FontSize="10" Classes="muted"/>
+              <CheckBox Name="CompatibleCheck" Content="{DynamicResource LE4A97DC906B4}" Click="SettingsChanged"/>
+              <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{DynamicResource LFA3F38638C06}" VerticalAlignment="Center"/><ComboBox Grid.Column="1" Name="BandwidthChoice" SelectionChanged="PreferenceSelectionChanged"><ComboBoxItem Content="{DynamicResource LF45A87F1A391}"/><ComboBoxItem Content="1 MB/s"/><ComboBoxItem Content="5 MB/s"/><ComboBoxItem Content="10 MB/s"/><ComboBoxItem Content="Custom · MB/s"/></ComboBox></Grid>
+              <NumericUpDown Name="CustomBandwidth" IsVisible="False" Minimum="0.1" Maximum="1000" Increment="0.5" FormatString="0.0 MB/s" ValueChanged="CustomBandwidthChanged"/>
+              <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{DynamicResource LA0548206400B}" VerticalAlignment="Center"/><ComboBox Grid.Column="1" Name="ThemeChoice" SelectionChanged="PreferenceSelectionChanged"><ComboBoxItem Content="{DynamicResource L86AF8BC19164}"/><ComboBoxItem Content="{DynamicResource L6E3046E24F9E}"/><ComboBoxItem Content="{DynamicResource L6D18BB3A26D3}"/></ComboBox></Grid>
+              <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{DynamicResource L5E453965A88F}" VerticalAlignment="Center"/><ComboBox Grid.Column="1" Name="LanguageChoice" SelectionChanged="LanguageChanged"><ComboBoxItem Content="ไทย"/><ComboBoxItem Content="English"/></ComboBox></Grid>
             </StackPanel>
           </Border>
+          <Expander Header="{DynamicResource L3D41EA310D1E}" HorizontalAlignment="Stretch">
+            <StackPanel Spacing="8" Margin="0,8,0,0">
+              <CheckBox Name="InboxCheck" Content="{DynamicResource L8E285F2569D9}" Click="SettingsChanged"/>
+              <CheckBox Name="InboxAutoCheck" Content="ดาวน์โหลดลิงก์จากมือถืออัตโนมัติ" Click="SettingsChanged"/>
+              <TextBlock Name="InboxFolderLabel" FontSize="10" Classes="muted" TextTrimming="CharacterEllipsis"/>
+              <Button Classes="link" Content="{DynamicResource LBCDE17E48BD2}" Click="ChooseInbox"/>
+              <TextBlock Text="{DynamicResource L1FDFFF616129}" TextWrapping="Wrap" FontSize="10" Classes="muted"/>
+            </StackPanel>
+          </Expander>
+          <Expander Header="{DynamicResource L8E4BE59F5038}" HorizontalAlignment="Stretch"><TextBlock Name="StatisticsLabel" FontSize="10" Classes="muted" TextWrapping="Wrap" Margin="0,8,0,0"/></Expander>
           <Border Classes="card" Padding="14">
             <StackPanel Spacing="10">
-              <CheckBox Name="AutoUpdateToggle" Content="ตรวจอัปเดตอัตโนมัติทุก 24 ชั่วโมง" Click="SettingsChanged"/>
-              <CheckBox Name="HideToTrayToggle" Content="ทำงานต่อในถาดระบบเมื่อปิดหน้าต่าง" Click="SettingsChanged"/>
-              <TextBlock Text="ติดตั้งอัปเดตเมื่อคิวดาวน์โหลดว่าง ไม่ขัดจังหวะงาน" FontSize="10" Classes="muted" TextWrapping="Wrap"/>
-              <Button Name="CheckUpdateButton" Classes="link" HorizontalAlignment="Left" Content="ตรวจหาอัปเดตตอนนี้" Click="CheckForUpdates"/>
+              <CheckBox Name="AutoUpdateToggle" Content="{DynamicResource L2B25F39474BA}" Click="SettingsChanged"/>
+              <CheckBox Name="HideToTrayToggle" Content="{DynamicResource LF8DEDFB2701B}" Click="SettingsChanged"/>
+              <TextBlock Text="{DynamicResource LA06D3C58F44F}" FontSize="10" Classes="muted" TextWrapping="Wrap"/>
+              <Button Name="CheckUpdateButton" Classes="link" HorizontalAlignment="Left" Content="{DynamicResource L9530478883C3}" Click="CheckForUpdates"/>
             </StackPanel>
           </Border>
-          <Expander Name="AttentionSection" Header="รายการที่ต้องตรวจสอบ" HorizontalAlignment="Stretch">
+          <Expander Name="AttentionSection" Header="{DynamicResource LB472C76377FC}" HorizontalAlignment="Stretch">
             <StackPanel Spacing="8" Margin="0,8,0,0">
-              <TextBlock Text="รายการที่เน็ตหลุด ไดรฟ์ถูกถอด หรือดาวน์โหลดไม่สำเร็จ" FontSize="10" Classes="muted" TextWrapping="Wrap"/>
+              <TextBlock Text="{DynamicResource L68B37D415DED}" FontSize="10" Classes="muted" TextWrapping="Wrap"/>
               <ItemsControl Name="AttentionList">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="model:DownloadItem">
-                    <Border Classes="card" Padding="10" Margin="0,0,0,8"><StackPanel Spacing="6"><TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Detail}" FontSize="10" Classes="muted" TextWrapping="Wrap"/><Button Classes="small" Content="ตรวจรายการ / เลือกปลายทางใหม่" Tag="{Binding}" Click="ReviewItem"/></StackPanel></Border>
+                    <Border Classes="card" Padding="10" Margin="0,0,0,8"><StackPanel Spacing="6"><TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Detail}" FontSize="10" Classes="muted" TextWrapping="Wrap"/><Button Classes="small" Content="{DynamicResource LCBEB0BE8C03F}" Tag="{Binding}" Click="ReviewItem"/></StackPanel></Border>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
-              <TextBlock Name="AttentionEmpty" Text="ทุกอย่างพร้อมใช้งาน" FontSize="11" Classes="muted"/>
+              <TextBlock Name="AttentionEmpty" Text="{DynamicResource LBD98607AECB0}" FontSize="11" Classes="muted"/>
             </StackPanel>
           </Expander>
+          <Button Classes="link" Content="{DynamicResource L8A3F82251125}" Click="QuitFromSettings"/>
         </StackPanel>
       </ScrollViewer>
     </Grid>
     <Border Grid.Row="2" Name="ReviewActions" IsVisible="False" Padding="26,10" BorderBrush="{DynamicResource BorderColor}" BorderThickness="0,1,0,0">
       <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
-        <Button Classes="small" Content="ยกเลิก" Click="DismissReview"/>
-        <Button Grid.Column="1" Name="ReviewDownloadButton" Classes="primary" Content="ดาวน์โหลด" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Click="ConfirmReview"/>
+        <Button Classes="small" Content="{DynamicResource L5C44A37466F9}" Click="DismissReview"/>
+        <Button Grid.Column="1" Name="ReviewDownloadButton" Classes="primary" Content="{DynamicResource L52DB0D9CED02}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Click="ConfirmReview"/>
       </Grid>
     </Border>
     <Border Grid.Row="3" Name="StatusBanner" IsVisible="False" Padding="14,7" Background="{DynamicResource RailColor}">
-      <Grid ColumnDefinitions="*,24"><TextBlock Name="StatusLabel" FontSize="10" Classes="muted" TextWrapping="Wrap" MaxHeight="54"/><Button Grid.Column="1" Classes="icon" Content="×" ToolTip.Tip="ปิดข้อความ" Click="DismissStatus"/></Grid>
+      <Grid ColumnDefinitions="*,24"><TextBlock Name="StatusLabel" FontSize="10" Classes="muted" TextWrapping="Wrap" MaxHeight="54"/><Button Grid.Column="1" Classes="icon" Content="×" ToolTip.Tip="{DynamicResource LBB5923666734}" Click="DismissStatus"/></Grid>
     </Border>
     <Border Grid.Row="4" Background="{DynamicResource RailColor}" BorderBrush="{DynamicResource BorderColor}" BorderThickness="0,1,0,0">
       <Grid ColumnDefinitions="*,*">
-        <Grid><Button Name="DownloadsTab" Classes="tab selected" Click="ShowDownloads" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"><StackPanel Orientation="Horizontal" Spacing="7"><Path Stroke="{DynamicResource MutedColor}" Stretch="Uniform" Fill="Transparent" StrokeThickness="1.7" Data="{StaticResource DownloadIcon}" Width="16" Height="16"/><TextBlock Text="คิวดาวน์โหลด" FontSize="12" FontWeight="SemiBold"/></StackPanel></Button><Border Name="DownloadsIndicator" Width="52" Height="2" CornerRadius="1" Background="{DynamicResource AccentColor}" VerticalAlignment="Bottom"/></Grid>
-        <Grid Grid.Column="1"><Button Name="HistoryTab" Classes="tab" Click="ShowHistory" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"><StackPanel Orientation="Horizontal" Spacing="7"><Path Stroke="{DynamicResource MutedColor}" Stretch="Uniform" Fill="Transparent" StrokeThickness="1.7" Data="{StaticResource HistoryIcon}" Width="16" Height="16"/><TextBlock Text="ล่าสุด" FontSize="12" FontWeight="SemiBold"/></StackPanel></Button><Border Name="HistoryIndicator" IsVisible="False" Width="52" Height="2" CornerRadius="1" Background="{DynamicResource AccentColor}" VerticalAlignment="Bottom"/></Grid>
+        <Grid><Button Name="DownloadsTab" Classes="tab selected" Click="ShowDownloads" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"><StackPanel Orientation="Horizontal" Spacing="7"><Path Stroke="{DynamicResource MutedColor}" Stretch="Uniform" Fill="Transparent" StrokeThickness="1.7" Data="{StaticResource DownloadIcon}" Width="16" Height="16"/><TextBlock Text="{DynamicResource L8E99249E746F}" FontSize="12" FontWeight="SemiBold"/></StackPanel></Button><Border Name="DownloadsIndicator" Width="52" Height="2" CornerRadius="1" Background="{DynamicResource AccentColor}" VerticalAlignment="Bottom"/></Grid>
+        <Grid Grid.Column="1"><Button Name="HistoryTab" Classes="tab" Click="ShowHistory" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"><StackPanel Orientation="Horizontal" Spacing="7"><Path Stroke="{DynamicResource MutedColor}" Stretch="Uniform" Fill="Transparent" StrokeThickness="1.7" Data="{StaticResource HistoryIcon}" Width="16" Height="16"/><TextBlock Text="{DynamicResource L5ABE2EC96AF2}" FontSize="12" FontWeight="SemiBold"/></StackPanel></Button><Border Name="HistoryIndicator" IsVisible="False" Width="52" Height="2" CornerRadius="1" Background="{DynamicResource AccentColor}" VerticalAlignment="Bottom"/></Grid>
       </Grid>
     </Border>
   </Grid>

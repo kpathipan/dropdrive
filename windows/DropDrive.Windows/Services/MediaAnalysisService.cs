@@ -56,6 +56,7 @@ public sealed class MediaAnalysisService
                 index++;
                 if (entry.ValueKind != JsonValueKind.Object) continue;
                 entries.Add(new MediaEntry { Index = index, Title = String(entry, "title") ?? $"ไฟล์ {index}",
+                    StableId = String(entry, "id"),
                     Url = String(entry, "webpage_url") ?? String(entry, "url"),
                     ThumbnailUrl = Thumbnail(entry), Size = Size(entry),
                     Kind = String(entry, "ext") is "jpg" or "png" or "webp" ? "image" : "video" });

@@ -19,7 +19,7 @@ public sealed class DownloadItem : INotifyPropertyChanged
     private string _eta = "—";
     private string? _resultPath;
     public Guid Id { get; init; } = Guid.NewGuid();
-    public required string Url { get; init; }
+    public required string Url { get; set; }
     public string Name { get => _name; set => Set(ref _name, value); }
     public string Source { get; set; } = "Link";
     public bool AudioOnly { get; set; }
@@ -35,6 +35,14 @@ public sealed class DownloadItem : INotifyPropertyChanged
     public bool IsCollection { get; set; }
     public bool IsDrive { get; set; }
     public bool AnalysisCompleted { get; set; }
+    public bool IsPhotoCollection { get; set; }
+    public bool DirectTransfer { get; set; }
+    public int RetryAttempt { get; set; }
+    public DateTimeOffset? RetryAfter { get; set; }
+    public bool WaitForDestination { get; set; }
+    public long ReceivedBytes { get; set; }
+    public List<string> OutputPaths { get; set; } = [];
+    public bool BatchSelected { get; set; } = true;
     public List<MediaEntry> Entries { get; set; } = [];
     public string? ThumbnailUrl { get; set; }
     public string? PartialPath { get; set; }
@@ -64,13 +72,13 @@ public sealed class DownloadItem : INotifyPropertyChanged
             foreach (var property in new[] { nameof(IsActive), nameof(IsTransferring), nameof(NeedsAttention), nameof(CanRemove), nameof(CanOpen), nameof(CanReorder) }) Notify(property);
         }
     }
-    public string DisplayStatus => Status switch {
+    public string DisplayStatus => Services.Locale.Text(Status switch {
         "Ready" => "พร้อม", "Waiting" => "รอคิว", "Starting" => "กำลังเริ่ม",
         "Analyzing" => "กำลังวิเคราะห์", "Downloading" => "กำลังดาวน์โหลด",
         "Complete" => "เสร็จแล้ว", "Failed" => "ไม่สำเร็จ", "Cancelled" => "ยกเลิกแล้ว",
         "Paused" => "หยุดชั่วคราว", _ => Status
-    };
-    public string Detail { get => _detail; set => Set(ref _detail, value); }
+    });
+    public string Detail { get => Services.Locale.Text(_detail); set => Set(ref _detail, value); }
     public bool CanCancel { get => _canCancel; set => Set(ref _canCancel, value); }
     public bool CanRetry { get => _canRetry; set => Set(ref _canRetry, value); }
     public bool CanStart { get => _canStart; set => Set(ref _canStart, value); }
@@ -91,11 +99,14 @@ public sealed class MediaEntry : INotifyPropertyChanged
     private bool _selected = true;
     public int Index { get; init; }
     public required string Title { get; init; }
-    public string? Url { get; init; }
+    public string? Url { get; set; }
     public string? ThumbnailUrl { get; init; }
     public string RelativeFolder { get; init; } = "";
     public DownloadItem? Transfer { get; set; }
     public string Kind { get; init; } = "video";
+    public string? StableId { get; init; }
+    public string? Fingerprint { get; set; }
+    public string SnapshotState { get; set; } = "ใหม่";
     public long? Size { get; init; }
     public bool Selected { get => _selected; set { if (_selected == value) return; _selected = value; PropertyChanged?.Invoke(this, new(nameof(Selected))); } }
     [JsonIgnore] public Bitmap? Thumbnail { get; set; }

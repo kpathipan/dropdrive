@@ -27,6 +27,7 @@ public sealed class AppStateService
             Url = item.Url, Name = item.Name, Source = item.Source,
             AudioOnly = item.AudioOnly, Status = item.Status, ResultPath = item.ResultPath,
             Destination = item.Destination, Quality = item.Quality
+            , Bytes = item.ReceivedBytes
         });
         if (history.Count > 100) history.RemoveRange(100, history.Count - 100);
         Save("history.json", history);
@@ -37,6 +38,30 @@ public sealed class AppStateService
     public List<DownloadItem> LoadQueue() => Load("queue.json", new List<DownloadItem>());
 
     public void SaveQueue(IEnumerable<DownloadItem> items) => Save("queue.json", items.Take(100).ToList());
+
+    public Dictionary<string, CollectionReceipt> LoadReceipts() => Load("collections.json", new Dictionary<string, CollectionReceipt>());
+    public void SaveReceipts(Dictionary<string, CollectionReceipt> receipts) => Save("collections.json", receipts);
+
+    public LocalStatistics LoadStatistics() => Load("statistics.json", new LocalStatistics());
+    public void RecordCompletion(DownloadItem item)
+    {
+        var stats = LoadStatistics();
+        stats.Downloads++;
+        stats.Bytes += Math.Max(0, item.ReceivedBytes);
+        Save("statistics.json", stats);
+        var receipts = LoadReceipts();
+        if (item.IsCollection)
+        {
+            var key = CollectionReceipt.CollectionKey(item.Url);
+            var receipt = receipts.GetValueOrDefault(key) ?? new CollectionReceipt();
+            foreach (var entry in item.Entries.Where(e => e.Selected))
+                receipt.Files[CollectionReceipt.EntryKey(entry)] = CollectionReceipt.Version(entry);
+            receipt.UpdatedAt = DateTimeOffset.UtcNow;
+            receipt.Files = receipt.Files.TakeLast(10000).ToDictionary(pair => pair.Key, pair => pair.Value);
+            receipts[key] = receipt;
+            SaveReceipts(receipts.OrderByDescending(pair => pair.Value.UpdatedAt).Take(24).ToDictionary(pair => pair.Key, pair => pair.Value));
+        }
+    }
 
     private T Load<T>(string file, T fallback)
     {

@@ -11,6 +11,7 @@ public sealed class DownloadService
 {
     private readonly HttpClient _client;
     public Action? Checkpoint { get; set; }
+    public Func<long?>? BandwidthProvider { get; set; }
     public DownloadService(HttpClient? client = null) => _client = client ?? new() { Timeout = Timeout.InfiniteTimeSpan };
 
     public async Task DownloadAsync(DownloadItem item, string destination, CancellationToken cancellationToken)
@@ -18,8 +19,8 @@ public sealed class DownloadService
         // Never recreate a missing user-selected destination (e.g. an unplugged drive).
         TransferGuard.EnsureSpace(destination, item.IsMedia ? null : item.EstimatedBytes);
         item.Status = "Downloading"; item.CanCancel = true; item.CanRetry = false;
-        if (item.IsDrive && item.IsCollection) await DownloadDriveFolderAsync(item, destination, cancellationToken);
-        else if (item.IsDrive || IsDirectFile(item.Url)) await DownloadDirectAsync(item, destination, cancellationToken);
+        if ((item.IsDrive || item.IsPhotoCollection) && item.IsCollection) await DownloadDriveFolderAsync(item, destination, cancellationToken);
+        else if (item.IsDrive || item.DirectTransfer || IsDirectFile(item.Url)) await DownloadDirectAsync(item, destination, cancellationToken);
         else await DownloadMediaAsync(item, destination, cancellationToken);
         item.Progress = 100; item.Status = "Complete"; item.CanCancel = false;
         item.Detail = item.AudioOnly ? "บันทึกเป็น MP3 แล้ว" : "บันทึกในโฟลเดอร์ปลายทางแล้ว";
@@ -30,7 +31,7 @@ public sealed class DownloadService
         var name = MediaOptions.SafeName(item.Name == "ดาวน์โหลด" ? Path.GetFileName(Uri.UnescapeDataString(new Uri(item.Url).LocalPath)) : item.Name);
         // Resume only our own job's partial in the originally chosen folder.
         var target = item.TargetPath;
-        if (target == null || !string.Equals(Path.GetDirectoryName(target), destination, StringComparison.OrdinalIgnoreCase))
+        if (target == null || item.PartialPath == null || !string.Equals(Path.GetDirectoryName(target), destination, StringComparison.OrdinalIgnoreCase))
         {
             target = UniquePath(destination, name);
             item.TargetPath = target;
@@ -43,12 +44,16 @@ public sealed class DownloadService
         async Task<HttpResponseMessage> Request(string url)
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            if (item.DirectTransfer && TikTokMediaService.IsTrustedCdn(new Uri(url).Host)) request.Headers.Referrer = new Uri("https://www.tiktok.com/");
             if (offset > 0)
             {
                 request.Headers.Range = new RangeHeaderValue(offset, null);
                 request.Headers.TryAddWithoutValidation("If-Range", item.EntityTag);
             }
-            return await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(30));
+            try { return await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token); }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { throw new HttpRequestException("การเชื่อมต่อหมดเวลา"); }
         }
         var firstResponse = await Request(downloadUrl);
         if (item.IsDrive && firstResponse.Content.Headers.ContentType?.MediaType == "text/html")
@@ -88,14 +93,15 @@ public sealed class DownloadService
             var clock = Stopwatch.StartNew();
             var lastUpdate = TimeSpan.Zero;
             int read;
-            while ((read = await input.ReadAsync(buffer, cancellationToken)) > 0)
+            while ((read = await ReadWithTimeout(input, buffer, cancellationToken)) > 0)
             {
                 await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
                 received += read; sessionBytes += read;
-                if (item.BandwidthLimit is > 0)
+                item.ReceivedBytes = received;
+                var limit = BandwidthProvider != null ? BandwidthProvider() : item.BandwidthLimit;
+                if (limit is > 0)
                 {
-                    var delay = TimeSpan.FromSeconds(sessionBytes / (double)item.BandwidthLimit.Value) - clock.Elapsed;
-                    if (delay > TimeSpan.Zero) await Task.Delay(delay, cancellationToken);
+                    await Task.Delay(TimeSpan.FromSeconds(read / (double)limit.Value), cancellationToken);
                 }
                 if (clock.Elapsed - lastUpdate < TimeSpan.FromMilliseconds(200)) continue;
                 lastUpdate = clock.Elapsed;
@@ -107,6 +113,14 @@ public sealed class DownloadService
             }
             if (total is > 0 && received != total) throw new IOException("การเชื่อมต่อขาดหาย กดดาวน์โหลดต่อได้");
         }
+        if (item.DirectTransfer && item.Source == "TikTok Photos")
+        {
+            using var probe = File.OpenRead(partial);
+            var header = new byte[12]; var count = probe.Read(header);
+            var image = count >= 12 && (header[0] == 0xff && header[1] == 0xd8 || header[0] == 0x89 && header[1] == 0x50 ||
+                System.Text.Encoding.ASCII.GetString(header, 0, 4) == "RIFF" && System.Text.Encoding.ASCII.GetString(header, 8, 4) == "WEBP");
+            if (!image) throw new InvalidOperationException("ไฟล์รูปจาก TikTok ไม่ถูกต้อง กรุณาลองใหม่");
+        }
         if (File.Exists(target)) target = UniquePath(destination, name);
         File.Move(partial, target);
         item.ResultPath = target; item.PartialPath = null; item.TargetPath = target;
@@ -114,6 +128,18 @@ public sealed class DownloadService
 
     private async Task DownloadDriveFolderAsync(DownloadItem item, string destination, CancellationToken token)
     {
+        if (item.IsPhotoCollection)
+        {
+            var fresh = await TikTokMediaService.AnalyzeFastAsync(item.Url, token);
+            if (fresh?.Entries == null) throw new InvalidOperationException("รีเฟรชลิงก์รูป TikTok ไม่ได้ กรุณาลองใหม่");
+            foreach (var entry in item.Entries.Where(e => e.Selected))
+            {
+                var replacement = fresh.Entries.FirstOrDefault(e => e.StableId == entry.StableId);
+                if (replacement?.Url == null) throw new InvalidOperationException("โพสต์ TikTok เปลี่ยนไป กรุณาวิเคราะห์ลิงก์ใหม่");
+                entry.Url = replacement.Url;
+                if (entry.Transfer != null) entry.Transfer.Url = replacement.Url;
+            }
+        }
         var selected = item.Entries.Where(entry => entry.Selected).ToArray();
         if (selected.Length == 0) throw new InvalidOperationException("เลือกอย่างน้อย 1 ไฟล์");
         var count = 0;
@@ -128,7 +154,9 @@ public sealed class DownloadService
                 throw new IOException("ชื่อโฟลเดอร์ต้นทางไม่ปลอดภัย");
             TransferGuard.EnsureSpace(destination, entry.Size);
             Directory.CreateDirectory(folder);
-            entry.Transfer ??= new DownloadItem { Url = entry.Url!, Name = entry.Title, IsDrive = true, IsMedia = false, Destination = folder };
+            entry.Transfer ??= new DownloadItem { Url = entry.Url!, Name = entry.Title, IsDrive = item.IsDrive,
+                DirectTransfer = item.IsPhotoCollection, Source = item.IsPhotoCollection && entry.Kind == "image" ? "TikTok Photos" : item.Source,
+                IsMedia = false, Destination = folder };
             var child = entry.Transfer;
             if (child.Status == "Complete" && File.Exists(child.ResultPath) && child.Destination == folder) { count++; item.Progress = count * 100d / selected.Length; continue; }
             child.Destination = folder; child.BandwidthLimit = item.BandwidthLimit;
@@ -144,6 +172,15 @@ public sealed class DownloadService
             count++;
         }
         item.ResultPath = destination;
+        item.ReceivedBytes = selected.Sum(entry => entry.Transfer?.ReceivedBytes ?? 0);
+    }
+
+    private static async Task<int> ReadWithTimeout(Stream input, byte[] buffer, CancellationToken token)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        try { return await input.ReadAsync(buffer, timeout.Token); }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested) { throw new HttpRequestException("การเชื่อมต่อหมดเวลา"); }
     }
 
     private static async Task DownloadMediaAsync(DownloadItem item, string destination, CancellationToken cancellationToken)
@@ -190,10 +227,33 @@ public sealed class DownloadService
         // make a completed card appear to be downloading again.
         await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
         if (process.ExitCode != 0) throw new InvalidOperationException(FriendlyError(string.Join('\n', errors)));
+        if (item.OutputPaths.Count == 0) throw new IOException("ตัวดาวน์โหลดไม่ส่งไฟล์ผลลัพธ์กลับมา กรุณาลองใหม่");
+        foreach (var path in item.OutputPaths)
+            await MediaValidator.ValidateAsync(path, item.AudioOnly, toolsPath, cancellationToken);
+        FinalizeMediaNames(item, destination);
+        item.ReceivedBytes = item.OutputPaths.Where(File.Exists).Sum(path => new FileInfo(path).Length);
+        if (item.IsCollection) item.ResultPath = destination;
         }
         finally
         {
             if (infoPath != null) try { File.Delete(infoPath); } catch (IOException) { }
+        }
+    }
+
+    public static void FinalizeMediaNames(DownloadItem item, string destination)
+    {
+        // The job suffix owns partials during transfer. Successful user-facing
+        // files no longer need it; rename in place, never make a second copy.
+        var marker = "-" + item.Id.ToString("N") + ".";
+        foreach (var path in Directory.EnumerateFiles(destination).Where(path => Path.GetFileName(path).Contains(marker, StringComparison.Ordinal)).ToArray())
+        {
+            var name = Path.GetFileName(path);
+            if (name.EndsWith(".part", StringComparison.Ordinal) || name.EndsWith(".ytdl", StringComparison.Ordinal) || name.Contains(".part-Frag", StringComparison.Ordinal)) continue;
+            var renamed = UniquePath(destination, name.Replace(marker, ".", StringComparison.Ordinal));
+            File.Move(path, renamed);
+            for (var index = 0; index < item.OutputPaths.Count; index++)
+                if (item.OutputPaths[index] == path) item.OutputPaths[index] = renamed;
+            if (item.ResultPath == path) item.ResultPath = renamed;
         }
     }
 
@@ -202,7 +262,11 @@ public sealed class DownloadService
         if (line.StartsWith("DDPATH:", StringComparison.Ordinal))
         {
             var path = line[7..].Trim();
-            if (Path.IsPathFullyQualified(path)) item.ResultPath = path;
+            if (Path.IsPathFullyQualified(path))
+            {
+                item.ResultPath = path;
+                if (!item.OutputPaths.Contains(path, StringComparer.OrdinalIgnoreCase)) item.OutputPaths.Add(path);
+            }
             return;
         }
         if (line.StartsWith("DDPROGRESS:", StringComparison.Ordinal))

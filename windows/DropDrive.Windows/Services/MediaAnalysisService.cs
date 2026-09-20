@@ -11,6 +11,8 @@ public sealed record MediaAnalysis(string Title, string Source, string Detail, s
 public sealed class MediaAnalysisService
 {
     private readonly GoogleAccountService? _accounts;
+    // Opt-in diagnostics for isolated public-fixture checks, never persisted by the app.
+    public Action<string>? DiagnosticSink { get; init; }
     public MediaAnalysisService(GoogleAccountService? accounts = null) => _accounts = accounts;
     public async Task<MediaAnalysis> AnalyzeAsync(string url, CancellationToken cancellationToken)
     {
@@ -27,7 +29,7 @@ public sealed class MediaAnalysisService
             UseShellExecute = false, RedirectStandardOutput = true,
             RedirectStandardError = true, CreateNoWindow = true
         };
-        var args = new List<string> { "--dump-single-json", "--skip-download", "--flat-playlist", "--socket-timeout", "15", "--retries", "1" };
+        var args = new List<string> { "--ignore-config", "--dump-single-json", "--skip-download", "--flat-playlist", "--socket-timeout", "15", "--retries", "1" };
         if (uri.AbsolutePath != "/playlist" && (uri.Host.EndsWith("youtube.com", StringComparison.OrdinalIgnoreCase) || uri.Host == "youtu.be"))
             args.Add("--no-playlist");
         MediaOptions.AddRuntimeArguments(args, Path.Combine(AppContext.BaseDirectory, "Tools"));
@@ -39,7 +41,11 @@ public sealed class MediaAnalysisService
         await process.WaitForExitAsync(cancellationToken);
         var output = await outputTask;
         var error = await errorTask;
-        if (process.ExitCode != 0) throw new InvalidOperationException(DownloadService.FriendlyError(error));
+        if (process.ExitCode != 0)
+        {
+            DiagnosticSink?.Invoke(error);
+            throw new InvalidOperationException(DownloadService.FriendlyError(error));
+        }
         return Parse(output, uri.Host);
     }
 

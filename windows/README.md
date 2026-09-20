@@ -9,7 +9,7 @@ Requires Windows 10/11 and the .NET 10 SDK.
 
 ```powershell
 ./fetch-tools.ps1
-./build-windows.ps1 -Version 0.6.0
+./build-windows.ps1 -Version 0.7.0
 ```
 
 The installer is written to `artifacts/releases/com.dropdrive.windows-win-Setup.exe`.
@@ -24,7 +24,7 @@ Windows workflow builds the EXE, creates the Velopack feed and publishes that
 feed to a GitHub Release. Signing variables can be added to the workflow once an
 Authenticode certificate is available.
 
-## Windows 0.6 parity scope
+## Windows 0.7 parity scope
 
 Implemented from the Mac flow: compact dark/Thai window and inline settings,
 review with artwork and editable title, quality/MP3/subtitles/clip/chapter
@@ -34,18 +34,45 @@ pause/resume/retry queue, queue ordering, recent search/open/reveal/copy/repeat,
 fixed metric columns, bandwidth/compatible-video/theme preferences, and
 24-hour update checks while running with installation deferred until idle.
 
-Windows intentionally has no login and supports public Drive shares only
-(confirmed product choice, 2026-09-14).
-This is **not full Mac feature parity**. Drive changed-only snapshots,
-playable remote-video Quick Look, phone inbox,
-OS toast/sound notifications and launch-at-login remain unimplemented.
-Space preview shows a thumbnail, not remote video playback. Public Drive's
-anonymous HTML listing is not the authenticated Drive API; inaccessible or
-unsupported listings must fail explicitly. TikTok photo carousels are not yet
-handled by the original-video route. Live platform availability is separate
-from deterministic regression checks and can vary by account/region.
+The reference is Mac **6.24.4**. Version 0.7 adds completion receipts and
+new/changed-file selection, TikTok photo collections with separate audio,
+pause/resume-all, bounded network retries, destination recovery, recent
+destinations, optional synced phone inbox, local statistics, custom bandwidth,
+native Windows notifications/sound, startup, Ctrl+Shift+D, single instance,
+Thai/English resources, and keep-awake only during downloads.
 
-CI runs the production UI + core regression checks on Windows, saves six
+Google sign-in is **optional**: public Drive downloads work without it.
+Multiple accounts can be added, with a preferred account and fallback to
+other authorized accounts during analysis. Signed-in Drive uses the API for
+private/shared files, folders and Workspace exports. Tokens are protected by
+Windows DPAPI for the current user, separately from queue/settings, at a
+stable path that does not change on app updates. Removing an account removes
+local access only; it does not delete downloads or revoke other devices.
+
+Space preview shows an inline thumbnail/icon, matching the reference Mac
+pre-download browser; it is not remote video playback. Completed files open
+in the user's default Windows app. Anonymous Drive HTML listings expose less
+change metadata than the authenticated API. Live media availability is separate
+from deterministic regression checks and can vary by account/region/network.
+See [parity-checklist.md](parity-checklist.md) for verification and limitations.
+
+## Optional Google sign-in configuration
+
+Create an OAuth client of type **Desktop app** in the existing DropDrive Google
+Cloud project, with Drive API enabled and the consent screen configured for
+`openid email profile` and `drive.readonly`. Do not reuse the Mac custom-scheme
+client. Download the `installed` client JSON into the ignored local path
+`DropDrive.Windows/oauth-client.json`; never commit it. CI reads the same JSON
+from the repository secret `GOOGLE_DESKTOP_OAUTH_JSON` and embeds it in the app.
+Native client credentials are not a substitute for PKCE or user consent.
+
+Development builds can run without this configuration (sign-in is disabled).
+**Tag releases fail if it is absent.** Before releasing, test browser consent,
+return-to-app refresh, private file download, restart/token refresh, adding a
+second account, and signed-out public download on Windows. Automated fixture
+tests do not prove the Google Cloud client/consent configuration works.
+
+CI runs the production UI + core regression checks on Windows, saves seven
 rendered screenshots, and smoke-tests the packaged executable before publishing
 a tag. Checks cover real control interactions and an HTTP download fixture
 through the actual queue. See parity-checklist.md for exact limitations.
@@ -57,7 +84,12 @@ YouTube's JavaScript runtime is bundled (QuickJS-NG 0.16.2, SHA-256 verified at
 build time) so the user does not have to install Node/Deno separately.
 The bundled Noto Sans Thai font avoids differences in Thai fallback fonts.
 
-The disposable Windows runner also installs 0.5.1, installs the new build over
+The disposable Windows runner also installs 0.6.0, installs the new build over
 it, verifies the stable executable/updater paths and retained settings/queue,
 and opens the installed app. This tests installer upgrades, not the remote
-GitHub auto-update download path.
+GitHub auto-update download path. A separate post-publication job launches the
+old installed version against the public feed, waits for its automatic update,
+and verifies the new version and retained settings/paused queue. Native checks
+also exercise tray/hotkey registration, notification activation, startup
+settings and DPAPI persistence. Provider probes save PASS/UNAVAILABLE results;
+a green workflow alone does not mean every external website allowed access.

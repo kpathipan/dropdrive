@@ -110,7 +110,12 @@ public sealed class GoogleAccountService
             await using var stream = socket.GetStream();
             using var requestDeadline = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token); requestDeadline.CancelAfter(TimeSpan.FromSeconds(5));
             var line = new List<byte>(); var one = new byte[1];
-            while (line.Count < 8192 && await stream.ReadAsync(one, requestDeadline.Token) == 1 && one[0] != '\n') line.Add(one[0]);
+            try
+            {
+                while (line.Count < 8192 && await stream.ReadAsync(one, requestDeadline.Token) == 1 && one[0] != '\n') line.Add(one[0]);
+            }
+            catch (OperationCanceledException) when (!deadline.IsCancellationRequested) { continue; }
+            catch (IOException) { continue; }
             var request = Encoding.ASCII.GetString(line.ToArray()).Split(' ');
             var fields = request.Length >= 2 && request[0] == "GET" ? ParseCallback(request[1], state) : null;
             var body = fields == null ? "Invalid callback. Return to DropDrive." : "You can close this tab and return to DropDrive.";
@@ -181,12 +186,26 @@ public sealed class GoogleAccountService
         }
         finally { _gate.Release(); }
     }
-    public void Remove(string id)
+    public async Task RemoveAsync(string id, CancellationToken token = default)
     {
-        var next = new GoogleSessions { Accounts = _sessions.Accounts.Where(a => a.Id != id).ToList() };
-        next.DefaultId = _sessions.DefaultId == id ? next.Accounts.FirstOrDefault()?.Id : _sessions.DefaultId;
-        _store.Save(next); _sessions = next;
+        await _gate.WaitAsync(token);
+        try
+        {
+            var next = new GoogleSessions { Accounts = _sessions.Accounts.Where(a => a.Id != id).ToList() };
+            next.DefaultId = _sessions.DefaultId == id ? next.Accounts.FirstOrDefault()?.Id : _sessions.DefaultId;
+            _store.Save(next); _sessions = next;
+        }
+        finally { _gate.Release(); }
     }
-    public void SetDefault(string id)
-    { if (_sessions.Accounts.Any(a => a.Id == id)) { _sessions.DefaultId = id; _store.Save(_sessions); } }
+    public async Task SetDefaultAsync(string id, CancellationToken token = default)
+    {
+        await _gate.WaitAsync(token);
+        try
+        {
+            if (!_sessions.Accounts.Any(a => a.Id == id)) return;
+            var next = new GoogleSessions { DefaultId = id, Accounts = _sessions.Accounts.ToList() };
+            _store.Save(next); _sessions = next;
+        }
+        finally { _gate.Release(); }
+    }
 }

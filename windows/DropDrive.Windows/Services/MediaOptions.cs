@@ -37,7 +37,7 @@ public static class MediaOptions
     public static List<string> Arguments(DownloadItem item, string destination, string toolsPath)
     {
         var args = new List<string> {
-            "--newline", "--windows-filenames", "--continue", "--no-overwrites",
+            "--ignore-config", "--newline", "--windows-filenames", "--continue", "--no-overwrites",
             "--concurrent-fragments", "4", "--retries", "3", "--fragment-retries", "3",
             "--socket-timeout", "20", "--ffmpeg-location", toolsPath,
             "--progress-template", "download:DDPROGRESS:%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s",

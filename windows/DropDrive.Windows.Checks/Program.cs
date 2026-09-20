@@ -63,6 +63,7 @@ try
         Entries = metadata.Entries!, ClipStart = "0:30", ClipEnd = "1:20", SubtitleMode = 1, SaveThumbnail = true };
     media.Entries[0].Selected = false;
     var arguments = MediaOptions.Arguments(media, stateFolder, stateFolder);
+    Expect(arguments.Contains("--ignore-config"), "external yt-dlp settings cannot override destinations or application options");
     Expect(arguments.Contains("--ffmpeg-location") && arguments.Contains("mp3"), "bundled ffmpeg is used for MP3");
     Expect(arguments[arguments.IndexOf("--playlist-items") + 1] == "3", "only the checked original entry index downloads");
     Expect(arguments.Contains("*30-80") && arguments.Contains("--write-thumbnail"), "clip and artwork options");
@@ -144,6 +145,20 @@ try
     Expect(Control<TextBox>("LinkBox").PlaceholderText == "Paste a download link", "language setting updates actual UI resources");
     Capture("07-empty-english");
     Control<ComboBox>("LanguageChoice").SelectedIndex = 0;
+    var preservedChild = new DownloadItem { Url = "https://drive.google.com/file/d/done/view", Status = "Complete", DriveAccountId = "old-account" };
+    var reconnectItem = new DownloadItem { Url = "https://drive.google.com/drive/folders/reconnect", Name = "Reconnect", IsDrive = true,
+        Status = "Failed", Destination = uiDestination, IsCollection = true, Entries = [
+            new() { Index = 1, Title = "done.mp4", StableId = "drive:done", Fingerprint = "unchanged", Transfer = preservedChild },
+            new() { Index = 2, Title = "skip.mp4", StableId = "drive:skip", Selected = false }] };
+    window.OpenReview(reconnectItem);
+    window.RefreshDriveReview(reconnectItem, new MediaAnalysis("Reconnected", "Google Drive", "Access refreshed", null, null, false, true,
+        [new() { Index = 1, Title = "done.mp4", StableId = "drive:done", Fingerprint = "unchanged" },
+         new() { Index = 2, Title = "skip.mp4", StableId = "drive:skip" }], "new-account"));
+    Dispatcher.UIThread.RunJobs();
+    Expect(reconnectItem.Status == "Ready" && Control<Button>("ReviewDownloadButton").IsEnabled, "login refresh immediately enables the same failed review");
+    Expect(!reconnectItem.Entries[1].Selected && ReferenceEquals(reconnectItem.Entries[0].Transfer, preservedChild)
+        && preservedChild.DriveAccountId == "new-account", "login refresh preserves deselection/completed children and replaces account access");
+    Expect(Control<TextBox>("ReviewName").Text == "Reconnected", "login refresh updates the visible review without a second login");
     var review = new DownloadItem { Url = "https://example.com/test", Name = "คลิปทดสอบสำหรับเลือกไฟล์", Detail = "YouTube · 3 ไฟล์", Status = "Ready",
         Destination = uiDestination, IsCollection = true, Entries = [
             new() { Index = 1, Title = "วิดีโอเบื้องหลัง.mp4" },

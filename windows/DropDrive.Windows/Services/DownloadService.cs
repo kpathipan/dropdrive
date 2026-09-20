@@ -174,6 +174,11 @@ public sealed class DownloadService
                 IsMedia = false, Destination = folder };
             var child = entry.Transfer;
             if (child.Status == "Complete" && File.Exists(child.ResultPath) && child.Destination == folder) { count++; item.Progress = count * 100d / selected.Length; continue; }
+            if (item.IsDrive)
+            {
+                child.DriveAccountId = item.DriveAccountId;
+                child.DriveMimeType = entry.MimeType; child.DriveResourceKey = entry.ResourceKey;
+            }
             child.Destination = folder; child.BandwidthLimit = item.BandwidthLimit;
             item.Detail = $"{count + 1}/{selected.Length} · {entry.Title}";
             void Progress(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
@@ -198,7 +203,9 @@ public sealed class DownloadService
         catch (OperationCanceledException) when (!token.IsCancellationRequested) { throw new HttpRequestException("การเชื่อมต่อหมดเวลา"); }
     }
 
-    private static async Task DownloadMediaAsync(DownloadItem item, string destination, CancellationToken cancellationToken)
+    public Action<string>? DiagnosticSink { get; init; }
+
+    private async Task DownloadMediaAsync(DownloadItem item, string destination, CancellationToken cancellationToken)
     {
         var toolsPath = Path.Combine(AppContext.BaseDirectory, "Tools");
         var tool = Path.Combine(toolsPath, "yt-dlp.exe");
@@ -244,6 +251,7 @@ public sealed class DownloadService
         if (process.ExitCode != 0)
         {
             var detail = string.Join('\n', errors);
+            DiagnosticSink?.Invoke(detail);
             if (IsTransientMediaError(detail)) throw new HttpRequestException(FriendlyError(detail));
             throw new InvalidOperationException(FriendlyError(detail));
         }
@@ -355,7 +363,7 @@ public sealed class DownloadService
         if (text.Contains("no space", StringComparison.OrdinalIgnoreCase)) return "พื้นที่ว่างไม่พอ เลือกโฟลเดอร์ใหม่แล้วลองอีกครั้ง";
         if (text.Contains("permission denied", StringComparison.OrdinalIgnoreCase) || text.Contains("no such file", StringComparison.OrdinalIgnoreCase)) return "เขียนไฟล์ไม่ได้ ตรวจไดรฟ์และสิทธิ์ของโฟลเดอร์ปลายทาง";
         if (text.Contains("Unsupported URL", StringComparison.OrdinalIgnoreCase)) return "ยังไม่รองรับลิงก์นี้ ตรวจสอบว่าเป็นลิงก์ไฟล์หรือวิดีโอโดยตรง";
-        if (text.Contains("Private video", StringComparison.OrdinalIgnoreCase) || text.Contains("Sign in", StringComparison.OrdinalIgnoreCase) || text.Contains("login", StringComparison.OrdinalIgnoreCase)) return "รายการนี้เป็นส่วนตัวหรือต้องมีสิทธิ์เข้าถึง Windows ยังไม่รองรับการล็อกอินบัญชี";
+        if (text.Contains("Private video", StringComparison.OrdinalIgnoreCase) || text.Contains("Sign in", StringComparison.OrdinalIgnoreCase) || text.Contains("login", StringComparison.OrdinalIgnoreCase)) return "เว็บไซต์นี้ต้องยืนยันบัญชีหรือสิทธิ์เข้าถึง การล็อกอิน Google Drive ไม่ได้เพิ่มสิทธิ์ให้เว็บไซต์วิดีโอ";
         if (text.Contains("not available", StringComparison.OrdinalIgnoreCase) || text.Contains("removed", StringComparison.OrdinalIgnoreCase)) return "รายการนี้ใช้งานไม่ได้หรือถูกลบแล้ว";
         if (text.Contains("HTTP Error 403", StringComparison.OrdinalIgnoreCase)) return "ถูกปฏิเสธการเข้าถึง ตรวจสิทธิ์ของลิงก์หรืออัปเดต DropDrive";
         return "ดาวน์โหลดลิงก์นี้ไม่ได้ ตรวจลิงก์และการเชื่อมต่ออินเทอร์เน็ตแล้วลองอีกครั้ง";

@@ -19,20 +19,31 @@ internal static class ProviderChecks
         foreach (var (provider, url) in probes)
         {
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(40));
+            var phase = "analysis";
+            var diagnostic = "";
+            void Capture(string detail)
+            {
+                // Public fixtures only; strip URLs (including signed CDN query strings)
+                // and keep a bounded tail. No browser cookies or real accounts are used.
+                diagnostic = System.Text.RegularExpressions.Regex.Replace(detail, @"https?://\S+", "[URL]");
+                if (diagnostic.Length > 3000) diagnostic = diagnostic[^3000..];
+            }
             try
             {
-                var result = await new MediaAnalysisService().AnalyzeAsync(url, deadline.Token);
+                var result = await new MediaAnalysisService { DiagnosticSink = Capture }.AnalyzeAsync(url, deadline.Token);
+                phase = "download";
                 var destination = Path.Combine(folder, provider); Directory.CreateDirectory(destination);
                 var item = new DownloadItem { Url = url, Name = "DropDrive public probe", IsMedia = result.IsMedia,
                     IsCollection = result.IsCollection, Entries = result.Entries ?? [], Source = result.Source,
                     ThumbnailUrl = result.ThumbnailUrl, Destination = destination, AudioOnly = provider == "TikTok", Quality = provider == "TikTok" ? 5 : 4,
                     ClipStart = "0", ClipEnd = "2", CompatibleVideo = true };
-                await new DownloadService().DownloadAsync(item, destination, deadline.Token);
+                await new DownloadService { DiagnosticSink = Capture }.DownloadAsync(item, destination, deadline.Token);
                 report.Add($"PASS {provider}: production analysis, download and playback validation");
             }
             catch (Exception error)
             {
-                report.Add($"UNAVAILABLE {provider}: {error.GetType().Name}: {error.Message}");
+                report.Add($"UNAVAILABLE {provider} ({phase}): {error.GetType().Name}: {error.Message}");
+                if (diagnostic.Length > 0) report.Add(diagnostic.Trim());
             }
         }
         var evidence = Path.GetFullPath("windows/artifacts/provider-checks.txt");

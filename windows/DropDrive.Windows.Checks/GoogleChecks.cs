@@ -55,8 +55,36 @@ internal static class GoogleChecks
         Check(await refreshAccounts.AccessTokenAsync("b", CancellationToken.None) == "fresh-token", "expired token refreshed");
         Check(await refreshAccounts.AccessTokenAsync("b", CancellationToken.None) == "fresh-token" && refreshCount == 1, "fresh token cached without repeat login");
         Check(store.State.Accounts[1].RefreshToken == "rotated-refresh", "refresh-token rotation persisted");
-        refreshAccounts.Remove("a"); Check(refreshAccounts.Accounts.Single().Id == "b" && refreshAccounts.Accounts[0].IsDefault, "remove one account preserves other/default");
-        refreshAccounts.Remove("b"); Check(refreshAccounts.Accounts.Count == 0, "optional login can return to anonymous mode");
+        await refreshAccounts.RemoveAsync("a"); Check(refreshAccounts.Accounts.Single().Id == "b" && refreshAccounts.Accounts[0].IsDefault, "remove one account preserves other/default");
+        await refreshAccounts.RemoveAsync("b"); Check(refreshAccounts.Accounts.Count == 0, "optional login can return to anonymous mode");
+        var consentStore = new MemoryGoogleStore();
+        var grantDriveScope = false;
+        var consent = new GoogleAccountService(consentStore, config, new HttpClient(new GoogleFixture(request => {
+            if (request.RequestUri!.Host == "oauth2.googleapis.com") return Json(JsonSerializer.Serialize(new {
+                access_token = "consent-access", refresh_token = "consent-refresh", expires_in = 3600,
+                scope = grantDriveScope ? "openid email " + GoogleAccountService.DriveScope : "openid email" }));
+            Check(request.Headers.Authorization?.Parameter == "consent-access", "profile identity is read with the new token");
+            return Json("""{"sub":"consent-user","email":"consent@example.test","name":"Test account"}""");
+        })));
+        try { await consent.ExchangeCodeAsync("code", "http://127.0.0.1:1234/", "verifier", CancellationToken.None); throw new Exception("partial consent accepted"); }
+        catch (InvalidOperationException) { }
+        Check(consent.Accounts.Count == 0, "missing Drive consent must not save an unusable account");
+        grantDriveScope = true;
+        await consent.ExchangeCodeAsync("code", "http://127.0.0.1:1234/", "verifier", CancellationToken.None);
+        Check(consent.Accounts.Single().Id == "consent-user" && consentStore.State.Accounts.Single().RefreshToken == "consent-refresh", "code exchange saves authorized identity and refresh token");
+        var refreshStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseRefresh = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        consentStore.State.Accounts[0].ExpiresAt = DateTimeOffset.MinValue;
+        var concurrent = new GoogleAccountService(consentStore, config, new HttpClient(new AsyncGoogleFixture(async () => {
+            refreshStarted.SetResult(); await releaseRefresh.Task;
+            return Json("""{"access_token":"concurrent-refreshed","expires_in":3600}""");
+        })));
+        var refreshing = concurrent.AccessTokenAsync("consent-user", CancellationToken.None);
+        await refreshStarted.Task;
+        var removing = concurrent.RemoveAsync("consent-user");
+        Check(!removing.IsCompleted, "account mutation waits for in-flight credential persistence");
+        releaseRefresh.SetResult(); await refreshing; await removing;
+        Check(concurrent.Accounts.Count == 0 && consentStore.State.Accounts.Count == 0, "refresh must not resurrect a removed account");
         Console.WriteLine("PASS Google optional login: PKCE/state, account fallback, private pagination/export/transfer, token refresh/rotation, sign out, no credentials in queue");
     }
     internal sealed class MemoryGoogleStore : IGoogleSessionStore
@@ -68,5 +96,9 @@ internal static class GoogleChecks
     private sealed class GoogleFixture(Func<HttpRequestMessage, HttpResponseMessage> handler) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) => Task.FromResult(handler(request));
+    }
+    private sealed class AsyncGoogleFixture(Func<Task<HttpResponseMessage>> handler) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) => handler();
     }
 }

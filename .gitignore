@@ -14,3 +14,4 @@ windows/**/bin/
 windows/**/obj/
 windows/artifacts/
 windows/DropDrive.Windows/Tools/
+windows/DropDrive.Windows/oauth-client.json

@@ -5,14 +5,19 @@ using DropDrive.Windows.Models;
 namespace DropDrive.Windows.Services;
 
 public sealed record MediaAnalysis(string Title, string Source, string Detail, string? ThumbnailUrl,
-    long? EstimatedBytes, bool IsMedia = true, bool IsCollection = false, List<MediaEntry>? Entries = null);
+    long? EstimatedBytes, bool IsMedia = true, bool IsCollection = false, List<MediaEntry>? Entries = null,
+    string? AccountId = null, string? MimeType = null, string? ResourceKey = null, string? DriveFileId = null);
 
 public sealed class MediaAnalysisService
 {
+    private readonly GoogleAccountService? _accounts;
+    public MediaAnalysisService(GoogleAccountService? accounts = null) => _accounts = accounts;
     public async Task<MediaAnalysis> AnalyzeAsync(string url, CancellationToken cancellationToken)
     {
         var uri = new Uri(url);
-        if (PublicDriveService.IsDriveUrl(url)) return await new PublicDriveService().AnalyzeAsync(url, cancellationToken);
+        if (PublicDriveService.IsDriveUrl(url)) return _accounts?.Accounts.Count > 0
+            ? await new GoogleDriveService(_accounts).AnalyzeAsync(url, cancellationToken)
+            : await new PublicDriveService().AnalyzeAsync(url, cancellationToken);
         if (await TikTokMediaService.AnalyzeFastAsync(url, cancellationToken) is { } quick) return quick;
         if (DownloadService.IsDirectFile(url))
             return new MediaAnalysis(Path.GetFileName(uri.LocalPath), uri.Host, "ไฟล์โดยตรง", null, null, false);

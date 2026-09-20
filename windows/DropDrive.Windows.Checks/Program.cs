@@ -20,9 +20,9 @@ static void Expect(bool condition, string message)
 {
     if (!condition) throw new InvalidOperationException(message);
 }
-static void Complete(Task task)
+static void Complete(Task task, int seconds = 15)
 {
-    var deadline = DateTime.UtcNow.AddSeconds(15);
+    var deadline = DateTime.UtcNow.AddSeconds(seconds);
     while (!task.IsCompleted && DateTime.UtcNow < deadline) { Dispatcher.UIThread.RunJobs(); Thread.Sleep(1); }
     Expect(task.IsCompleted, "async operation exceeded test deadline");
     task.GetAwaiter().GetResult();
@@ -33,6 +33,10 @@ Expect(links.Count == 2, "valid links should be parsed and duplicates removed");
 Expect(LinkInputParser.Parse("https://youtu.be/aBc https://youtu.be/abc").Count == 2, "case-sensitive video IDs must not be collapsed");
 Expect(LinkInputParser.Parse("ftp://example.com/file").Count == 0, "non-web schemes must be rejected");
 Expect(LinkInputParser.Parse("not a link").Count == 0, "invalid text must be rejected");
+Expect(LinkInputParser.Parse("https://youtu.be/AbCd https://www.youtube.com/watch?v=AbCd&utm_source=test").Count == 1, "share URLs for the same video do not create duplicate jobs");
+Expect(LinkIdentity.Platform("https://vm.tiktok.com/test") == LinkIdentity.Platform("https://www.tiktok.com/@x/video/123"), "MP3 preference shared across TikTok short and full links");
+Expect(LinkInputParser.ExternalLinks(["dropdrive://download?url=https%3A%2F%2Fexample.com%2Ffile.mp4&url=file%3A%2F%2Ftest"]).Single() == "https://example.com/file.mp4", "external protocol admits web links only");
+Expect(DownloadService.IsTransientMediaError("HTTP Error 503") && !DownloadService.IsTransientMediaError("Private video: HTTP Error 403"), "retry transient network errors, never permission failures");
 var settings = new AppSettings { CheckUpdatesAutomatically = true };
 var now = DateTimeOffset.UtcNow;
 Expect(settings.IsAutomaticUpdateCheckDue(now), "first automatic update check must be due");
@@ -46,6 +50,7 @@ var stateFolder = Path.Combine(Path.GetTempPath(), $"dropdrive-check-{Guid.NewGu
 try
 {
     var state = new AppStateService(stateFolder);
+    Complete(GoogleChecks.RunAsync(Path.Combine(stateFolder, "google")));
     state.SaveSettings(new AppSettings { Destination = "D:\\Media", CheckUpdatesAutomatically = false });
     Expect(state.LoadSettings().Destination == "D:\\Media", "settings must persist across launches");
     state.SaveQueue([new DownloadItem { Url = "https://example.com/a.mp4", Name = "A", Status = "Ready", Destination = "D:\\Media" }]);
@@ -157,6 +162,10 @@ try
     Dispatcher.UIThread.RunJobs();
     Expect(review.Entries[0].Selected && !review.Entries[1].Selected, "individual checkbox works after deselect all");
     Expect(Control<Button>("ReviewDownloadButton").IsEnabled && master.IsChecked == null, "partial selection enables download and mixed master state");
+    individual.Focus(); window.KeyPress(Key.Space, default, PhysicalKey.Space, " "); window.KeyRelease(Key.Space, default, PhysicalKey.Space, " "); Dispatcher.UIThread.RunJobs();
+    Expect(Control<Border>("InlinePreview").IsVisible && review.Entries[0].Selected, "Space opens inline preview without toggling selection");
+    window.KeyPress(Key.Space, default, PhysicalKey.Space, " "); window.KeyRelease(Key.Space, default, PhysicalKey.Space, " "); Dispatcher.UIThread.RunJobs();
+    Expect(!Control<Border>("InlinePreview").IsVisible, "Space closes preview for the same focused file");
     foreach (var size in new[] { 0, 1, 2 }) { Control<ComboBox>("SizeChoice").SelectedIndex = size; Dispatcher.UIThread.RunJobs(); }
     Control<ComboBox>("LayoutChoice").SelectedIndex = 1;
     Capture("04-file-list-thai");
@@ -236,6 +245,17 @@ try
     Expect(queueState.LoadHistory().Single().ResultPath == queued.ResultPath, "completed file path reaches history");
     Expect((string?)queueWindow.FindControl<Button>("ReviewDownloadButton")!.Content == "ดาวน์โหลด", "review action returns to download when queue becomes idle");
     queueWindow.Close();
+    var pausedState = new AppStateService(Path.Combine(stateFolder, "paused-queue"));
+    pausedState.SaveSettings(new AppSettings { Destination = destination, HideToTray = false, CheckUpdatesAutomatically = false });
+    var held = new DownloadItem { Url = "https://fixture.test/held.mp4", Destination = destination, Name = "held.mp4", Status = "Waiting", IsMedia = false, AnalysisCompleted = true };
+    // Waiting jobs restored after restart become paused until explicitly resumed.
+    pausedState.SaveQueue([held]);
+    var restoredWindow = new MainWindow(pausedState, false, service);
+    restoredWindow.Show(); restoredWindow.PauseEntireQueue();
+    Expect(pausedState.LoadSettings().QueuePaused, "pause-all is durable");
+    Complete(restoredWindow.ResumeEntireQueueAsync());
+    Expect(pausedState.LoadHistory().Count == 1 && !pausedState.LoadSettings().QueuePaused, "resume-all runs the restored job and records completion");
+    restoredWindow.Close();
     var renameJob = new DownloadItem { Url = "https://fixture.test/media" };
     var oldMediaPath = Path.Combine(destination, $"clip [id]-{renameJob.Id:N}.mp4");
     File.WriteAllBytes(oldMediaPath, payload); renameJob.OutputPaths.Add(oldMediaPath); renameJob.ResultPath = oldMediaPath;
@@ -261,6 +281,7 @@ try
         Expect(File.ReadAllBytes(downloaded[0]).Take(2).SequenceEqual(new byte[] { 80, 75 }), "live exported document is ZIP/PPTX, never an HTML login page");
         Console.WriteLine("PASS live public Drive folder listing and real Google Slides export");
     }
+    if (args.Contains("--live-providers")) Complete(ProviderChecks.RunAsync(Path.Combine(stateFolder, "provider-tests")), 180);
     Console.WriteLine("PASS media metadata, options, file safety and tagged progress");
     Console.WriteLine("PASS production UI: Thai layout, navigation, select-all/individual, card sizes, search, MP3");
     Console.WriteLine("PASS direct HTTP download, repeat protection, unplugged destination, ETag resume");

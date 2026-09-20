@@ -31,6 +31,18 @@ jobs:
       - name: Fetch Windows media tools
         shell: pwsh
         run: ./windows/fetch-tools.ps1
+      - name: Configure Windows desktop OAuth client
+        shell: pwsh
+        env:
+          GOOGLE_DESKTOP_OAUTH_JSON: ${{ secrets.GOOGLE_DESKTOP_OAUTH_JSON }}
+        run: |
+          if ($env:GOOGLE_DESKTOP_OAUTH_JSON) {
+            $config = $env:GOOGLE_DESKTOP_OAUTH_JSON | ConvertFrom-Json
+            if (!$config.installed.client_id -or !$config.installed.client_secret) { throw "Expected an installed/Desktop OAuth client." }
+            [IO.File]::WriteAllText((Join-Path $PWD 'windows/DropDrive.Windows/oauth-client.json'), $env:GOOGLE_DESKTOP_OAUTH_JSON)
+          } elseif ('${{ github.ref }}'.StartsWith('refs/tags/windows-v')) {
+            throw "Release blocked: configure GOOGLE_DESKTOP_OAUTH_JSON before publishing optional Google login."
+          }
       - name: Run Windows core checks
         run: dotnet run --project windows/DropDrive.Windows.Checks/DropDrive.Windows.Checks.csproj -c Release -p:TreatWarningsAsErrors=true
       - name: Upload Windows UI evidence
@@ -42,6 +54,14 @@ jobs:
           if-no-files-found: error
       - name: Check native Windows notifications and integration
         run: dotnet run --project windows/DropDrive.Windows.Checks/DropDrive.Windows.Checks.csproj -c Release -- --windows-shell
+      - name: Probe public media providers without accounts
+        run: dotnet run --project windows/DropDrive.Windows.Checks/DropDrive.Windows.Checks.csproj -c Release -- --live-providers
+      - name: Save live provider results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DropDrive-Provider-Checks-${{ env.DROPDRIVE_WINDOWS_VERSION }}
+          path: windows/artifacts/provider-checks.txt
       - name: Build EXE and installer
         shell: pwsh
         run: ./windows/build-windows.ps1 -Version $env:DROPDRIVE_WINDOWS_VERSION

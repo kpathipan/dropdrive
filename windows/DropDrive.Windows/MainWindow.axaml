@@ -6,14 +6,17 @@
         WindowStartupLocation="CenterScreen" Icon="/Assets/dropdrive.png">
   <Grid RowDefinitions="46,*,Auto,Auto,43" Background="{DynamicResource CanvasColor}">
     <Border BorderBrush="{DynamicResource BorderColor}" BorderThickness="0,0,0,1">
-      <Grid ColumnDefinitions="22,Auto,*,32" ColumnSpacing="9" Margin="14,0">
+      <Grid ColumnDefinitions="22,Auto,*,38,32" ColumnSpacing="9" Margin="14,0">
         <Image Source="/Assets/dropdrive.png" Width="22" Height="22"/>
         <TextBlock Grid.Column="1" Text="DropDrive" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="5" Margin="3,0,0,0" VerticalAlignment="Center">
           <Ellipse Width="5" Height="5" Fill="#55CE81"/>
           <TextBlock Name="HeaderStatus" Text="{DynamicResource LB7AE14B4E288}" Width="112" FontSize="10" Classes="muted" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
         </StackPanel>
-        <Button Grid.Column="3" Name="SettingsButton" Classes="icon" ToolTip.Tip="{DynamicResource LEA17E934452B}" AutomationProperties.Name="{DynamicResource LEA17E934452B}" Click="ShowSettings">
+        <Button Grid.Column="3" Name="AccountButton" Classes="icon" Width="38" Click="ShowGoogleAccounts" AutomationProperties.Name="บัญชี Google">
+          <Grid Width="28" Height="25"><Path Data="M12,2 A4,4 0 1 1 11.99,2 M4,21 C4,11 20,11 20,21" Stroke="{DynamicResource MutedColor}" Fill="Transparent" StrokeThickness="1.7" Stretch="Uniform" Width="18" Height="19"/><TextBlock Name="AccountCount" Text="0" IsVisible="False" FontSize="9" HorizontalAlignment="Right" VerticalAlignment="Bottom" Foreground="{DynamicResource AccentColor}"/></Grid>
+        </Button>
+        <Button Grid.Column="4" Name="SettingsButton" Classes="icon" ToolTip.Tip="{DynamicResource LEA17E934452B}" AutomationProperties.Name="{DynamicResource LEA17E934452B}" Click="ShowSettings">
           <Path Stroke="{DynamicResource MutedColor}" Stretch="Uniform" Fill="Transparent" StrokeThickness="1.7" Data="{StaticResource SettingsIcon}" Width="17" Height="17"/>
         </Button>
       </Grid>
@@ -190,6 +193,14 @@
       </ScrollViewer>
       <ScrollViewer Name="SettingsPage" IsVisible="False">
         <StackPanel Margin="22,20" Spacing="12">
+          <Expander Name="GoogleSection" Header="Google Drive" HorizontalAlignment="Stretch">
+            <StackPanel Spacing="8" Margin="0,8,0,0">
+              <TextBlock Name="GooglePublicHint" TextWrapping="Wrap" FontSize="10" Classes="muted"/>
+              <StackPanel Name="GoogleAccountList" Spacing="8"/>
+              <Button Name="GoogleSignInButton" Classes="small" Content="เพิ่มบัญชี Google" Click="AddGoogleAccount"/>
+              <Button Name="GoogleCancelButton" Classes="link" Content="ยกเลิก" Click="CancelGoogleSignIn" IsVisible="False"/>
+            </StackPanel>
+          </Expander>
           <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{DynamicResource LEA17E934452B}" FontSize="14" FontWeight="SemiBold"/><TextBlock Grid.Column="1" Name="VersionLabel" FontSize="10" Classes="muted"/></Grid>
           <Border Classes="card" Padding="14">
             <StackPanel Spacing="10">

@@ -12,6 +12,7 @@ public sealed class DownloadService
     private readonly HttpClient _client;
     public Action? Checkpoint { get; set; }
     public Func<long?>? BandwidthProvider { get; set; }
+    public GoogleAccountService? GoogleAccounts { get; set; }
     public DownloadService(HttpClient? client = null) => _client = client ?? new() { Timeout = Timeout.InfiniteTimeSpan };
 
     public async Task DownloadAsync(DownloadItem item, string destination, CancellationToken cancellationToken)
@@ -40,10 +41,21 @@ public sealed class DownloadService
         }
         var partial = item.PartialPath!;
         var offset = File.Exists(partial) && item.EntityTag != null ? new FileInfo(partial).Length : 0;
-        var downloadUrl = item.IsDrive ? PublicDriveService.DownloadUrl(item.Url) : item.Url;
+        var authenticated = item.IsDrive && item.DriveAccountId != null;
+        var downloadUrl = authenticated ? GoogleDriveService.DownloadUrl(item.DriveFileId ?? PublicDriveService.FileId(item.Url)!, item.DriveMimeType)
+            : item.IsDrive ? PublicDriveService.DownloadUrl(item.Url) : item.Url;
         async Task<HttpResponseMessage> Request(string url)
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            if (authenticated)
+            {
+                var uri = new Uri(url);
+                if (uri.Scheme != "https" || uri.Host != "www.googleapis.com" || !uri.AbsolutePath.StartsWith("/drive/v3/files/", StringComparison.Ordinal))
+                    throw new InvalidOperationException("ปลายทาง Google Drive ไม่ถูกต้อง");
+                if (GoogleAccounts == null) throw new InvalidOperationException("กรุณาเชื่อมต่อบัญชี Google อีกครั้ง");
+                request.Headers.Authorization = new("Bearer", await GoogleAccounts.AccessTokenAsync(item.DriveAccountId!, cancellationToken));
+                if (item.DriveResourceKey != null) request.Headers.TryAddWithoutValidation("X-Goog-Drive-Resource-Keys", (item.DriveFileId ?? PublicDriveService.FileId(item.Url)) + "/" + item.DriveResourceKey);
+            }
             if (item.DirectTransfer && TikTokMediaService.IsTrustedCdn(new Uri(url).Host)) request.Headers.Referrer = new Uri("https://www.tiktok.com/");
             if (offset > 0)
             {
@@ -66,6 +78,8 @@ public sealed class DownloadService
             firstResponse = await Request(downloadUrl);
         }
         using var response = firstResponse;
+        if (authenticated && response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.NotFound or HttpStatusCode.Unauthorized)
+            throw new DriveAccessException();
         if (item.IsDrive && response.Content.Headers.ContentType?.MediaType == "text/html")
             throw new InvalidOperationException("Drive ไม่ได้ส่งไฟล์กลับมา กรุณาตรวจสิทธิ์หรือโควตาของไฟล์");
         if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
@@ -155,6 +169,7 @@ public sealed class DownloadService
             TransferGuard.EnsureSpace(destination, entry.Size);
             Directory.CreateDirectory(folder);
             entry.Transfer ??= new DownloadItem { Url = entry.Url!, Name = entry.Title, IsDrive = item.IsDrive,
+                DriveAccountId = item.DriveAccountId, DriveMimeType = entry.MimeType, DriveResourceKey = entry.ResourceKey, DriveFileId = PublicDriveService.FileId(entry.Url!),
                 DirectTransfer = item.IsPhotoCollection, Source = item.IsPhotoCollection && entry.Kind == "image" ? "TikTok Photos" : item.Source,
                 IsMedia = false, Destination = folder };
             var child = entry.Transfer;
@@ -196,7 +211,7 @@ public sealed class DownloadService
             string original;
             try { original = await TikTokMediaService.ResolveOriginalAsync(item.Url, item.Quality, cancellationToken); }
             catch (Exception error) when (error is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
-            { throw new InvalidOperationException("เชื่อมต่อ TikTok ไม่ได้ในขณะนี้ ลองใหม่อีกครั้ง"); }
+            { throw new HttpRequestException("เชื่อมต่อ TikTok ไม่ได้ในขณะนี้ ลองใหม่อีกครั้ง", error); }
             // A temporary info document preserves the chosen title/cover for MP3
             // while skipping the slow web-page extraction. Always removed below.
             infoPath = Path.Combine(Path.GetTempPath(), $"dropdrive-info-{Guid.NewGuid():N}.json");
@@ -226,7 +241,12 @@ public sealed class DownloadService
         // Drain callbacks before declaring completion so queued progress cannot
         // make a completed card appear to be downloading again.
         await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
-        if (process.ExitCode != 0) throw new InvalidOperationException(FriendlyError(string.Join('\n', errors)));
+        if (process.ExitCode != 0)
+        {
+            var detail = string.Join('\n', errors);
+            if (IsTransientMediaError(detail)) throw new HttpRequestException(FriendlyError(detail));
+            throw new InvalidOperationException(FriendlyError(detail));
+        }
         if (item.OutputPaths.Count == 0) throw new IOException("ตัวดาวน์โหลดไม่ส่งไฟล์ผลลัพธ์กลับมา กรุณาลองใหม่");
         foreach (var path in item.OutputPaths)
             await MediaValidator.ValidateAsync(path, item.AudioOnly, toolsPath, cancellationToken);
@@ -290,7 +310,7 @@ public sealed class DownloadService
     public static void CleanupPartials(DownloadItem item)
     {
         if (item.IsActive) return;
-        if (item.PartialPath is { } partial && Path.GetFileName(partial) == $".dropdrive-{item.Id:N}.part")
+        if (item.PartialPath is { } partial && Path.GetFileName(partial) == $".dropdrive-{item.Id:N}.part" && File.Exists(partial))
             File.Delete(partial);
         foreach (var entry in item.Entries)
             if (entry.Transfer is { } child) { child.Status = "Paused"; CleanupPartials(child); }
@@ -340,6 +360,8 @@ public sealed class DownloadService
         if (text.Contains("HTTP Error 403", StringComparison.OrdinalIgnoreCase)) return "ถูกปฏิเสธการเข้าถึง ตรวจสิทธิ์ของลิงก์หรืออัปเดต DropDrive";
         return "ดาวน์โหลดลิงก์นี้ไม่ได้ ตรวจลิงก์และการเชื่อมต่ออินเทอร์เน็ตแล้วลองอีกครั้ง";
     }
+    public static bool IsTransientMediaError(string text) => new[] { "timed out", "connection reset", "connection aborted", "network is unreachable", "temporary failure", "HTTP Error 503", "HTTP Error 502", "HTTP Error 429" }
+        .Any(fragment => text.Contains(fragment, StringComparison.OrdinalIgnoreCase));
 
     private static string UniquePath(string folder, string name)
     {

@@ -24,6 +24,7 @@ public partial class MainWindow : Window
     private readonly Dictionary<Guid, CancellationTokenSource> _cancellations = [];
     private readonly DownloadService _downloadService = new();
     private readonly MediaAnalysisService _analysisService = new();
+    private readonly GoogleAccountService _googleAccounts;
     private readonly ThumbnailService _thumbnails = new();
     private readonly UpdateService _updateService = new();
     private readonly AppStateService _stateService;
@@ -51,6 +52,10 @@ public partial class MainWindow : Window
         if (downloadService != null) _downloadService = downloadService;
         _backgroundServices = backgroundServices;
         _settings = _stateService.LoadSettings();
+        _googleAccounts = new GoogleAccountService();
+        _analysisService = new MediaAnalysisService(_googleAccounts);
+        _downloadService.GoogleAccounts = _googleAccounts;
+        _thumbnails.GoogleAccounts = _googleAccounts;
         _downloadService.Checkpoint = SaveQueue;
         _downloadService.BandwidthProvider = () => _settings.BandwidthLimit;
         DownloadList.ItemsSource = _downloads;
@@ -71,6 +76,7 @@ public partial class MainWindow : Window
         SizeChoice.SelectedIndex = Math.Clamp(_settings.CardSize, 0, 2);
         VersionLabel.Text = $"v{typeof(MainWindow).Assembly.GetName().Version?.ToString(3)} · Windows";
         _loadingSettings = false;
+        RefreshGoogleAccounts();
         ApplyTheme();
         UpdateDestinationLabels();
         RefreshHistory();
@@ -107,6 +113,7 @@ public partial class MainWindow : Window
                 var uri = new Uri(link);
                 var quality = _settings.PlatformQuality.GetValueOrDefault(LinkIdentity.Platform(link), _settings.PlatformQuality.GetValueOrDefault(uri.Host));
                 var item = new DownloadItem { Url = link, Name = uri.Host, Source = uri.Host,
+                    IsDrive = PublicDriveService.IsDriveUrl(link),
                     Destination = _settings.Destination, Status = "Analyzing", Detail = "กำลังอ่านข้อมูลลิงก์…",
                     Quality = quality, AudioOnly = quality == 5 };
                 AddItem(item);
@@ -142,6 +149,8 @@ public partial class MainWindow : Window
         item.EstimatedBytes = analysis.EstimatedBytes; item.ThumbnailUrl = analysis.ThumbnailUrl;
         item.IsMedia = analysis.IsMedia; item.IsCollection = analysis.IsCollection;
         item.IsDrive = PublicDriveService.IsDriveUrl(item.Url);
+        item.DriveAccountId = analysis.AccountId; item.DriveMimeType = analysis.MimeType;
+        item.DriveResourceKey = analysis.ResourceKey; item.DriveFileId = analysis.DriveFileId;
         item.IsPhotoCollection = analysis.Source == "TikTok Photos";
         item.AnalysisCompleted = true;
         item.Entries = analysis.Entries ?? [];
@@ -152,7 +161,7 @@ public partial class MainWindow : Window
     private async Task LoadThumbnailAsync(DownloadItem item)
     {
         if (item.Thumbnail != null) return;
-        item.Thumbnail = await _thumbnails.GetAsync(item.ThumbnailUrl, _lifetime.Token);
+        item.Thumbnail = await _thumbnails.GetAsync(item.ThumbnailUrl, _lifetime.Token, item.DriveAccountId);
         item.Notify(nameof(item.Thumbnail));
         if (_review == item) ReviewThumbnail.Source = item.Thumbnail;
     }
@@ -195,7 +204,7 @@ public partial class MainWindow : Window
         DuplicateNotice.IsVisible = _stateService.LoadHistory().Any(entry => LinkIdentity.Key(entry.Url) == LinkIdentity.Key(item.Url) && entry.Status == "Complete");
         FileSelector.IsVisible = item.IsCollection && item.Entries.Count > 0;
         FileSelector.IsExpanded = false;
-        SnapshotNotice.Text = item.IsDrive ? "เทียบชื่อและข้อมูลสาธารณะกับครั้งก่อน · Drive อาจไม่แสดงการแก้ไขเนื้อหาทุกครั้ง" : "เลือกเฉพาะรายการใหม่ที่ยังไม่เคยดาวน์โหลดได้";
+        SnapshotNotice.Text = item.IsDrive && item.DriveAccountId == null ? "เทียบข้อมูลสาธารณะกับครั้งก่อน · ล็อกอินเพื่อเทียบเวอร์ชันไฟล์ได้แม่นยำขึ้น" : "เลือกเฉพาะรายการใหม่หรือเปลี่ยนแปลงจากครั้งก่อนได้";
         FileSearch.Text = "";
         foreach (var entry in item.Entries) { entry.PropertyChanged -= EntryChanged; entry.PropertyChanged += EntryChanged; }
         NewDownloadForm.IsVisible = false; ReviewPanel.IsVisible = true; DownloadList.IsVisible = false;
@@ -214,7 +223,7 @@ public partial class MainWindow : Window
     {
         await Task.WhenAll(item.Entries.Take(100).Select(async entry => {
             if (entry.Thumbnail != null) return;
-            entry.Thumbnail = await _thumbnails.GetAsync(entry.ThumbnailUrl, _lifetime.Token);
+            entry.Thumbnail = await _thumbnails.GetAsync(entry.ThumbnailUrl, _lifetime.Token, item.DriveAccountId);
             entry.RefreshThumbnail();
         }));
     }
@@ -290,7 +299,7 @@ public partial class MainWindow : Window
                 catch (Exception error)
                 {
                     item.Status = "Failed"; item.Detail = DownloadService.DescribeFailure(error); item.CanRetry = true;
-                    item.WaitForDestination = error is DirectoryNotFoundException;
+                    item.WaitForDestination = error is DirectoryNotFoundException || !Directory.Exists(item.Destination ?? _settings.Destination);
                     if (error is HttpRequestException && item.RetryAttempt < 3)
                     { item.RetryAttempt++; item.RetryAfter = DateTimeOffset.UtcNow.AddSeconds(15 * Math.Pow(2, item.RetryAttempt - 1)); item.Detail += " · จะลองใหม่อัตโนมัติ"; }
                     NotifyResult(item, true);
@@ -368,7 +377,7 @@ public partial class MainWindow : Window
             var choices = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions { Title = "เลือกโฟลเดอร์ดาวน์โหลด", AllowMultiple = false });
             var path = choices.FirstOrDefault()?.TryGetLocalPath();
             if (string.IsNullOrWhiteSpace(path)) return;
-            if (_review != null) _review.Destination = path;
+            if (_review != null) ChangeReviewDestination(path);
             _settings.Destination = path;
             _settings.RecentDestinations.Remove(path); _settings.RecentDestinations.Insert(0, path);
             _settings.RecentDestinations = _settings.RecentDestinations.Take(5).ToList();
@@ -558,7 +567,7 @@ public partial class MainWindow : Window
     private async void CheckForUpdates(object? sender, RoutedEventArgs e) => await CheckForUpdatesAsync(false);
     private async Task CheckForUpdatesIfDueAsync()
     {
-        if (_downloads.Any(item => item.IsActive) || _analyzing || _checkingUpdate || _review != null) return;
+        if (_downloads.Any(item => item.IsActive) || _analyzing || _signingIn || _checkingUpdate || _review != null) return;
         if (_manualUpdateQueued) { _manualUpdateQueued = false; await CheckForUpdatesAsync(false); return; }
         if (!_updateService.HasPendingUpdate && !_settings.IsAutomaticUpdateCheckDue(DateTimeOffset.UtcNow)) return;
         if (!_updateService.HasPendingUpdate) { _settings.LastAutomaticUpdateCheckUtc = DateTimeOffset.UtcNow; PersistSettings(); }
@@ -567,7 +576,7 @@ public partial class MainWindow : Window
     private async Task CheckForUpdatesAsync(bool silent)
     {
         if (_checkingUpdate) return;
-        if (_downloads.Any(item => item.IsActive) || _analyzing)
+        if (_downloads.Any(item => item.IsActive) || _analyzing || _signingIn)
         {
             if (!silent) { _manualUpdateQueued = true; SetStatus("จะตรวจหาอัปเดตให้อัตโนมัติหลังงานดาวน์โหลดเสร็จ"); }
             return;
@@ -576,7 +585,7 @@ public partial class MainWindow : Window
         try
         {
             if (!silent) SetStatus("กำลังตรวจหาอัปเดต…");
-            var result = await _updateService.CheckDownloadAndRestartAsync(() => !_downloads.Any(item => item.IsActive) && !_analyzing && _review == null, _lifetime.Token);
+            var result = await _updateService.CheckDownloadAndRestartAsync(() => !_downloads.Any(item => item.IsActive) && !_analyzing && !_signingIn && _review == null, _lifetime.Token);
             if (!silent || result.Restarting || result.IsError) SetStatus(result.Message);
         }
         finally { _checkingUpdate = false; CheckUpdateButton.IsEnabled = true; }

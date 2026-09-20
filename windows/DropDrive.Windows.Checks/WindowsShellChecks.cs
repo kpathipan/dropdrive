@@ -37,6 +37,7 @@ internal sealed class ShellCheckApp : Application
                 SendMessage(handle, 0x312, 524, 0);
                 SendMessage(handle, 0x8000 + 524, 1, 0x405);
                 CheckStartupRegistration();
+                CheckEncryptedAccounts();
                 Dispatcher.UIThread.Post(() =>
                 {
                     try { if (activated != 1 || clicked != 1) throw new Exception("Notification/hotkey callbacks did not activate");
@@ -62,6 +63,20 @@ internal sealed class ShellCheckApp : Application
             if (WindowsIntegration.IsLaunchAtLoginEnabled()) throw new Exception("Startup unregister failed");
         }
         finally { if (previous == null) key.DeleteValue("DropDrive", false); else key.SetValue("DropDrive", previous); }
+    }
+    private static void CheckEncryptedAccounts()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "DropDrive-google-vault-check-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var store = new WindowsGoogleSessionStore(folder);
+            store.Save(new GoogleSessions { DefaultId = "fixture", Accounts = [new() { Id = "fixture", RefreshToken = "not-a-real-refresh-token" }] });
+            var data = File.ReadAllBytes(Path.Combine(folder, "google-accounts.v1.bin"));
+            if (System.Text.Encoding.UTF8.GetString(data).Contains("not-a-real-refresh-token")) throw new Exception("Credential was stored in plaintext");
+            if (new WindowsGoogleSessionStore(folder).Load().Accounts.Single().RefreshToken != "not-a-real-refresh-token") throw new Exception("DPAPI restore failed");
+            Console.WriteLine("PASS Windows user-bound encrypted Google credential save/restore");
+        }
+        finally { if (Directory.Exists(folder)) Directory.Delete(folder, true); }
     }
     [DllImport("user32.dll", EntryPoint = "SendMessageW")]
     private static extern nint SendMessage(nint handle, uint message, nuint wParam, nint lParam);

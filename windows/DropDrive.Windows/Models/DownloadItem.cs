@@ -34,6 +34,10 @@ public sealed class DownloadItem : INotifyPropertyChanged
     public bool IsMedia { get; set; } = true;
     public bool IsCollection { get; set; }
     public bool IsDrive { get; set; }
+    public string? DriveAccountId { get; set; }
+    public string? DriveMimeType { get; set; }
+    public string? DriveResourceKey { get; set; }
+    public string? DriveFileId { get; set; }
     public bool AnalysisCompleted { get; set; }
     public bool IsPhotoCollection { get; set; }
     public bool DirectTransfer { get; set; }
@@ -106,6 +110,8 @@ public sealed class MediaEntry : INotifyPropertyChanged
     public string Kind { get; init; } = "video";
     public string? StableId { get; init; }
     public string? Fingerprint { get; set; }
+    public string? MimeType { get; init; }
+    public string? ResourceKey { get; init; }
     public string SnapshotState { get; set; } = "ใหม่";
     public long? Size { get; init; }
     public bool Selected { get => _selected; set { if (_selected == value) return; _selected = value; PropertyChanged?.Invoke(this, new(nameof(Selected))); } }

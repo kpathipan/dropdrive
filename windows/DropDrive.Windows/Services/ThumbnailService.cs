@@ -8,18 +8,24 @@ public sealed class ThumbnailService : IDisposable
     private readonly HttpClient _client = new() { Timeout = TimeSpan.FromSeconds(8) };
     private readonly SemaphoreSlim _gate = new(3);
     private readonly Dictionary<string, Bitmap> _cache = [];
+    public GoogleAccountService? GoogleAccounts { get; set; }
 
-    public async Task<Bitmap?> GetAsync(string? url, CancellationToken token = default)
+    public async Task<Bitmap?> GetAsync(string? url, CancellationToken token = default, string? accountId = null)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("https" or "http")) return null;
-        if (_cache.TryGetValue(url, out var existing)) return existing;
+        var cacheKey = (accountId ?? "public") + "|" + url;
+        if (_cache.TryGetValue(cacheKey, out var existing)) return existing;
         try { await _gate.WaitAsync(token); }
         catch (OperationCanceledException) { return null; }
         try
         {
-            if (_cache.TryGetValue(url, out existing)) return existing;
+            if (_cache.TryGetValue(cacheKey, out existing)) return existing;
             if (_cache.Count >= 100) return null;
-            using var response = await _client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, token);
+            using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+            if (accountId != null && GoogleAccounts != null && uri.Scheme == "https" &&
+                (uri.Host == "googleusercontent.com" || uri.Host.EndsWith(".googleusercontent.com", StringComparison.Ordinal)))
+                request.Headers.Authorization = new("Bearer", await GoogleAccounts.AccessTokenAsync(accountId, token));
+            using var response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
             response.EnsureSuccessStatusCode();
             if (response.Content.Headers.ContentLength > 4 * 1024 * 1024) return null;
             await using var stream = await response.Content.ReadAsStreamAsync(token);
@@ -38,7 +44,7 @@ public sealed class ThumbnailService : IDisposable
             var portrait = codec.Info.Height > codec.Info.Width;
             bytes.Position = 0;
             var bitmap = portrait ? Bitmap.DecodeToHeight(bytes, 320) : Bitmap.DecodeToWidth(bytes, 320);
-            _cache[url] = bitmap;
+            _cache[cacheKey] = bitmap;
             return bitmap;
         }
         catch (Exception error) when (error is not OutOfMemoryException) { return null; }

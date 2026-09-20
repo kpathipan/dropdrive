@@ -35,6 +35,7 @@ public partial class MainWindow
         _settings.Language = LanguageChoice.SelectedIndex == 1 ? "en" : "th";
         Locale.Apply(_settings.Language == "en");
         var quality = QualityChoice.SelectedIndex; var subtitle = SubtitleChoice.SelectedIndex;
+        RefreshGoogleAccounts();
         QualityChoice.ItemsSource = MediaOptions.Qualities.Select(Locale.Text).ToArray(); QualityChoice.SelectedIndex = quality;
         SubtitleChoice.ItemsSource = MediaOptions.Subtitles.Select(Locale.Text).ToArray(); SubtitleChoice.SelectedIndex = subtitle;
         foreach (var item in _downloads) { item.Notify(nameof(DownloadItem.DisplayStatus)); item.Notify(nameof(DownloadItem.Detail)); }
@@ -95,6 +96,7 @@ public partial class MainWindow
         {
             if (!_settings.QueuePaused)
             {
+                var changed = false;
                 foreach (var item in _downloads.Where(item => item.Status == "Failed" && item.AnalysisCompleted && item != _review))
                 {
                     var recover = item.RetryAfter is { } due && due <= DateTimeOffset.UtcNow;
@@ -102,9 +104,10 @@ public partial class MainWindow
                     if (!recover) continue;
                     item.RetryAfter = null; item.WaitForDestination = false;
                     item.Status = "Waiting"; item.CanRetry = false; item.CanCancel = true;
+                    changed = true;
                 }
-                SaveQueue();
-                _ = PumpQueueAsync();
+                if (changed) SaveQueue();
+                if (_downloads.Any(item => item.Status == "Waiting")) _ = PumpQueueAsync();
             }
             if (_settings.PhoneInboxEnabled && _settings.PhoneInboxFolder is { } folder && !_analyzing && _review == null)
                 await _inbox.ScanAsync(folder, async links => {
@@ -200,11 +203,22 @@ public partial class MainWindow
         foreach (var path in _settings.RecentDestinations.Where(Directory.Exists).Take(5))
         {
             var choice = new MenuItem { Header = FolderName(path) }; ToolTip.SetTip(choice, path);
-            choice.Click += (_, _) => { if (_review != null) _review.Destination = path; _settings.Destination = path; PersistSettings(); SaveQueue(); UpdateDestinationLabels(); };
+            choice.Click += (_, _) => {
+                try { if (_review != null) ChangeReviewDestination(path); _settings.Destination = path; PersistSettings(); SaveQueue(); UpdateDestinationLabels(); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException) { SetStatus("เปลี่ยนปลายทางไม่ได้ ตรวจว่าไดรฟ์เดิมยังเชื่อมต่ออยู่"); }
+            };
             menu.Items.Add(choice);
         }
         var browse = new MenuItem { Header = Locale.Text("เลือกโฟลเดอร์อื่น…") }; browse.Click += ChooseFolder; menu.Items.Add(browse);
         menu.Open(button);
+    }
+    private void ChangeReviewDestination(string path)
+    {
+        if (_review == null || _review.Destination == path) return;
+        // Remove only this job's incomplete artifacts before changing the
+        // destination. Completed files in the old destination are never removed.
+        DownloadService.CleanupPartials(_review);
+        _review.Destination = path;
     }
     private void ResizeForPage()
     {
@@ -219,7 +233,7 @@ public partial class MainWindow
         PreviewIcon.Text = entry.Icon;
         PreviewImage.Source = entry.Thumbnail;
         InlinePreview.IsVisible = true;
-        if (entry.Thumbnail == null) entry.Thumbnail = await _thumbnails.GetAsync(entry.ThumbnailUrl, _lifetime.Token);
+        if (entry.Thumbnail == null) entry.Thumbnail = await _thumbnails.GetAsync(entry.ThumbnailUrl, _lifetime.Token, _review?.DriveAccountId);
         if (_previewEntry == entry) PreviewImage.Source = entry.Thumbnail;
     }
     private void ClosePreview(object? sender, RoutedEventArgs e) { _previewEntry = null; InlinePreview.IsVisible = false; PreviewImage.Source = null; }

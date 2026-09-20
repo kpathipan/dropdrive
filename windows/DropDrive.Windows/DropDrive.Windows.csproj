@@ -19,10 +19,12 @@
     <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.2" />
     <PackageReference Include="Velopack" Version="1.2.0" />
     <PackageReference Include="AngleSharp" Version="1.8.1" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
   </ItemGroup>
   <ItemGroup>
     <AvaloniaResource Include="Assets/**" />
     <None Include="Tools/**" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Assets/dropdrive.ico" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="oauth-client.json" Condition="Exists('oauth-client.json')" />
   </ItemGroup>
 </Project>

@@ -72,6 +72,13 @@ try
     media.AudioOnly = false; media.IsCollection = false;
     arguments = MediaOptions.Arguments(media, stateFolder, stateFolder);
     Expect(arguments.Contains("--ffmpeg-location") && arguments.Contains("--merge-output-format"), "bundled ffmpeg also used for video merge");
+    media.Quality = 4;
+    arguments = MediaOptions.Arguments(media, stateFolder, stateFolder);
+    Expect(arguments[arguments.IndexOf("-f") + 1].EndsWith("/b") && arguments.Contains("res:480"), "limited quality can use a source's closest available combined rendition");
+    media.Quality = 0;
+    arguments = MediaOptions.Arguments(media, stateFolder, stateFolder);
+    Expect(arguments.Contains("res:1080"), "automatic quality matches Mac's 1080p preference");
+    Expect(DownloadService.FriendlyError("Requested format is not available").Contains("คุณภาพ"), "format mismatch is not mislabeled as a deleted video");
     DownloadService.ParseProgress(media, "DDPROGRESS: 42.5%| 1.20MiB/s| 00:21");
     Expect(media.Progress == 42.5 && media.Eta == "00:21", "tagged progress parsed without matching unrelated numbers");
     DownloadService.ParseProgress(media, "[ExtractAudio] target.mp3");
@@ -114,7 +121,7 @@ try
     var uiDestination = Path.Combine(stateFolder, "PSN");
     Directory.CreateDirectory(uiDestination);
     uiState.SaveSettings(new AppSettings { Destination = uiDestination, CheckUpdatesAutomatically = false, HideToTray = false });
-    var window = new MainWindow(uiState, false);
+    var window = new MainWindow(uiState, false, googleAccounts: new GoogleAccountService(new GoogleChecks.MemoryGoogleStore()));
     window.Show();
     Dispatcher.UIThread.RunJobs();
     var pictures = Path.GetFullPath(Path.Combine("windows", "artifacts", "ui-checks"));
@@ -200,6 +207,22 @@ try
     Capture("05-history-thai");
     window.Close();
 
+    var accountFixture = new GoogleAccountService(new GoogleChecks.MemoryGoogleStore { State = new GoogleSessions {
+        DefaultId = "first", Accounts = [new() { Id = "first", Email = "first@example.test", Name = "First account" },
+            new() { Id = "second", Email = "second@example.test", Name = "Second account" }] } },
+        new GoogleOAuthClient("fixture.apps.googleusercontent.com", "fixture-client"));
+    var accountWindow = new MainWindow(uiState, false, googleAccounts: accountFixture);
+    accountWindow.Show(); Dispatcher.UIThread.RunJobs();
+    accountWindow.FindControl<Button>("AccountButton")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+    Dispatcher.UIThread.RunJobs();
+    Expect(accountWindow.FindControl<TextBlock>("AccountCount")!.Text == "2", "header represents multiple accounts without a misleading single profile");
+    Expect(accountWindow.FindControl<Expander>("GoogleSection")!.IsExpanded
+        && accountWindow.FindControl<StackPanel>("GoogleAccountList")!.Children.Count == 2, "account controls stay inside the compact settings window");
+    Expect(accountWindow.FindControl<Button>("GoogleSignInButton")!.IsEnabled, "configured builds offer optional sign-in");
+    using (var accountFrame = accountWindow.CaptureRenderedFrame())
+    { Expect(accountFrame != null, "account UI renders"); accountFrame!.Save(Path.Combine(pictures, "08-google-accounts-thai.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
+    accountWindow.Close();
+
     // A deterministic HTTP fixture exercises the production direct downloader.
     var destination = Path.Combine(stateFolder, "downloads");
     Directory.CreateDirectory(destination);
@@ -234,7 +257,7 @@ try
     queueState.SaveSettings(new AppSettings { Destination = destination, CheckUpdatesAutomatically = false, HideToTray = false });
     var completion = new TaskCompletionSource<HttpResponseMessage>();
     var queueService = new DownloadService(new HttpClient(new AsyncFixtureHandler((_, token) => completion.Task.WaitAsync(token))));
-    var queueWindow = new MainWindow(queueState, false, queueService);
+    var queueWindow = new MainWindow(queueState, false, queueService, new GoogleAccountService(new GoogleChecks.MemoryGoogleStore()));
     queueWindow.Show();
     var queued = new DownloadItem { Url = "https://fixture.test/clip.mp4", Name = "คลิปทดสอบ.mp4", Destination = destination, IsMedia = false, AnalysisCompleted = true, Status = "Ready", CanStart = true };
     queueWindow.OpenReview(queued);
@@ -265,7 +288,7 @@ try
     var held = new DownloadItem { Url = "https://fixture.test/held.mp4", Destination = destination, Name = "held.mp4", Status = "Waiting", IsMedia = false, AnalysisCompleted = true };
     // Waiting jobs restored after restart become paused until explicitly resumed.
     pausedState.SaveQueue([held]);
-    var restoredWindow = new MainWindow(pausedState, false, service);
+    var restoredWindow = new MainWindow(pausedState, false, service, new GoogleAccountService(new GoogleChecks.MemoryGoogleStore()));
     restoredWindow.Show(); restoredWindow.PauseEntireQueue();
     Expect(pausedState.LoadSettings().QueuePaused, "pause-all is durable");
     Complete(restoredWindow.ResumeEntireQueueAsync());

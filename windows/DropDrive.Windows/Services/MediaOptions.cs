@@ -57,10 +57,15 @@ public static class MediaOptions
             args.AddRange(["-f", "ba/b", "-x", "--audio-format", "mp3", "--audio-quality", "0", "--embed-metadata", "--embed-thumbnail"]);
         else
         {
-            var cap = item.Quality switch { 2 => "[height<=1080]", 3 => "[height<=720]", 4 => "[height<=480]", _ => "" };
+            var height = item.Quality switch { 0 or 2 => 1080, 3 => 720, 4 => 480, _ => 0 };
+            var cap = height > 0 ? $"[height<={height}]" : "";
+            // Match Mac's combined-file fallback. A source with just one 720p
+            // rendition must still work when 480p is selected. Sorting chooses
+            // the smallest available resolution above the preference if needed.
+            if (height > 0) args.AddRange(["--format-sort", $"res:{height}"]);
             var format = item.CompatibleVideo
-                ? $"bv{cap}[vcodec^=avc1]+ba[acodec^=mp4a]/b{cap}[ext=mp4]/bv*{cap}+ba/b{cap}"
-                : $"bv*{cap}+ba/b{cap}";
+                ? $"bv*{cap}[vcodec^=avc1]+ba[acodec^=mp4a]/bv*{cap}[ext=mp4]+ba[ext=m4a]/b{cap}[ext=mp4]/bv*{cap}+ba/b"
+                : $"bv*{cap}+ba/b";
             args.AddRange(["-f", format, "--merge-output-format", item.CompatibleVideo ? "mp4" : "mkv"]);
         }
         if (item.SubtitleMode > 0 && !item.AudioOnly && item.Quality != 5)

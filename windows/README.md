@@ -72,7 +72,7 @@ return-to-app refresh, private file download, restart/token refresh, adding a
 second account, and signed-out public download on Windows. Automated fixture
 tests do not prove the Google Cloud client/consent configuration works.
 
-CI runs the production UI + core regression checks on Windows, saves seven
+CI runs the production UI + core regression checks on Windows, saves eight
 rendered screenshots, and smoke-tests the packaged executable before publishing
 a tag. Checks cover real control interactions and an HTTP download fixture
 through the actual queue. See parity-checklist.md for exact limitations.

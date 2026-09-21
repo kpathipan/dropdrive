@@ -363,8 +363,11 @@ public sealed class DownloadService
         if (text.Contains("no space", StringComparison.OrdinalIgnoreCase)) return "พื้นที่ว่างไม่พอ เลือกโฟลเดอร์ใหม่แล้วลองอีกครั้ง";
         if (text.Contains("permission denied", StringComparison.OrdinalIgnoreCase) || text.Contains("no such file", StringComparison.OrdinalIgnoreCase)) return "เขียนไฟล์ไม่ได้ ตรวจไดรฟ์และสิทธิ์ของโฟลเดอร์ปลายทาง";
         if (text.Contains("Unsupported URL", StringComparison.OrdinalIgnoreCase)) return "ยังไม่รองรับลิงก์นี้ ตรวจสอบว่าเป็นลิงก์ไฟล์หรือวิดีโอโดยตรง";
+        if (text.Contains("IP address is blocked", StringComparison.OrdinalIgnoreCase)) return "เว็บไซต์ปฏิเสธเครือข่ายนี้ชั่วคราว กรุณาลองใหม่ภายหลัง";
+        if (text.Contains("Requested format is not available", StringComparison.OrdinalIgnoreCase)) return "ต้นทางไม่มีคุณภาพไฟล์ที่เลือก ลองเปลี่ยนเป็นอัตโนมัติ";
+        if (text.Contains("Cannot parse data", StringComparison.OrdinalIgnoreCase)) return "อ่านข้อมูลจากเว็บไซต์ไม่ได้ในขณะนี้ ตรวจอัปเดต DropDrive หรือลองใหม่ภายหลัง";
         if (text.Contains("Private video", StringComparison.OrdinalIgnoreCase) || text.Contains("Sign in", StringComparison.OrdinalIgnoreCase) || text.Contains("login", StringComparison.OrdinalIgnoreCase)) return "เว็บไซต์นี้ต้องยืนยันบัญชีหรือสิทธิ์เข้าถึง การล็อกอิน Google Drive ไม่ได้เพิ่มสิทธิ์ให้เว็บไซต์วิดีโอ";
-        if (text.Contains("not available", StringComparison.OrdinalIgnoreCase) || text.Contains("removed", StringComparison.OrdinalIgnoreCase)) return "รายการนี้ใช้งานไม่ได้หรือถูกลบแล้ว";
+        if (text.Contains("not available", StringComparison.OrdinalIgnoreCase) || text.Contains("unavailable", StringComparison.OrdinalIgnoreCase) || text.Contains("removed", StringComparison.OrdinalIgnoreCase)) return "รายการนี้ใช้งานไม่ได้หรือถูกลบแล้ว";
         if (text.Contains("HTTP Error 403", StringComparison.OrdinalIgnoreCase)) return "ถูกปฏิเสธการเข้าถึง ตรวจสิทธิ์ของลิงก์หรืออัปเดต DropDrive";
         return "ดาวน์โหลดลิงก์นี้ไม่ได้ ตรวจลิงก์และการเชื่อมต่ออินเทอร์เน็ตแล้วลองอีกครั้ง";
     }

@@ -45,14 +45,14 @@ public partial class MainWindow : Window
     public MainWindow() : this(new AppStateService(), true) { }
 
     // The same production UI is used in isolated rendering/interaction tests.
-    public MainWindow(AppStateService stateService, bool backgroundServices, DownloadService? downloadService = null)
+    public MainWindow(AppStateService stateService, bool backgroundServices, DownloadService? downloadService = null, GoogleAccountService? googleAccounts = null)
     {
         InitializeComponent();
         _stateService = stateService;
         if (downloadService != null) _downloadService = downloadService;
         _backgroundServices = backgroundServices;
         _settings = _stateService.LoadSettings();
-        _googleAccounts = new GoogleAccountService();
+        _googleAccounts = googleAccounts ?? new GoogleAccountService();
         _analysisService = new MediaAnalysisService(_googleAccounts);
         _downloadService.GoogleAccounts = _googleAccounts;
         _thumbnails.GoogleAccounts = _googleAccounts;

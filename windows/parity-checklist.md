@@ -1,7 +1,7 @@
-# Windows / Mac parity verification — 0.7.0 candidate
+# Windows / Mac parity verification — 0.7.0
 
 The source at macOS tag **v6.24.4**, not the first Windows prototype, is the reference.
-This is a release candidate, not a statement that 0.7.0 is published.
+Publication and the public-feed upgrade are verified separately from pre-release checks.
 
 | Workflow | Implementation / verification |
 | --- | --- |
@@ -29,10 +29,31 @@ This is a release candidate, not a statement that 0.7.0 is published.
 | Local statistics, recent destinations, single instance | Persisted models, installed second-launch test; no cloud telemetry |
 | Thai/English | Resource/UI checks; some advanced dynamic errors still use Thai |
 
-## Release blockers and intentional differences
+## Live evidence — 2026-09-21
 
-- Real Google Desktop OAuth client and browser consent/private-file smoke test
-  are required before release; service fixtures alone cannot validate them.
+- Configured Desktop OAuth client in the existing DropDrive project, separate
+  from Mac; JSON supplied via GitHub Secrets, not committed.
+- Real Google browser consent, loopback/PKCE exchange, refresh-token exchange,
+  and authenticated Drive API metadata/export mapping passed using the same
+  production service on Mac. This is not a full interactive Windows login test.
+  Windows DPAPI save/restore, account fallback/private transfer fixtures,
+  reconnect UI and installer upgrade passed separately in Windows CI.
+- Public Drive folder and a real Slides export passed without login.
+- Instagram production analysis, a short video download and playback validation
+  passed on Windows after repairing unavailable-quality fallback.
+- YouTube metadata resolved on the local network; Windows CI was challenged
+  to sign in. TikTok rejected both test networks by IP. Facebook's public test
+  link could not be parsed on either network. Those outcomes are **not passes**
+  for full downloads and remain provider limitations requiring further testing.
+- Google Cloud currently shows external/in-production with 5/100 users for
+  unapproved scopes. Creating the Windows client did not verify the application
+  or remove the existing project cap.
+
+## Intentional differences and remaining verification
+
+- A full interactive Windows private-file/multiple-live-account session remains
+  unverified; the split-platform checks above cover its components, not that
+  entire manual flow. Do not describe all Mac parity as proven.
 - Windows uses a small normal window/tray, native file picker and default file
   viewer, rather than macOS menubar/Quick Look/Keychain.
 - Anonymous Drive change detection cannot reliably detect same-name content

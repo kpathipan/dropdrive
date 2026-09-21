@@ -12,6 +12,7 @@ using System.Net.Http.Headers;
 using Avalonia.VisualTree;
 
 if (args.Contains("--windows-shell")) { WindowsShellChecks.Run(args); return; }
+if (args.Length == 2 && args[0] == "--live-google-login") { await GoogleLiveChecks.RunAsync(args[1]); return; }
 
 AppBuilder.Configure<App>().UseSkia()
     .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).SetupWithoutStarting();
@@ -27,6 +28,9 @@ static void Complete(Task task, int seconds = 15)
     Expect(task.IsCompleted, "async operation exceeded test deadline");
     task.GetAwaiter().GetResult();
 }
+
+if (File.Exists("windows/DropDrive.Windows/oauth-client.json"))
+    Expect(GoogleOAuthClient.Bundled() != null, "configured desktop OAuth client must be embedded and readable from the built application");
 
 var links = LinkInputParser.Parse("https://youtu.be/a\nhttps://example.com/file.zip  https://youtu.be/a");
 Expect(links.Count == 2, "valid links should be parsed and duplicates removed");

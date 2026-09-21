@@ -67,10 +67,19 @@ from the repository secret `GOOGLE_DESKTOP_OAUTH_JSON` and embeds it in the app.
 Native client credentials are not a substitute for PKCE or user consent.
 
 Development builds can run without this configuration (sign-in is disabled).
-**Tag releases fail if it is absent.** Before releasing, test browser consent,
-return-to-app refresh, private file download, restart/token refresh, adding a
-second account, and signed-out public download on Windows. Automated fixture
-tests do not prove the Google Cloud client/consent configuration works.
+**Tag releases fail if it is absent.** Release validation covers browser consent,
+return-to-app refresh, private transfer, token refresh, multiple accounts and
+signed-out public downloads through live checks and Windows fixtures. Record
+any unverified end-to-end paths explicitly in the parity checklist; automated
+fixtures alone do not prove the Google Cloud configuration works.
+
+An explicit interactive service smoke check is available with
+`dotnet run --project DropDrive.Windows.Checks -- --live-google-login <client-json-path>`.
+Open the printed authorization URL in the browser and complete consent. This
+check uses in-memory tokens only, exercises the production PKCE/loopback and
+refresh flow, and reads a known public fixture through the authenticated API;
+it does not enumerate or download private files. See the parity checklist for
+which live and Windows-specific checks have actually passed.
 
 CI runs the production UI + core regression checks on Windows, saves eight
 rendered screenshots, and smoke-tests the packaged executable before publishing

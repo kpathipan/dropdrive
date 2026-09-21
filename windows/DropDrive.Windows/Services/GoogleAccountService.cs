@@ -96,14 +96,16 @@ public sealed class GoogleAccountService
             ["access_type"] = "offline", ["prompt"] = "consent select_account", ["include_granted_scopes"] = "true" });
     private static string Query(Dictionary<string, string> values) => string.Join('&', values.Select(p => Uri.EscapeDataString(p.Key) + "=" + Uri.EscapeDataString(p.Value)));
 
-    public async Task SignInAsync(CancellationToken token)
+    public async Task SignInAsync(CancellationToken token, Action<string>? launchBrowser = null)
     {
         var oauth = _oauth ?? throw new InvalidOperationException("รุ่นนี้ยังไม่ได้ตั้งค่า Google OAuth สำหรับ Windows");
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token); deadline.CancelAfter(TimeSpan.FromMinutes(3));
         using var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start();
         var redirect = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/";
         var state = Base64Url(RandomNumberGenerator.GetBytes(32)); var verifier = Base64Url(RandomNumberGenerator.GetBytes(64));
-        Process.Start(new ProcessStartInfo(AuthorizationUrl(oauth, redirect, state, verifier)) { UseShellExecute = true });
+        var authorizationUrl = AuthorizationUrl(oauth, redirect, state, verifier);
+        if (launchBrowser != null) launchBrowser(authorizationUrl);
+        else Process.Start(new ProcessStartInfo(authorizationUrl) { UseShellExecute = true });
         while (true)
         {
             using var socket = await listener.AcceptTcpClientAsync(deadline.Token);

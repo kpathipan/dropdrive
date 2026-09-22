@@ -64,7 +64,7 @@ public sealed class GoogleDriveService(GoogleAccountService accounts, HttpClient
         {
             AssertDownloadable(root);
             return new(title, "Google Drive", "Google Drive · " + accounts.Accounts.First(a => a.Id == account).Email,
-                Thumbnail(root), Size(root), false, false, null, account, mime, key, id);
+                Thumbnail(root), Size(root), false, false, null, account, mime, key, id, String(root, "md5Checksum"));
         }
         List<MediaEntry> files = []; var visiting = new HashSet<string>();
         async Task Walk(string folderId, string relative, string? resourceKey, int depth)
@@ -101,6 +101,7 @@ public sealed class GoogleDriveService(GoogleAccountService accounts, HttpClient
                             files.Add(new() { Index = files.Count + 1, StableId = "drive:" + childId, Title = ExportName(name, childMime),
                                 Url = "https://drive.google.com/file/d/" + childId + "/view", MimeType = childMime, ResourceKey = String(file, "resourceKey"),
                                 RelativeFolder = relative, Kind = Kind(childMime), ThumbnailUrl = Thumbnail(file), Size = Size(file),
+                                ExpectedMd5 = String(file, "md5Checksum"),
                                 Fingerprint = String(file, "md5Checksum") ?? String(file, "modifiedTime") ?? String(file, "version") });
                         }
                     }

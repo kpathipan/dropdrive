@@ -3,7 +3,9 @@ $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $tools = Join-Path $root "DropDrive.Windows/Tools"
 New-Item -ItemType Directory -Force $tools | Out-Null
 
-Invoke-WebRequest "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile (Join-Path $tools "yt-dlp.exe")
+$engine = Get-Content (Join-Path $root '../packaging/media-engine.json') -Raw | ConvertFrom-Json
+Invoke-WebRequest "https://github.com/yt-dlp/yt-dlp/releases/download/$($engine.ytDlpVersion)/yt-dlp.exe" -OutFile (Join-Path $tools "yt-dlp.exe")
+if ((Get-FileHash (Join-Path $tools 'yt-dlp.exe') -Algorithm SHA256).Hash.ToLowerInvariant() -ne $engine.windowsSha256) { throw 'yt-dlp checksum mismatch' }
 # Small standalone JS runtime required for YouTube's challenge solver. Pin and
 # verify it rather than depending on Node/Deno installed on the user's PC.
 $quickJs = Join-Path $tools "qjs.exe"

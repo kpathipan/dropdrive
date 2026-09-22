@@ -22,6 +22,9 @@ public sealed class AppSettings
     public int FileLayout { get; set; }
     public Dictionary<string, int> PlatformQuality { get; set; } = [];
     public List<string> RecentDestinations { get; set; } = [];
+    public List<string> FavoriteDestinations { get; set; } = [];
+    public Dictionary<string, string> SourceDestinationRules { get; set; } = [];
+    public Dictionary<string, string> CategoryDestinationRules { get; set; } = [];
     public DateTimeOffset? LastAutomaticUpdateCheckUtc { get; set; }
 
     public bool IsAutomaticUpdateCheckDue(DateTimeOffset now) =>

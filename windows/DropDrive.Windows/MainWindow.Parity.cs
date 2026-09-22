@@ -200,14 +200,39 @@ public partial class MainWindow
     {
         if (sender is not Button button) return;
         var menu = new ContextMenu();
-        foreach (var path in _settings.RecentDestinations.Where(Directory.Exists).Take(5))
+        foreach (var path in _settings.FavoriteDestinations.Concat(_settings.RecentDestinations.Take(5)).Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            var choice = new MenuItem { Header = FolderName(path) }; ToolTip.SetTip(choice, path);
+            var favorite = _settings.FavoriteDestinations.Contains(path, StringComparer.OrdinalIgnoreCase);
+            var choice = new MenuItem { Header = (favorite ? "★ " : "") + FolderName(path), IsEnabled = Directory.Exists(path) }; ToolTip.SetTip(choice, path);
             choice.Click += (_, _) => {
                 try { if (_review != null) ChangeReviewDestination(path); _settings.Destination = path; PersistSettings(); SaveQueue(); UpdateDestinationLabels(); }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException) { SetStatus("เปลี่ยนปลายทางไม่ได้ ตรวจว่าไดรฟ์เดิมยังเชื่อมต่ออยู่"); }
             };
             menu.Items.Add(choice);
+        }
+        var current = _review?.Destination ?? _settings.Destination;
+        var isFavorite = _settings.FavoriteDestinations.Contains(current, StringComparer.OrdinalIgnoreCase);
+        var favoriteChoice = new MenuItem { Header = isFavorite ? Locale.Choose("เอาโฟลเดอร์นี้ออกจากรายการโปรด", "Remove folder from favorites") : Locale.Choose("เพิ่มโฟลเดอร์นี้เป็นรายการโปรด", "Favorite this folder") };
+        favoriteChoice.Click += (_, _) => {
+            _settings.FavoriteDestinations.RemoveAll(p => string.Equals(p, current, StringComparison.OrdinalIgnoreCase));
+            if (!isFavorite) _settings.FavoriteDestinations.Insert(0, current);
+            PersistSettings();
+        };
+        menu.Items.Add(favoriteChoice);
+        if (_review is { } review)
+        {
+            var source = DestinationRules.Source(review.Url);
+            void Rule(Dictionary<string, string> rules, string key, string label)
+            {
+                var save = new MenuItem { Header = Locale.Choose($"ใช้โฟลเดอร์นี้เสมอสำหรับ {label}", $"Always save {label} here") };
+                save.Click += (_, _) => { rules[key] = current; PersistSettings(); };
+                menu.Items.Add(save);
+                if (!rules.ContainsKey(key)) return;
+                var clear = new MenuItem { Header = Locale.Choose($"ล้างกฎโฟลเดอร์สำหรับ {label}", $"Clear folder rule for {label}") };
+                clear.Click += (_, _) => { rules.Remove(key); PersistSettings(); }; menu.Items.Add(clear);
+            }
+            Rule(_settings.SourceDestinationRules, source, source);
+            if (DestinationRules.Category(review) is { } category) Rule(_settings.CategoryDestinationRules, category, DestinationRules.CategoryLabel(category));
         }
         var browse = new MenuItem { Header = Locale.Text("เลือกโฟลเดอร์อื่น…") }; browse.Click += ChooseFolder; menu.Items.Add(browse);
         menu.Open(button);
@@ -233,9 +258,10 @@ public partial class MainWindow
         PreviewIcon.Text = entry.Icon;
         PreviewImage.Source = entry.Thumbnail;
         InlinePreview.IsVisible = true;
-        if (entry.Thumbnail == null) entry.Thumbnail = await _thumbnails.GetAsync(entry.ThumbnailUrl, _lifetime.Token, _review?.DriveAccountId);
+        if (entry.Thumbnail == null && _review is { } review && !_thumbnailRequests.Contains(entry))
+            await LoadVisibleThumbnailAsync(entry, review);
         if (_previewEntry == entry) PreviewImage.Source = entry.Thumbnail;
     }
-    private void ClosePreview(object? sender, RoutedEventArgs e) { _previewEntry = null; InlinePreview.IsVisible = false; PreviewImage.Source = null; }
+    private void ClosePreview(object? sender, RoutedEventArgs e) { _previewEntry = null; InlinePreview.IsVisible = false; PreviewImage.Source = null; Dispatcher.UIThread.Post(RefreshVisibleThumbnails, DispatcherPriority.Loaded); }
     private void QuitFromSettings(object? sender, RoutedEventArgs e) => Quit();
 }

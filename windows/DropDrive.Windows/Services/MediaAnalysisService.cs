@@ -6,7 +6,7 @@ namespace DropDrive.Windows.Services;
 
 public sealed record MediaAnalysis(string Title, string Source, string Detail, string? ThumbnailUrl,
     long? EstimatedBytes, bool IsMedia = true, bool IsCollection = false, List<MediaEntry>? Entries = null,
-    string? AccountId = null, string? MimeType = null, string? ResourceKey = null, string? DriveFileId = null);
+    string? AccountId = null, string? MimeType = null, string? ResourceKey = null, string? DriveFileId = null, string? ExpectedMd5 = null);
 
 public sealed class MediaAnalysisService
 {

@@ -5,7 +5,6 @@ namespace DropDrive.Windows.Services;
 
 public sealed class UpdateService
 {
-    private const string Repository = "https://github.com/kpathipan/dropdrive";
     private UpdateManager? _manager;
     private UpdateInfo? _pending;
     public bool HasPendingUpdate => _pending != null;
@@ -14,7 +13,7 @@ public sealed class UpdateService
     {
         try
         {
-            var manager = _manager ??= new UpdateManager(new GithubSource(Repository, null, false));
+            var manager = _manager ??= new UpdateManager(new PlatformGithubSource());
             if (!manager.IsInstalled) return new(false, "ตรวจอัปเดตได้หลังติดตั้งแอปแล้ว");
             var update = _pending ?? await manager.CheckForUpdatesAsync();
             if (update is null) return new(false, "DropDrive เป็นเวอร์ชันล่าสุดแล้ว");

@@ -99,6 +99,20 @@ public sealed class DownloadService
         TransferGuard.EnsureSpace(destination, total is { } size ? Math.Max(0, size - offset) : null);
         item.EntityTag = response.Headers.ETag is { IsWeak: false } etag ? etag.ToString() : null;
         Checkpoint?.Invoke();
+        // Parallel ranges share one owned partial, without segment copies.
+        var parallel = !item.DisableParallel && offset == 0 && total is >= 128 * 1024 * 1024 && item.EntityTag != null
+            && response.Headers.AcceptRanges.Contains("bytes") && !item.AudioOnly;
+        if (parallel)
+        {
+            var rangeTag = item.EntityTag!;
+            // A sparse parallel file cannot be resumed by length after a crash.
+            item.EntityTag = null; item.DisableParallel = true; Checkpoint?.Invoke();
+            response.Dispose();
+            await ParallelRangeTransfer.DownloadAsync(_client, downloadUrl, partial, total!.Value, rangeTag, item,
+                GoogleAccounts, BandwidthProvider, cancellationToken);
+        }
+        else
+        {
         await using var input = await response.Content.ReadAsStreamAsync(cancellationToken);
         await using (var output = new FileStream(partial, append ? FileMode.Append : FileMode.Create, FileAccess.Write, FileShare.Read, 128 * 1024, true))
         {
@@ -127,6 +141,7 @@ public sealed class DownloadService
             }
             if (total is > 0 && received != total) throw new IOException("การเชื่อมต่อขาดหาย กดดาวน์โหลดต่อได้");
         }
+        }
         if (item.DirectTransfer && item.Source == "TikTok Photos")
         {
             using var probe = File.OpenRead(partial);
@@ -134,6 +149,20 @@ public sealed class DownloadService
             var image = count >= 12 && (header[0] == 0xff && header[1] == 0xd8 || header[0] == 0x89 && header[1] == 0x50 ||
                 System.Text.Encoding.ASCII.GetString(header, 0, 4) == "RIFF" && System.Text.Encoding.ASCII.GetString(header, 8, 4) == "WEBP");
             if (!image) throw new InvalidOperationException("ไฟล์รูปจาก TikTok ไม่ถูกต้อง กรุณาลองใหม่");
+        }
+        if (item.ExpectedMd5 is { Length: > 0 } expected)
+        {
+            item.Detail = Locale.Choose("กำลังตรวจความถูกต้องของไฟล์", "Verifying file integrity");
+            string actual;
+            await using (var file = new FileStream(partial, FileMode.Open, FileAccess.Read, FileShare.Read, 128 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan))
+                actual = Convert.ToHexString(await System.Security.Cryptography.MD5.HashDataAsync(file, cancellationToken));
+            if (!string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
+            {
+                File.Delete(partial); // Only this job's corrupt partial, never an existing destination file.
+                item.PartialPath = null; item.EntityTag = null; item.ReceivedBytes = 0;
+                Checkpoint?.Invoke();
+                throw new IOException(Locale.Choose("ไฟล์ไม่ตรงกับข้อมูล Google Drive กรุณาดาวน์โหลดใหม่", "File checksum differs from Google Drive. Download it again."));
+            }
         }
         if (File.Exists(target)) target = UniquePath(destination, name);
         File.Move(partial, target);
@@ -178,6 +207,7 @@ public sealed class DownloadService
             {
                 child.DriveAccountId = item.DriveAccountId;
                 child.DriveMimeType = entry.MimeType; child.DriveResourceKey = entry.ResourceKey;
+                child.ExpectedMd5 = entry.ExpectedMd5;
             }
             child.Destination = folder; child.BandwidthLimit = item.BandwidthLimit;
             item.Detail = $"{count + 1}/{selected.Length} · {entry.Title}";

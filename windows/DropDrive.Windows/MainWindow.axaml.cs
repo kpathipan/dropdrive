@@ -45,10 +45,11 @@ public partial class MainWindow : Window
     public MainWindow() : this(new AppStateService(), true) { }
 
     // The same production UI is used in isolated rendering/interaction tests.
-    public MainWindow(AppStateService stateService, bool backgroundServices, DownloadService? downloadService = null, GoogleAccountService? googleAccounts = null)
+    public MainWindow(AppStateService stateService, bool backgroundServices, DownloadService? downloadService = null, GoogleAccountService? googleAccounts = null, ThumbnailService? thumbnails = null)
     {
         InitializeComponent();
         _stateService = stateService;
+        if (thumbnails != null) _thumbnails = thumbnails;
         if (downloadService != null) _downloadService = downloadService;
         _backgroundServices = backgroundServices;
         _settings = _stateService.LoadSettings();
@@ -82,7 +83,7 @@ public partial class MainWindow : Window
         RefreshHistory();
         RestoreQueue();
         Closing += HandleClosing;
-        Closed += (_, _) => { _updateTimer.Stop(); _lifetime.Cancel(); StopParityServices(); };
+        Closed += (_, _) => { _updateTimer.Stop(); _lifetime.Cancel(); ClearEntryThumbnails(); _thumbnails.Dispose(); StopParityServices(); };
         if (backgroundServices)
         {
             DownloadService.CleanupStaleMetadata();
@@ -123,6 +124,7 @@ public partial class MainWindow : Window
                 {
                     var analysis = await _analysisService.AnalyzeAsync(link, _analysisCancellation.Token);
                     ApplyAnalysis(item, analysis);
+                    item.Destination = DestinationRules.Resolve(_settings, item) ?? item.Destination;
                     firstReady ??= item;
                     _ = LoadThumbnailAsync(item);
                 }
@@ -151,6 +153,7 @@ public partial class MainWindow : Window
         item.IsDrive = PublicDriveService.IsDriveUrl(item.Url);
         item.DriveAccountId = analysis.AccountId; item.DriveMimeType = analysis.MimeType;
         item.DriveResourceKey = analysis.ResourceKey; item.DriveFileId = analysis.DriveFileId;
+        item.ExpectedMd5 = analysis.ExpectedMd5;
         item.IsPhotoCollection = analysis.Source == "TikTok Photos";
         item.AnalysisCompleted = true;
         item.Entries = analysis.Entries ?? [];
@@ -189,6 +192,7 @@ public partial class MainWindow : Window
     public void OpenReview(DownloadItem item)
     {
         if (item.IsActive || item.Status == "Analyzing") return;
+        ClearEntryThumbnails();
         if (!_downloads.Contains(item)) AddItem(item);
         _review = item;
         ClosePreview(null, new RoutedEventArgs());
@@ -216,16 +220,7 @@ public partial class MainWindow : Window
         ShowPage(DownloadsPage);
         Height = Math.Max(Height, 570);
         _ = LoadThumbnailAsync(item);
-        _ = LoadEntryThumbnailsAsync(item);
-    }
-
-    private async Task LoadEntryThumbnailsAsync(DownloadItem item)
-    {
-        await Task.WhenAll(item.Entries.Take(100).Select(async entry => {
-            if (entry.Thumbnail != null) return;
-            entry.Thumbnail = await _thumbnails.GetAsync(entry.ThumbnailUrl, _lifetime.Token, item.DriveAccountId);
-            entry.RefreshThumbnail();
-        }));
+        Dispatcher.UIThread.Post(RefreshVisibleThumbnails, DispatcherPriority.Loaded);
     }
 
     private void DismissReview(object? sender, RoutedEventArgs e)
@@ -236,6 +231,7 @@ public partial class MainWindow : Window
 
     private void CloseReview()
     {
+        ClearEntryThumbnails();
         _review = null;
         ReviewPanel.IsVisible = false; NewDownloadForm.IsVisible = true; DownloadList.IsVisible = true;
         ReviewActions.IsVisible = false;
@@ -530,15 +526,18 @@ public partial class MainWindow : Window
     {
         if (FileCards == null || _review == null) return;
         FileCards.Children.Clear();
-        var width = LayoutChoice.SelectedIndex == 1 ? 290 : SizeChoice.SelectedIndex switch { 0 => 86, 2 => 290, _ => 138 };
+        var width = LayoutChoice.SelectedIndex == 1 ? 290 : SizeChoice.SelectedIndex switch { 0 => 92, 2 => 168, _ => 128 };
         var query = FileSearch.Text ?? "";
-        foreach (var entry in _review.Entries.Where(entry => entry.Title.Contains(query, StringComparison.OrdinalIgnoreCase)))
+        var entries = _review.Entries.Where(entry => entry.Title.Contains(query, StringComparison.OrdinalIgnoreCase));
+        if (LayoutChoice.SelectedIndex == 0) entries = entries.OrderBy(entry => entry.Kind is "video" or "image" ? 0 : 1);
+        foreach (var entry in entries)
         {
-            var check = new CheckBox { DataContext = entry, Width = width, Margin = new Thickness(0, 0, 6, 6),
+            var isCard = LayoutChoice.SelectedIndex == 0 && entry.Kind is "video" or "image";
+            var check = new CheckBox { DataContext = entry, Width = isCard ? width : 290, Margin = new Thickness(0, 0, 6, 6),
                 HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Top };
             check.Bind(CheckBox.IsCheckedProperty, new Avalonia.Data.Binding(nameof(MediaEntry.Selected)) { Mode = Avalonia.Data.BindingMode.TwoWay });
             var panel = new StackPanel { Spacing = 5 };
-            if (LayoutChoice.SelectedIndex == 0)
+            if (isCard)
             {
                 var image = new Image { Height = width * 0.5, Stretch = Stretch.UniformToFill, DataContext = entry };
                 image.Bind(Image.SourceProperty, new Avalonia.Data.Binding(nameof(MediaEntry.Thumbnail)));
@@ -549,9 +548,19 @@ public partial class MainWindow : Window
             else
             {
                 panel.Orientation = Orientation.Horizontal;
-                panel.Children.Add(new TextBlock { Text = entry.Icon, FontSize = 12, Width = 30, VerticalAlignment = VerticalAlignment.Center });
+                var side = SizeChoice.SelectedIndex switch { 0 => 22, 2 => 34, _ => 28 };
+                var artwork = new Grid { Width = side, Height = side };
+                artwork.Children.Add(new TextBlock { Text = entry.Icon, FontSize = 12, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
+                if (entry.Kind is "video" or "image")
+                {
+                    var image = new Image { Stretch = Stretch.UniformToFill, DataContext = entry };
+                    image.Bind(Image.SourceProperty, new Avalonia.Data.Binding(nameof(MediaEntry.Thumbnail)));
+                    artwork.Children.Add(image);
+                }
+                panel.Children.Add(artwork);
+                check.MinHeight = SizeChoice.SelectedIndex switch { 0 => 36, 2 => 58, _ => 46 };
             }
-            panel.Children.Add(new TextBlock { Text = entry.Title, FontSize = 10, MaxWidth = LayoutChoice.SelectedIndex == 1 ? 210 : width - 35, TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 2, TextWrapping = TextWrapping.Wrap });
+            panel.Children.Add(new TextBlock { Text = entry.Title, FontSize = 10, MaxWidth = isCard ? width - 35 : 175, TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 2, TextWrapping = TextWrapping.Wrap });
             check.Content = panel; ToolTip.SetTip(check, entry.Title);
             check.AddHandler(InputElement.KeyDownEvent, async (_, args) => {
                 if (args.Key != Key.Space) return;
@@ -562,6 +571,7 @@ public partial class MainWindow : Window
             panel.Children.Add(new TextBlock { Text = Locale.Text(entry.SnapshotState), FontSize = 9, Opacity = 0.65 });
             FileCards.Children.Add(check);
         }
+        Dispatcher.UIThread.Post(RefreshVisibleThumbnails, DispatcherPriority.Loaded);
     }
 
     private async void CheckForUpdates(object? sender, RoutedEventArgs e) => await CheckForUpdatesAsync(false);

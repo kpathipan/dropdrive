@@ -34,7 +34,7 @@ public static partial class LinkIdentity
         var host = new Uri(url).Host.ToLowerInvariant();
         foreach (var domain in new[] { "youtube.com", "tiktok.com", "facebook.com", "instagram.com" })
             if (host == domain || host.EndsWith("." + domain, StringComparison.Ordinal)) return domain;
-        return host == "youtu.be" ? "youtube.com" : host;
+        return host switch { "youtu.be" => "youtube.com", "fb.watch" => "facebook.com", "instagr.am" => "instagram.com", _ => host };
     }
     [GeneratedRegex(@"/(?:video|photo)/(\d+)")]
     private static partial Regex TikTokId();

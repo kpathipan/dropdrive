@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "releaseVersion": "6.25.0",
+  "reference": "Mac 6.24.4 and later jointly approved changes",
+  "automaticUpdateHours": 24,
+  "features": [
+    "compact-ui-thai-english", "shared-branding", "link-analysis-batch",
+    "drive-public", "drive-optional-multiple-accounts", "login-refresh",
+    "folder-cards-list-sizes-selection", "thumbnail-scroll-and-space",
+    "destination-no-duplicate-folder", "destination-favorites-source-category-rules", "duplicate-review-mp3",
+    "queue-pause-resume-reorder-recovery", "history-search-open-repeat",
+    "youtube-video-mp3", "tiktok-original-video-mp3-photos",
+    "instagram-video", "facebook-video", "media-quality-clip-subtitles-chapters",
+    "new-changed-files", "drive-checksum-integrity", "large-drive-parallel-transfers", "bandwidth-and-storage-safety", "phone-inbox",
+    "notifications-startup-shortcut", "daily-manual-safe-updates",
+    "installed-upgrade-retains-accounts-settings-queue"
+  ],
+  "intentionalDifferences": [
+    "Mac menubar/popover versus Windows compact window/tray",
+    "OS-native folder picker, notifications, credential protection and default viewer"
+  ]
+}

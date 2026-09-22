@@ -2,6 +2,10 @@
 
 DropDrive is a native macOS download utility — paste a link, review exactly what it will save and where it will go, then download now or add it behind an active transfer.
 
+The [Windows client](windows/README.md) uses a compact desktop window. Both
+clients now follow the [paired feature/release contract](docs/paired-release.md).
+Full parity is not yet certified; the contract lists the remaining checks.
+
 ## Features
 
 - **Smart Link Analysis** — paste a Drive link and see what it is (file or folder, size, file count, owner, public/private) before downloading anything, including items behind a Drive "shortcut" or a `resourcekey`-protected link

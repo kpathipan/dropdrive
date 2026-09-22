@@ -7,6 +7,7 @@ OUT=$(mktemp -d)
 trap 'rm -rf "$OUT"' EXIT
 
 xcrun swiftc -O \
+  DropDrive/Utilities/PlatformReleaseCatalog.swift \
   DropDrive/Utilities/DestinationCapacity.swift \
   DropDrive/Utilities/GoogleDriveLinkParser.swift \
   DropDrive/Utilities/LinkIdentity.swift \

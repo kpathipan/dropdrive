@@ -11,11 +11,14 @@ using System.Net;
 using System.Net.Http.Headers;
 using Avalonia.VisualTree;
 
+if (args.Contains("--sync-icons")) { IconAssetChecks.Run(update: true); return; }
 if (args.Contains("--windows-shell")) { WindowsShellChecks.Run(args); return; }
 if (args.Length == 2 && args[0] == "--live-google-login") { await GoogleLiveChecks.RunAsync(args[1]); return; }
 
 AppBuilder.Configure<App>().UseSkia()
     .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).SetupWithoutStarting();
+
+IconAssetChecks.Run();
 
 static void Expect(bool condition, string message)
 {
@@ -53,6 +56,10 @@ Expect(!settings.IsAutomaticUpdateCheckDue(now), "disabled automatic updates mus
 var stateFolder = Path.Combine(Path.GetTempPath(), $"dropdrive-check-{Guid.NewGuid():N}");
 try
 {
+    Complete(ReleaseChecks.RunAsync());
+    Complete(ThumbnailChecks.CacheAsync());
+    ThumbnailChecks.Viewport(Path.Combine(stateFolder, "thumbnail-ui"));
+    Complete(ParallelTransferChecks.RunAsync(Path.Combine(stateFolder, "parallel")));
     var state = new AppStateService(stateFolder);
     Complete(GoogleChecks.RunAsync(Path.Combine(stateFolder, "google")));
     state.SaveSettings(new AppSettings { Destination = "D:\\Media", CheckUpdatesAutomatically = false });
@@ -60,6 +67,15 @@ try
     state.SaveQueue([new DownloadItem { Url = "https://example.com/a.mp4", Name = "A", Status = "Ready", Destination = "D:\\Media" }]);
     var restored = state.LoadQueue();
     Expect(restored.Count == 1 && restored[0].Destination == "D:\\Media", "queue destination must persist per item");
+    var destinationSettings = new AppSettings { Destination = "D:\\Default", FavoriteDestinations = ["D:\\Favorites"],
+        SourceDestinationRules = new() { ["youtube.com"] = "D:\\YouTube" }, CategoryDestinationRules = new() { ["images"] = "D:\\Photos" } };
+    var sourceItem = new DownloadItem { Url = "https://youtu.be/example", Name = "clip", IsMedia = true };
+    Expect(DestinationRules.Resolve(destinationSettings, sourceItem) == "D:\\YouTube", "source rule applied without requiring a mounted folder");
+    var photoItem = new DownloadItem { Url = "https://example.com/photo.jpg", Name = "photo.jpg", IsMedia = false };
+    Expect(DestinationRules.Resolve(destinationSettings, photoItem) == "D:\\Photos", "category destination rule applies when there is no source rule");
+    Expect(DestinationRules.Source("https://docs.google.com/document/d/abc/edit") == DestinationRules.Source("https://drive.google.com/file/d/abc/view"), "Drive and Docs share one destination rule");
+    state.SaveSettings(destinationSettings);
+    Expect(state.LoadSettings().FavoriteDestinations.Single() == "D:\\Favorites" && state.LoadSettings().SourceDestinationRules.Count == 1, "favorites and explicit destination rules survive restart");
 
     var metadata = MediaAnalysisService.Parse("""{"title":"ทดสอบ","duration":null,"filesize":null,"thumbnail":null,"entries":[{"title":"ภาพยนตร์","url":"https://example.com/1","duration":null},null,{"title":"ภาพ","ext":"jpg"}]}""", "example.com");
     Expect(metadata.IsCollection && metadata.Entries?.Count == 2 && metadata.Entries[1].Index == 3, "nullable metadata and original playlist indices");
@@ -240,6 +256,12 @@ try
     var direct = new DownloadItem { Url = "https://fixture.test/a.mp4", Name = "a.mp4" };
     Complete(service.DownloadAsync(direct, destination, CancellationToken.None));
     Expect(direct.Status == "Complete" && File.ReadAllBytes(direct.ResultPath!).SequenceEqual(payload), "direct download writes exact result and path");
+    var checkedFile = new DownloadItem { Url = "https://fixture.test/verified.mp4", Name = "verified.mp4", ExpectedMd5 = Convert.ToHexString(System.Security.Cryptography.MD5.HashData(payload)) };
+    Complete(service.DownloadAsync(checkedFile, destination, CancellationToken.None));
+    Expect(checkedFile.Status == "Complete", "matching Google checksum permits completion");
+    var corrupt = new DownloadItem { Url = "https://fixture.test/corrupt.mp4", Name = "corrupt.mp4", ExpectedMd5 = new string('0', 32) };
+    try { Complete(service.DownloadAsync(corrupt, destination, CancellationToken.None)); throw new Exception("corrupt file accepted"); }
+    catch (IOException) { Expect(corrupt.ResultPath == null && corrupt.PartialPath == null && !File.Exists(Path.Combine(destination, "corrupt.mp4")), "checksum mismatch removes owned partial and never publishes corrupt output"); }
     var repeat = new DownloadItem { Url = direct.Url, Name = direct.Name };
     Complete(service.DownloadAsync(repeat, destination, CancellationToken.None));
     Expect(repeat.ResultPath != direct.ResultPath && File.Exists(direct.ResultPath), "explicit repeats never overwrite an earlier file");

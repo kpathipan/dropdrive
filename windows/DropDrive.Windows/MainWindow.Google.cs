@@ -81,6 +81,7 @@ public partial class MainWindow
             {
                 child.DriveAccountId = analysis.AccountId;
                 child.DriveMimeType = entry.MimeType; child.DriveResourceKey = entry.ResourceKey;
+                child.ExpectedMd5 = entry.ExpectedMd5;
             }
         }
         foreach (var old in oldEntries)

@@ -16,8 +16,13 @@ trap 'rm -rf "$SCRATCH"' EXIT
 mkdir -p "$TOOLS_DIR"
 
 echo "==> yt-dlp (universal2)"
+ENGINE_VERSION=$(ruby -rjson -e 'puts JSON.parse(File.read("packaging/media-engine.json")).fetch("ytDlpVersion")')
+ENGINE_SHA=$(ruby -rjson -e 'puts JSON.parse(File.read("packaging/media-engine.json")).fetch("macSha256")')
 curl -fL --progress-bar -o "$TOOLS_DIR/yt-dlp" \
-  "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
+  "https://github.com/yt-dlp/yt-dlp/releases/download/$ENGINE_VERSION/yt-dlp_macos"
+if [ "$(shasum -a 256 "$TOOLS_DIR/yt-dlp" | cut -d' ' -f1)" != "$ENGINE_SHA" ]; then
+  echo "yt-dlp checksum mismatch" >&2; exit 1
+fi
 chmod +x "$TOOLS_DIR/yt-dlp"
 
 # Apple Silicon only — see the note in build-dmg.sh. The Intel slice was 90 MB

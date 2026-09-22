@@ -38,6 +38,8 @@ public sealed class DownloadItem : INotifyPropertyChanged
     public string? DriveMimeType { get; set; }
     public string? DriveResourceKey { get; set; }
     public string? DriveFileId { get; set; }
+    public string? ExpectedMd5 { get; set; }
+    public bool DisableParallel { get; set; }
     public bool AnalysisCompleted { get; set; }
     public bool IsPhotoCollection { get; set; }
     public bool DirectTransfer { get; set; }
@@ -110,6 +112,7 @@ public sealed class MediaEntry : INotifyPropertyChanged
     public string Kind { get; init; } = "video";
     public string? StableId { get; init; }
     public string? Fingerprint { get; set; }
+    public string? ExpectedMd5 { get; init; }
     public string? MimeType { get; init; }
     public string? ResourceKey { get; init; }
     public string SnapshotState { get; set; } = "ใหม่";

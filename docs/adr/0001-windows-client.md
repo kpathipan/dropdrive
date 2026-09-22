@@ -3,6 +3,10 @@
 **Status:** Accepted
 **Date:** 2026-09-13
 
+**Amended 2026-09-22:** Independent tags/UI evolution below describe the original
+prototype decision. [Paired releases](../paired-release.md) now govern both
+clients: one feature contract/version/commit and one combined public release.
+
 ## Context
 
 DropDrive for macOS is a SwiftUI menu-bar application. Its UI, Keychain access,

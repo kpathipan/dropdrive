@@ -19,10 +19,12 @@ skip update installation.
 
 ## Release
 
-Push a `windows-v<semver>` tag only after testing the installer on Windows. The
-Windows workflow builds the EXE, creates the Velopack feed and publishes that
-feed to a GitHub Release. Signing variables can be added to the workflow once an
-Authenticode certificate is available.
+Windows builds now prepare artifacts only; they never publish independently.
+Use the [paired Mac + Windows release process](../docs/paired-release.md): one
+version and source commit, both complete packages, feature evidence for both
+platforms, then one draft published once. The release gate blocks missing or
+unverified features. Existing published Windows releases remain unchanged.
+Signing variables can be added once an Authenticode certificate is available.
 
 ## Windows 0.7 parity scope
 
@@ -82,8 +84,8 @@ it does not enumerate or download private files. See the parity checklist for
 which live and Windows-specific checks have actually passed.
 
 CI runs the production UI + core regression checks on Windows, saves eight
-rendered screenshots, and smoke-tests the packaged executable before publishing
-a tag. Checks cover real control interactions and an HTTP download fixture
+rendered screenshots, and smoke-tests the packaged executable before exporting
+artifacts for the paired release. Checks cover real control interactions and an HTTP download fixture
 through the actual queue. See parity-checklist.md for exact limitations.
 
 The optional --live-drive check additionally downloads a public Google Slides

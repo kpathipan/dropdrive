@@ -22,7 +22,7 @@
       </Grid>
     </Border>
     <Grid Grid.Row="1">
-      <ScrollViewer Name="DownloadsPage">
+      <ScrollViewer Name="DownloadsPage" ScrollChanged="FileViewportChanged">
         <StackPanel Margin="26,22" Spacing="12">
           <StackPanel Name="NewDownloadForm" Spacing="12">
             <Grid ColumnDefinitions="*,Auto">
@@ -109,7 +109,7 @@
                         <Grid Height="130"><TextBlock Name="PreviewIcon" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="28"/><Image Name="PreviewImage" Stretch="Uniform"/></Grid>
                       </StackPanel>
                     </Border>
-                    <ScrollViewer MaxHeight="280" HorizontalScrollBarVisibility="Disabled"><WrapPanel Name="FileCards" Orientation="Horizontal"/></ScrollViewer>
+                    <ScrollViewer Name="FileViewport" MaxHeight="280" HorizontalScrollBarVisibility="Disabled" ScrollChanged="FileViewportChanged"><WrapPanel Name="FileCards" Orientation="Horizontal"/></ScrollViewer>
                     <TextBlock Text="{DynamicResource LC434FB0E8E96}" FontSize="10" Classes="muted" TextWrapping="Wrap"/>
                   </StackPanel>
                 </Expander>

@@ -1,0 +1,22 @@
+name: Verify published paired update
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Published shared Mac and Windows version
+        required: true
+permissions:
+  contents: read
+jobs:
+  windows-public-upgrade:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify installed previous app updates and retains data
+        shell: pwsh
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          if ($env:EXPECTED_VERSION -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid version' }
+          ./windows/test-auto-update.ps1 -ExpectedVersion $env:EXPECTED_VERSION

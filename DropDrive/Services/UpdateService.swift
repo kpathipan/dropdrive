@@ -91,22 +91,11 @@ final class UpdateService {
     private var periodicTimer: Timer?
 
     private static let lastCheckKey = "updateChecker.lastCheckDate"
-    /// GitHub Releases is pull-based, not push-based. A fifteen-minute cadence
-    /// keeps an always-running menu-bar app close to a newly published release
-    /// while remaining far below GitHub's unauthenticated API limit.
-    private static let backgroundInterval: TimeInterval = 15 * 60
+    /// Same passive cadence as Windows. Manual checks always bypass it.
+    private static let backgroundInterval = PlatformReleaseCatalog.automaticInterval
     /// The timer wakes more often than the minimum check interval so a failed
     /// launch request is retried quickly instead of disappearing for hours.
     private static let periodicInterval: TimeInterval = 5 * 60
-    /// Opening the window is a deliberate act, and the answer shown there is the
-    /// whole point of it, so it gets a much shorter leash. Sharing the daily one
-    /// meant a release landing an hour after the last background check stayed
-    /// invisible for twenty-three more — with the Preferences button the only
-    /// way to see it, which is exactly the trip the banner exists to save.
-    /// Opening the panel is explicit, so allow a fresher answer than the passive
-    /// schedule. Two minutes still prevents rapid menu toggles from hammering
-    /// GitHub while making a just-published release visible promptly.
-    private static let openedInterval: TimeInterval = 2 * 60
     static let updateAvailableCategoryID = "UPDATE_AVAILABLE"
     static let installActionID = "INSTALL_UPDATE"
     static let releaseURLKey = "releaseURL"
@@ -162,7 +151,7 @@ final class UpdateService {
 
     /// The menu bar window was opened, so somebody is looking at the banner now.
     func checkOnOpen() {
-        check(ifOlderThan: Self.openedInterval)
+        checkIfNeeded()
     }
 
     private func check(ifOlderThan interval: TimeInterval) {
@@ -228,7 +217,8 @@ final class UpdateService {
 
     /// nil when the newest release isn't newer than what's running.
     private nonisolated static func fetchLatestRelease() async throws -> Release? {
-        let endpoint = URL(string: "https://api.github.com/repos/\(repository)/releases/latest")!
+        // Read the platform-aware catalogue, not the repository-wide latest tag.
+        let endpoint = URL(string: "https://api.github.com/repos/\(repository)/releases?per_page=100")!
         var request = URLRequest(url: endpoint)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
@@ -240,14 +230,10 @@ final class UpdateService {
             throw UpdateError.badResponse
         }
 
-        let payload = try JSONDecoder().decode(GitHubRelease.self, from: data)
+        let releases = try JSONDecoder().decode([PlatformRelease].self, from: data)
         guard let current = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
-              isNewer(payload.tagName, than: current) else {
-            return nil
-        }
-        // A release with no .dmg attached isn't installable — treat it as nothing
-        // to offer rather than as an error.
-        guard let asset = payload.assets.first(where: { $0.name.hasSuffix(".dmg") }) else {
+              let payload = PlatformReleaseCatalog.latestMac(in: releases, current: current),
+              let asset = payload.macAsset else {
             return nil
         }
 
@@ -641,20 +627,7 @@ final class UpdateService {
 
     /// Compares two "vX.Y.Z"-style (leading "v" optional) semantic versions.
     nonisolated static func isNewer(_ candidate: String, than current: String) -> Bool {
-        guard let candidateParts = versionComponents(candidate),
-              let currentParts = versionComponents(current) else { return false }
-        for (a, b) in zip(candidateParts, currentParts) where a != b {
-            return a > b
-        }
-        return candidateParts.count > currentParts.count
-    }
-
-    private nonisolated static func versionComponents(_ version: String) -> [Int]? {
-        let trimmed = version.hasPrefix("v") ? String(version.dropFirst()) : version
-        let stringParts = trimmed.split(separator: ".")
-        let intParts = stringParts.compactMap { Int($0) }
-        guard !intParts.isEmpty, intParts.count == stringParts.count else { return nil }
-        return intParts
+        PlatformReleaseCatalog.isNewer(candidate, than: current)
     }
 }
 
@@ -707,30 +680,6 @@ enum UpdateError: Error {
         case .commandFailed:
             tr("The update couldn't be installed.", "ติดตั้งอัปเดตไม่สำเร็จ")
         }
-    }
-}
-
-// MARK: - GitHub payload
-
-private nonisolated struct GitHubRelease: Decodable, Sendable {
-    struct Asset: Decodable, Sendable {
-        let name: String
-        let size: Int64
-        let browserDownloadURL: URL
-
-        private enum CodingKeys: String, CodingKey {
-            case name, size
-            case browserDownloadURL = "browser_download_url"
-        }
-    }
-
-    let tagName: String
-    let body: String?
-    let assets: [Asset]
-
-    private enum CodingKeys: String, CodingKey {
-        case tagName = "tag_name"
-        case body, assets
     }
 }
 

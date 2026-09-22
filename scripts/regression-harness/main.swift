@@ -249,5 +249,17 @@ check(
     )
 )
 
+func releaseFixture(_ tag: String, dmg: Bool = true, draft: Bool = false, prerelease: Bool = false) -> PlatformRelease {
+    PlatformRelease(tagName: tag, body: nil, assets: dmg ? [.init(name: "DropDrive-\(tag).dmg", size: 100,
+        browserDownloadURL: URL(string: "https://github.com/kpathipan/dropdrive/releases/download/\(tag)/DropDrive-\(tag).dmg")!)] : [], draft: draft, prerelease: prerelease)
+}
+let mixedReleases = [releaseFixture("windows-v99.0.0", dmg: false), releaseFixture("v6.25.0"),
+    releaseFixture("v6.26.0", draft: true), releaseFixture("v6.27.0", prerelease: true), releaseFixture("v6.28.0", dmg: false)]
+check("Windows releases never hide a Mac update", PlatformReleaseCatalog.latestMac(in: mixedReleases, current: "6.24.4")?.tagName == "v6.25.0")
+check("draft, prerelease and incomplete release never offered", PlatformReleaseCatalog.latestMac(in: mixedReleases, current: "6.25.0") == nil)
+check("catalogue selects semantic version, not publication order", PlatformReleaseCatalog.latestMac(in: [releaseFixture("v6.9.0"), releaseFixture("v6.10.0")], current: "6.8.0")?.tagName == "v6.10.0")
+check("malformed versions rejected", !PlatformReleaseCatalog.isNewer("windows-v99.0.0", than: "6.24.4") && !PlatformReleaseCatalog.isNewer("6..25", than: "6.24.4"))
+check("Mac matches Windows daily passive update policy", PlatformReleaseCatalog.automaticInterval == 86400)
+
 if failures > 0 { exit(1) }
 print("ALL PASS")

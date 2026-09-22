@@ -3,6 +3,11 @@
 **Status:** Accepted
 **Date:** 2026-09-13
 
+**Amended 2026-09-22:** Optional multi-account Google login is now required on
+both platforms. The old public-only Windows exception below is superseded.
+See [paired releases](../paired-release.md) for the current release gate and
+the explicit remaining verification gaps.
+
 ## Context
 
 The first Windows builds implemented a downloader-shaped prototype rather than

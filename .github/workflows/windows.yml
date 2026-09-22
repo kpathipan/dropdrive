@@ -32,6 +32,12 @@ jobs:
           if (!$version) { $version = $env:SOURCE_REF -replace '^windows-v', '' }
           if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid stable version' }
           "DROPDRIVE_WINDOWS_VERSION=$version" >> $env:GITHUB_ENV
+          $sourceHash = git rev-parse HEAD:packaging/parity-contract.json
+          $workingHash = git hash-object --no-filters packaging/parity-contract.json
+          if ($LASTEXITCODE -ne 0 -or $sourceHash -ne $workingHash) {
+            throw 'Shared release contract bytes changed during checkout.'
+          }
+          Write-Host "Shared contract SHA256: $((Get-FileHash packaging/parity-contract.json -Algorithm SHA256).Hash.ToLowerInvariant())"
       - name: Fetch Windows media tools
         shell: pwsh
         run: ./windows/fetch-tools.ps1

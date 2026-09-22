@@ -1,0 +1,3 @@
+# Release receipts hash these exact bytes on both macOS and Windows.
+# Windows Git's core.autocrlf must not alter shared release metadata.
+packaging/*.json text eol=lf

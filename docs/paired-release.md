@@ -103,6 +103,21 @@ installation behavior as identical yet.
 
 ## Tests and rollback
 
+### Explicitly requested Windows test installers
+
+At the user's request, `windows-test-v6.25.0` distributes only the CI-tested
+Setup.exe from `82c1ed0c83f61b86c76719e22a84abc64e7399db`. It is a prerelease,
+not latest, contains no update feed, and does not certify complete parity.
+This exception is for manual testing only; it does not relax the stable paired
+release gate. The next stable pair must exceed 6.25.0 so this installed test
+build can update normally. Known provider and Windows interactive-login gaps
+are disclosed in its release notes.
+
+Shared metadata is checked out with LF on both platforms. Windows previously
+converted the contract to CRLF, making receipts disagree despite identical
+JSON content. The build now checks raw file bytes against the committed blob
+before producing a receipt; do not rewrite an old receipt to hide a mismatch.
+
 `ruby scripts/test-paired-release.rb` tests complete pairs, missing packages,
 tampered bytes, stale contracts, incomplete evidence, wrong commit/version and
 missing installer tests. Swift regressions test mixed-platform catalogues,

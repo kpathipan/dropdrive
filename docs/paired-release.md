@@ -1,7 +1,9 @@
 # Mac + Windows: one feature contract, one release
 
-Status: implemented locally; not published or validated as a complete paired
-installer run. This is not a claim of full feature parity.
+Status: implementation pushed and Windows online build/installed-upgrade checks
+passed ([initial 6.25.0 run](https://github.com/kpathipan/dropdrive/actions/runs/35682633755)).
+Not published or validated as a complete paired installed upgrade. This is not
+a claim of full feature parity.
 
 ## Decision (2026-09-22)
 
@@ -33,7 +35,9 @@ installation behavior as identical yet.
 2. On the signing Mac run `bash scripts/prepare-mac-release.sh X.Y.Z`. It runs
    regression, performance, credential isolation, offline transfer and media
    fixture tests, then the existing stable-certificate packaging route. It
-   writes `dist/mac-build.json`. It does not install, push, tag or publish.
+   mounts the finished DMG read-only to verify the shipped signature and bundle
+   version, then writes `dist/mac-build.json`. It rejects a source change during
+   preparation. It does not install, push, tag or publish.
 3. Dispatch `windows.yml` at that **same commit**, with the **same version**.
    Download its `DropDrive-Windows-X.Y.Z` artifact after the whole job succeeds.
    The workflow no longer has release write permission or standalone publish.
@@ -84,6 +88,10 @@ installation behavior as identical yet.
 - Windows now loads visible thumbnails beyond 100 entries with bounded memory,
   includes media thumbnails in list mode, uses three densities, and renders
   nonvisual files as icon rows. This needs Windows desktop visual verification.
+- Favorites and source/category destination rules, Drive MD5 verification and
+  bounded six-range large-file transfers now have automated Windows coverage.
+  This does not establish equal real-world transfer speed or full folder
+  concurrency on both platforms.
 - Mac still requests confirmation to install while Windows auto-installs when
   idle; both have the same passive cadence and manual check behavior, not an
   identical install policy.

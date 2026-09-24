@@ -21,6 +21,11 @@ nonisolated final class BandwidthLimiter: @unchecked Sendable {
 
     private init() {}
 
+    var isLimited: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return (limit ?? 0) > 0
+    }
+
     func setLimit(bytesPerSecond: Double?) {
         lock.lock()
         defer { lock.unlock() }

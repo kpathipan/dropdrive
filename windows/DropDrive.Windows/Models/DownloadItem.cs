@@ -53,6 +53,8 @@ public sealed class DownloadItem : INotifyPropertyChanged
     public string? ThumbnailUrl { get; set; }
     public string? PartialPath { get; set; }
     public string? TargetPath { get; set; }
+    public string? CollectionRootPath { get; set; }
+    public string? CollectionDestinationPath { get; set; }
     public string? EntityTag { get; set; }
     public string? ResultPath { get => _resultPath; set { Set(ref _resultPath, value); Notify(nameof(CanOpen)); } }
     [JsonIgnore] public bool CanOpen => Status == "Complete" && !string.IsNullOrEmpty(ResultPath);

@@ -5,6 +5,26 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.25.1] - Paired release candidate
+
+### Fixed
+- Windows duplicate links reopen their pending review; active jobs retain the
+  pasted input and completed links show repeat-download confirmation.
+- Windows Drive folder downloads preserve the named root and nested folders.
+  Selecting that root explicitly does not create a second same-named wrapper.
+- Mac and Windows large-file workers claim chunks capped at 8 MB, rather than
+  leaving a large fixed range on a slow final connection. Bounded slow/network
+  retries retain written prefix bytes and request only the missing suffix.
+- Invalid range responses and overflowing data are rejected before unsafe writes.
+
+### Changed
+- Shared Mac/Windows version, branding, 24-hour passive update checks and paired
+  release validation. Windows adds destination favorites/rules, Drive checksums
+  and bounded-memory thumbnail scrolling beyond 100 files.
+- Live provider fixtures refreshed; Mac production-service clips passed for
+  YouTube, TikTok MP3, Instagram and Facebook. Windows online results are
+  recorded separately, not inferred from the Mac results.
+
 ## [6.24.4] - Clipboard stays under your control
 
 ### Changed

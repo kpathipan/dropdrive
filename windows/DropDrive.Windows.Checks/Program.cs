@@ -57,6 +57,7 @@ var stateFolder = Path.Combine(Path.GetTempPath(), $"dropdrive-check-{Guid.NewGu
 try
 {
     Complete(ReleaseChecks.RunAsync());
+    Complete(UserFeedbackChecks.RunAsync(Path.Combine(stateFolder, "feedback")));
     Complete(ThumbnailChecks.CacheAsync());
     ThumbnailChecks.Viewport(Path.Combine(stateFolder, "thumbnail-ui"));
     Complete(ParallelTransferChecks.RunAsync(Path.Combine(stateFolder, "parallel")));
@@ -340,7 +341,7 @@ try
         Directory.CreateDirectory(liveFolder);
         var liveItem = new DownloadItem { Url = url, Name = result.Title, IsDrive = true, IsCollection = true, IsMedia = false, Entries = result.Entries!, Destination = liveFolder };
         Complete(new DownloadService().DownloadAsync(liveItem, liveFolder, networkDeadline.Token));
-        var downloaded = Directory.GetFiles(liveFolder);
+        var downloaded = Directory.GetFiles(liveItem.ResultPath!);
         Expect(downloaded.Length == 1 && downloaded[0].EndsWith(".pptx", StringComparison.OrdinalIgnoreCase), "live Drive document export saves the proper extension without a duplicate folder");
         Expect(File.ReadAllBytes(downloaded[0]).Take(2).SequenceEqual(new byte[] { 80, 75 }), "live exported document is ZIP/PPTX, never an HTML login page");
         Console.WriteLine("PASS live public Drive folder listing and real Google Slides export");

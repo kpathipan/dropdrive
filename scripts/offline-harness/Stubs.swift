@@ -50,6 +50,7 @@ func tr(_ english: String, _ thai: String) -> String { english }
 
 nonisolated final class BandwidthLimiter: @unchecked Sendable {
     static let shared = BandwidthLimiter()
+    var isLimited: Bool { false }
     func throttle(bytes count: Int64) {}
 }
 

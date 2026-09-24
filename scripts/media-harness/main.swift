@@ -122,4 +122,29 @@ if CommandLine.arguments.contains("--live-tiktok") {
     do { _ = try await transfer.value; fatalError("cancelled download completed") }
     catch is CancellationError { print("PASS: live TikTok cancellation returns cancellation") }
 }
-print("ALL PASS")
+if CommandLine.arguments.contains("--live-public") {
+    let sources = [
+        ("YouTube", "https://www.youtube.com/watch?v=brLbwajyGNI"),
+        ("TikTok", "https://www.tiktok.com/@scout2015/video/6718335390845095173"),
+        ("Instagram", "https://www.instagram.com/reel/Chunk8-jurw/"),
+        ("Facebook", "https://www.facebook.com/NASASCaN/videos/8368792419872400/")
+    ]
+    for (provider, link) in sources {
+        let service = VideoDownloadService()
+        let folder = root.appendingPathComponent("live-\(provider)")
+        try manager.createDirectory(at: folder, withIntermediateDirectories: true)
+        do {
+            let analysis = try await service.analyze(link)
+            let output = try await service.download(link: link, title: analysis.name, destination: folder,
+                asAudio: provider == "TikTok", clipSection: "0-2", customName: "Public probe",
+                quality: provider == "TikTok" ? .mp3 : .small, onProgress: { _ in })
+            let asset = AVURLAsset(url: output)
+            let duration = try await asset.load(.duration).seconds
+            check(duration > 0 && duration < 5, "LIVE \(provider) actual service download and playable clip")
+        } catch {
+            let safe = String(describing: error).replacingOccurrences(of: "https?://\\S+", with: "[URL]", options: .regularExpression)
+            print("UNAVAILABLE \(provider): \(safe.prefix(1200))")
+        }
+    }
+}
+print("CORE CHECKS PASS (live provider availability is reported separately)")

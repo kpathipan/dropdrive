@@ -358,7 +358,23 @@ private nonisolated final class ByteCounter: @unchecked Sendable {
 /// this app exists to avoid. Writing each range at its own offset instead means
 /// the only space consumed is the file itself, and there is no assembly pass to
 /// wait through (or to re-read and re-write every byte for).
-private final class RangedStreamCoordinator: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+private actor RangedWorkQueue {
+    private var nextOffset: Int64 = 0
+    private let total: Int64
+    private let chunk: Int64
+    init(total: Int64, workers: Int) {
+        self.total = total
+        self.chunk = max(1, min(8 * 1024 * 1024, (total + Int64(workers) - 1) / Int64(workers)))
+    }
+    func next() -> ClosedRange<Int64>? {
+        guard nextOffset < total else { return nil }
+        let start = nextOffset
+        nextOffset = min(total, start + chunk)
+        return start...(nextOffset - 1)
+    }
+}
+
+nonisolated final class RangedStreamCoordinator: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     private let fileHandle: FileHandle
     private let onBytes: @Sendable (Int64) -> Void
 
@@ -372,16 +388,33 @@ private final class RangedStreamCoordinator: NSObject, URLSessionDataDelegate, @
 
     private let expectedBytes: Int64
     private var writtenBytes: Int64 = 0
+    private let startOffset: UInt64
+    private var watchdog: DispatchSourceTimer?
+    private var lastActivity = ProcessInfo.processInfo.systemUptime
+    private var sampleTime = ProcessInfo.processInfo.systemUptime
+    private var sampleBytes: Int64 = 0
+    private let slowWindow: TimeInterval
+    private let detectSlowTransfer: Bool
+    private let totalBytes: Int64?
+
+    var receivedBytes: Int64 { stateLock.lock(); defer { stateLock.unlock() }; return writtenBytes }
 
     init(
         fileHandle: FileHandle,
         startOffset: UInt64,
         expectedBytes: Int64,
-        onBytes: @escaping @Sendable (Int64) -> Void
+        onBytes: @escaping @Sendable (Int64) -> Void,
+        slowWindow: TimeInterval = 15,
+        detectSlowTransfer: Bool = true,
+        totalBytes: Int64? = nil
     ) throws {
         self.fileHandle = fileHandle
         self.expectedBytes = expectedBytes
         self.onBytes = onBytes
+        self.startOffset = startOffset
+        self.slowWindow = slowWindow
+        self.detectSlowTransfer = detectSlowTransfer
+        self.totalBytes = totalBytes
         super.init()
         try fileHandle.seek(toOffset: startOffset)
     }
@@ -399,6 +432,11 @@ private final class RangedStreamCoordinator: NSObject, URLSessionDataDelegate, @
                 self.task = task
                 let alreadyCancelled = cancelledEarly
                 stateLock.unlock()
+                let timer = DispatchSource.makeTimerSource()
+                timer.schedule(deadline: .now() + slowWindow, repeating: slowWindow)
+                timer.setEventHandler { [weak self] in self?.checkForSlowTransfer() }
+                stateLock.lock(); watchdog = timer; stateLock.unlock()
+                timer.resume()
                 task.resume()
                 if alreadyCancelled { task.cancel() }
             }
@@ -412,11 +450,25 @@ private final class RangedStreamCoordinator: NSObject, URLSessionDataDelegate, @
         }
     }
 
+    private func checkForSlowTransfer() {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard !didResume, writtenBytes < expectedBytes else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        let elapsed = now - sampleTime
+        let slow = detectSlowTransfer && !BandwidthLimiter.shared.isLimited && elapsed >= slowWindow
+            && Double(writtenBytes - sampleBytes) / max(0.001, elapsed) < 512 * 1024
+        let stalled = now - lastActivity >= max(30, slowWindow * 2)
+        sampleTime = now; sampleBytes = writtenBytes
+        if slow || stalled { failure = URLError(.timedOut); task?.cancel() }
+    }
+
     private func complete(_ result: Result<Void, Error>) {
         stateLock.lock()
         defer { stateLock.unlock() }
         guard !didResume else { return }
         didResume = true
+        watchdog?.cancel(); watchdog = nil
         try? fileHandle.close()
         switch result {
         case .success:
@@ -435,7 +487,10 @@ private final class RangedStreamCoordinator: NSObject, URLSessionDataDelegate, @
         didReceive response: URLResponse,
         completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
     ) {
-        guard let http = response as? HTTPURLResponse, http.statusCode == 206 else {
+        guard let http = response as? HTTPURLResponse, http.statusCode == 206,
+              let contentRange = http.value(forHTTPHeaderField: "Content-Range"),
+              contentRange.hasPrefix("bytes \(startOffset)-\(startOffset + UInt64(expectedBytes) - 1)/"),
+              totalBytes == nil || contentRange == "bytes \(startOffset)-\(startOffset + UInt64(expectedBytes) - 1)/\(totalBytes!)" else {
             let code = (response as? HTTPURLResponse)?.statusCode ?? -1
             stateLock.lock(); failure = DriveDownloadError.server(code, "Expected a ranged (206) response"); stateLock.unlock()
             completionHandler(.cancel)
@@ -447,8 +502,12 @@ private final class RangedStreamCoordinator: NSObject, URLSessionDataDelegate, @
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
         BandwidthLimiter.shared.throttle(bytes: Int64(data.count))
         do {
+            stateLock.lock()
+            let exceedsRange = Int64(data.count) > expectedBytes - writtenBytes
+            stateLock.unlock()
+            guard !exceedsRange else { throw DriveDownloadError.invalidResponse }
             try fileHandle.write(contentsOf: data)
-            stateLock.lock(); writtenBytes += Int64(data.count); stateLock.unlock()
+            stateLock.lock(); writtenBytes += Int64(data.count); lastActivity = ProcessInfo.processInfo.systemUptime; stateLock.unlock()
             onBytes(Int64(data.count))
         } catch {
             stateLock.lock(); failure = error; stateLock.unlock()
@@ -471,7 +530,7 @@ private final class RangedStreamCoordinator: NSObject, URLSessionDataDelegate, @
             // asked for. Silently accepting that would leave the untouched tail
             // of this slice as zeros in a file that otherwise looks complete, so
             // treat a short range as a failure and let the caller fall back.
-            complete(.failure(DriveDownloadError.server(206, "Range returned \(written) of \(expectedBytes) bytes")))
+            complete(.failure(URLError(.networkConnectionLost)))
         } else {
             complete(.success(()))
         }
@@ -1588,8 +1647,9 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
         return supported
     }
 
-    /// Splits the file into `multiPartCount` byte ranges and downloads them
-    /// concurrently, each straight into its own region of the destination file.
+    /// Bounded workers claim chunks no larger than 8 MB, writing directly into
+    /// their regions of one owned partial file. Small remaining chunks avoid
+    /// leaving a whole eighth of a large file on one slow connection.
     ///
     /// Nothing is staged anywhere else: the file is created at its final size up
     /// front (sparse on APFS, so blocks are only consumed as bytes actually
@@ -1597,8 +1657,9 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
     /// disk usage is therefore the file itself and nothing more — no temp copies,
     /// and no assembly pass re-reading and re-writing every byte at the end.
     ///
-    /// Any part failing throws, and the caller falls back to a single-stream
-    /// download — multi-part resume isn't supported, only fresh starts.
+    /// Transient/slow streams retry only the missing suffix of their chunk.
+    /// Exhausted retries fall back to a single stream. Cross-launch sparse-file
+    /// resume is deliberately unsupported until a durable range map exists.
     ///
     /// Bytes land in a sibling `.dddownload` file that is renamed into place only
     /// once every range has completed. Writing directly to the final name would
@@ -1628,31 +1689,55 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
             try sizing.truncate(atOffset: UInt64(totalBytes))
             try sizing.close()
 
-            let ranges = Self.splitRanges(totalBytes: totalBytes, partCount: Self.multiPartCount(forSize: totalBytes))
+            let workers = Self.multiPartCount(forSize: totalBytes)
+            let pending = RangedWorkQueue(total: totalBytes, workers: workers)
 
             try await withThrowingTaskGroup(of: Void.self) { group in
-                for range in ranges {
+                for _ in 0..<workers {
                     group.addTask {
-                        var partRequest = URLRequest(url: requestURL)
-                        credential.applying(to: &partRequest)
-                        Self.applyResourceKeys(resourceKeys, to: &partRequest)
-                        partRequest.setValue("bytes=\(range.lowerBound)-\(range.upperBound)", forHTTPHeaderField: "Range")
+                        while let range = await pending.next() {
+                            var offset = range.lowerBound
+                            var attempt = 0
+                            while offset <= range.upperBound {
+                                try Task.checkCancellation()
+                                var partRequest = URLRequest(url: requestURL)
+                                credential.applying(to: &partRequest)
+                                Self.applyResourceKeys(resourceKeys, to: &partRequest)
+                                partRequest.timeoutInterval = 30
+                                partRequest.setValue("bytes=\(offset)-\(range.upperBound)", forHTTPHeaderField: "Range")
 
-                        // One handle per range: each keeps its own file offset, so
-                        // concurrent writes to different regions don't interfere.
-                        let handle = try FileHandle(forWritingTo: stagingURL)
-                        let coordinator = try RangedStreamCoordinator(
-                            fileHandle: handle,
-                            startOffset: UInt64(range.lowerBound),
-                            expectedBytes: range.upperBound - range.lowerBound + 1,
-                            onBytes: onBytes
-                        )
-                        let session = URLSession(configuration: .ephemeral, delegate: coordinator, delegateQueue: nil)
-                        defer { session.finishTasksAndInvalidate() }
-                        try await coordinator.run(session: session, request: partRequest)
+                                // One handle per range: each keeps its own file offset, so
+                                // concurrent writes to different regions don't interfere.
+                                let handle = try FileHandle(forWritingTo: stagingURL)
+                                let coordinator = try RangedStreamCoordinator(
+                                    fileHandle: handle,
+                                    startOffset: UInt64(offset),
+                                    expectedBytes: range.upperBound - offset + 1,
+                                    onBytes: onBytes,
+                                    detectSlowTransfer: attempt < 2,
+                                    totalBytes: totalBytes
+                                )
+                                let session = URLSession(configuration: .ephemeral, delegate: coordinator, delegateQueue: nil)
+                                defer { session.finishTasksAndInvalidate() }
+                                do {
+                                    try await coordinator.run(session: session, request: partRequest)
+                                    break
+                                } catch {
+                                    try Task.checkCancellation()
+                                    guard let network = error as? URLError,
+                                          [.timedOut, .networkConnectionLost, .cannotConnectToHost].contains(network.code),
+                                          attempt < 3 else { throw error }
+                                    // Keep the valid prefix already written, and request
+                                    // only the missing suffix. No double-counted progress.
+                                    offset += coordinator.receivedBytes
+                                    attempt += 1
+                                }
+                            }
+                        }
                     }
                 }
-                try await group.waitForAll()
+                do { while try await group.next() != nil {} }
+                catch { group.cancelAll(); throw error }
             }
         } catch {
             try? FileManager.default.removeItem(at: stagingURL)
@@ -1661,18 +1746,6 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
 
         // Same volume, so this is a rename — no second copy, no extra space.
         try FileManager.default.moveItem(at: stagingURL, to: destinationURL)
-    }
-
-    private static func splitRanges(totalBytes: Int64, partCount: Int) -> [ClosedRange<Int64>] {
-        let partSize = totalBytes / Int64(partCount)
-        var ranges: [ClosedRange<Int64>] = []
-        var start: Int64 = 0
-        for index in 0..<partCount {
-            let end = index == partCount - 1 ? totalBytes - 1 : start + partSize - 1
-            ranges.append(start...max(start, end))
-            start = end + 1
-        }
-        return ranges
     }
 
     private static func validate(_ response: URLResponse, data: Data?) throws {

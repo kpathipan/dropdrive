@@ -44,10 +44,10 @@ let fileSize = 1000
 let expectedBytes = Int64(expectedFiles * fileSize)
 
 // Deterministic content for a file ID, so a download can be checked byte for byte.
-func contents(for id: String, size: Int) -> Data {
+func contents(for id: String, size: Int, offset: Int = 0) -> Data {
     var data = Data(capacity: size)
     let seed = Array(id.utf8)
-    for i in 0..<size { data.append(seed[i % seed.count] &+ UInt8(i % 251)) }
+    for i in offset..<(offset + size) { data.append(seed[i % seed.count] &+ UInt8(i % 251)) }
     return data
 }
 
@@ -98,28 +98,51 @@ final class DriveStub: URLProtocol, @unchecked Sendable {
         let isMedia = query.contains { $0.name == "alt" && $0.value == "media" }
         let rangeHeader = request.value(forHTTPHeaderField: "Range")
 
+        if url.path.contains("coordinator-test") {
+            let mode = url.lastPathComponent
+            let header = mode == "wrong-range" ? "bytes 1-4/5" : mode == "slow" ? "bytes 0-1048575/1048576" : "bytes 0-3/4"
+            let response = HTTPURLResponse(url: url, statusCode: 206, httpVersion: "HTTP/1.1", headerFields: ["Content-Range": header])!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            if mode == "slow" {
+                client?.urlProtocol(self, didLoad: Data(repeating: 1, count: 128 * 1024))
+                return // connected but stalled: the watchdog must cancel it
+            }
+            client?.urlProtocol(self, didLoad: Data([1, 2, 3, 4, 5]))
+            client?.urlProtocolDidFinishLoading(self)
+            return
+        }
+
         if isMedia {
             counter.hit("media")
             if rangeHeader != nil { counter.hit("range") }
             let id = url.lastPathComponent
             let size = id == bigID ? bigDeclaredSize : fileSize
-            let body = contents(for: id, size: size)
 
             if let rangeHeader, let spec = rangeHeader.split(separator: "=").last {
                 let parts = spec.split(separator: "-", omittingEmptySubsequences: false)
                 let lower = Int(parts[0]) ?? 0
                 let upper = parts.count > 1 ? (Int(parts[1]) ?? size - 1) : size - 1
-                let slice = body[lower...min(upper, size - 1)]
+                let slice = contents(for: id, size: min(upper, size - 1) - lower + 1, offset: lower)
                 let response = HTTPURLResponse(
                     url: url, statusCode: 206, httpVersion: "HTTP/1.1",
                     headerFields: ["Content-Range": "bytes \(lower)-\(upper)/\(size)",
                                    "Content-Length": "\(slice.count)"])!
                 client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+                if counter.count("inject-disconnect") > 0 && id == bigID && lower == 0 && upper > 1 {
+                    counter.hit("interrupted-range")
+                    client?.urlProtocol(self, didLoad: slice.prefix(slice.count / 2))
+                    DispatchQueue.global().asyncAfter(deadline: .now() + 0.25) { [self] in
+                        client?.urlProtocol(self, didFailWithError: URLError(.networkConnectionLost))
+                    }
+                    return
+                }
+                if lower == 4 * 1024 * 1024 { counter.hit("resumed-range-suffix") }
                 client?.urlProtocol(self, didLoad: Data(slice))
                 client?.urlProtocolDidFinishLoading(self)
                 return
             }
 
+            let body = contents(for: id, size: size)
             let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1",
                                            headerFields: ["Content-Length": "\(body.count)"])!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
@@ -491,6 +514,27 @@ check("resume reuses collision-suffixed folder", resumedSuffix.path, suffixed.pa
 check("suffixed resume only fetches missing file", counter.count("media") - suffixedBefore, 1)
 
 print("--- multi-part download")
+for mode in ["slow", "wrong-range", "overflow"] {
+    let target = sandbox.appendingPathComponent("coordinator-\(mode)")
+    FileManager.default.createFile(atPath: target.path, contents: nil)
+    let handle = try FileHandle(forWritingTo: target)
+    let coordinator = try RangedStreamCoordinator(fileHandle: handle, startOffset: 0, expectedBytes: mode == "slow" ? 1048576 : 4,
+        onBytes: { _ in }, slowWindow: 0.5)
+    let session = URLSession(configuration: .ephemeral, delegate: coordinator, delegateQueue: nil)
+    do {
+        try await coordinator.run(session: session, request: URLRequest(url: URL(string: "https://www.googleapis.com/coordinator-test/\(mode)")!))
+        pass("\(mode) rejected", false)
+    } catch {
+        pass("\(mode) rejected", true)
+        if mode == "slow" {
+            pass("slow stream produces retryable timeout", (error as? URLError)?.code == .timedOut)
+            check("slow stream preserves received prefix", coordinator.receivedBytes, 128 * 1024)
+        } else {
+            check("invalid range cannot write outside its slice", try Data(contentsOf: target).count, 0)
+        }
+    }
+    session.invalidateAndCancel()
+}
 counter.reset()
 let bigDest = sandbox.appendingPathComponent("big")
 try FileManager.default.createDirectory(at: bigDest, withIntermediateDirectories: true)
@@ -500,17 +544,20 @@ let bigURL = try await service.download(
 let bigOnDisk = try Data(contentsOf: bigURL)
 check("large file size", bigOnDisk.count, bigDeclaredSize)
 pass("large file byte-identical", bigOnDisk == contents(for: bigID, size: bigDeclaredSize))
-// 300 MB -> 6 ranges, plus the one-time range-support probe.
-pass("split into 6 ranges", counter.count("range") == 7, "\(counter.count("range")) ranged requests (6 + 1 probe)")
+// 300 MB -> 38 bounded 8 MB chunks claimed by six workers, plus one probe.
+pass("bounded chunks avoid a large slow tail", counter.count("range") == 39, "\(counter.count("range")) ranged requests (38 + 1 probe)")
 
 // MARK: - 5. The range probe is cached per host
 
 print("--- range probe caching")
 let rangeBefore = counter.count("range")
-_ = try await service.download(
+counter.hit("inject-disconnect")
+let retriedBig = try await service.download(
     DownloadRequest(driveLink: "x", itemID: bigID, destinationURL: bigDest,
                     resourceKey: nil, resumeID: UUID())) { _ in }
-check("second large file: ranges without a fresh probe", counter.count("range") - rangeBefore, 6)
+check("second large file: one interrupted chunk retries only its suffix", counter.count("range") - rangeBefore, 39)
+check("partial range bytes retained", counter.count("resumed-range-suffix"), 1)
+pass("retried chunk is byte-identical", try Data(contentsOf: retriedBig) == contents(for: bigID, size: bigDeclaredSize))
 
 // MARK: - 6. A single file never overwrites something already there
 

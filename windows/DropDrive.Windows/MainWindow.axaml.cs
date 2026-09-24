@@ -109,8 +109,25 @@ public partial class MainWindow : Window
         {
             foreach (var link in links)
             {
-                if (_downloads.Any(existing => LinkIdentity.Key(existing.Url) == LinkIdentity.Key(link) && existing.Status != "Complete"))
-                { SetStatus("ลิงก์นี้อยู่ในคิวแล้ว"); continue; }
+                var existing = _downloads.FirstOrDefault(candidate => LinkIdentity.Key(candidate.Url) == LinkIdentity.Key(link) && candidate.Status != "Complete");
+                if (existing != null)
+                {
+                    if (existing.IsActive || existing.Status == "Analyzing")
+                    {
+                        LinkBox.Text = input;
+                        ShowPage(DownloadsPage);
+                        SetStatus("ลิงก์นี้อยู่ในคิวแล้ว");
+                        continue;
+                    }
+                    if (existing.AnalysisCompleted)
+                    {
+                        firstReady ??= existing;
+                        continue;
+                    }
+                    // A failed analysis is not a duplicate download. Let the
+                    // pasted link retry instead of silently discarding it.
+                    RemoveItem(existing);
+                }
                 var uri = new Uri(link);
                 var quality = _settings.PlatformQuality.GetValueOrDefault(LinkIdentity.Platform(link), _settings.PlatformQuality.GetValueOrDefault(uri.Host));
                 var item = new DownloadItem { Url = link, Name = uri.Host, Source = uri.Host,
@@ -205,7 +222,8 @@ public partial class MainWindow : Window
         ClipStartBox.Text = item.ClipStart; ClipEndBox.Text = item.ClipEnd;
         SaveThumbnailCheck.IsChecked = item.SaveThumbnail; SplitChaptersCheck.IsChecked = item.SplitChapters;
         MediaOptionsPanel.IsVisible = item.IsMedia;
-        DuplicateNotice.IsVisible = _stateService.LoadHistory().Any(entry => LinkIdentity.Key(entry.Url) == LinkIdentity.Key(item.Url) && entry.Status == "Complete");
+        DuplicateNotice.IsVisible = _stateService.LoadHistory().Any(entry => LinkIdentity.Key(entry.Url) == LinkIdentity.Key(item.Url) && entry.Status == "Complete")
+            || _downloads.Any(entry => entry != item && entry.Status == "Complete" && LinkIdentity.Key(entry.Url) == LinkIdentity.Key(item.Url));
         FileSelector.IsVisible = item.IsCollection && item.Entries.Count > 0;
         FileSelector.IsExpanded = false;
         SnapshotNotice.Text = item.IsDrive && item.DriveAccountId == null ? "เทียบข้อมูลสาธารณะกับครั้งก่อน · ล็อกอินเพื่อเทียบเวอร์ชันไฟล์ได้แม่นยำขึ้น" : "เลือกเฉพาะรายการใหม่หรือเปลี่ยนแปลงจากครั้งก่อนได้";

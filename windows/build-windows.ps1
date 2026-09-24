@@ -1,4 +1,4 @@
-param([string]$Version = "6.25.0")
+param([string]$Version = "6.25.1")
 $ErrorActionPreference = "Stop"
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "A stable X.Y.Z version is required." }
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path

@@ -185,15 +185,15 @@ public sealed class DownloadService
         }
         var selected = item.Entries.Where(entry => entry.Selected).ToArray();
         if (selected.Length == 0) throw new InvalidOperationException("เลือกอย่างน้อย 1 ไฟล์");
+        var collectionRoot = ResolveCollectionRoot(item, destination);
+        Checkpoint?.Invoke();
         var count = 0;
         foreach (var entry in selected)
         {
             token.ThrowIfCancellationRequested();
-            // The chosen folder receives the contents; do not wrap it in another
-            // folder with the same name. Only original nested folders are created.
-            var root = Path.GetFullPath(destination).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-            var folder = Path.GetFullPath(Path.Combine(destination, entry.RelativeFolder));
-            if (folder != Path.GetFullPath(destination) && !folder.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            var root = collectionRoot.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            var folder = Path.GetFullPath(Path.Combine(collectionRoot, entry.RelativeFolder));
+            if (folder != collectionRoot && !folder.StartsWith(root, StringComparison.OrdinalIgnoreCase))
                 throw new IOException("ชื่อโฟลเดอร์ต้นทางไม่ปลอดภัย");
             TransferGuard.EnsureSpace(destination, entry.Size);
             Directory.CreateDirectory(folder);
@@ -221,8 +221,33 @@ public sealed class DownloadService
             finally { child.PropertyChanged -= Progress; Checkpoint?.Invoke(); }
             count++;
         }
-        item.ResultPath = destination;
+        item.ResultPath = collectionRoot;
         item.ReceivedBytes = selected.Sum(entry => entry.Transfer?.ReceivedBytes ?? 0);
+    }
+
+    public static string ResolveCollectionRoot(DownloadItem item, string destination)
+    {
+        var parent = Path.TrimEndingDirectorySeparator(Path.GetFullPath(destination));
+        var name = MediaOptions.SafeName(item.Name);
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        if (item.CollectionDestinationPath == parent && item.CollectionRootPath is { } remembered)
+        {
+            var full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(remembered));
+            if (full.Equals(parent, comparison) || string.Equals(Path.GetDirectoryName(full), parent, comparison))
+            { Directory.CreateDirectory(full); return full; }
+        }
+        // Selecting the source-named folder explicitly means use that folder,
+        // not Photos/Photos. Selecting Downloads means create Downloads/Photos.
+        var root = parent;
+        if (!Path.GetFileName(parent).Equals(name, comparison))
+        {
+            root = Path.Combine(parent, name);
+            for (var suffix = 1; Directory.Exists(root) || File.Exists(root); suffix++)
+                root = Path.Combine(parent, $"{name} ({suffix})");
+        }
+        Directory.CreateDirectory(root);
+        item.CollectionRootPath = root; item.CollectionDestinationPath = parent;
+        return root;
     }
 
     private static async Task<int> ReadWithTimeout(Stream input, byte[] buffer, CancellationToken token)

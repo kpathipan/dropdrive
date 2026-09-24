@@ -82,14 +82,15 @@ installation behavior as identical yet.
 
 - Windows live multi-account/private Drive flow has component coverage but not
   a complete interactive Windows desktop pass.
-- YouTube full Windows download, TikTok (IP-blocked), and Facebook extraction
-  remain unverified/failing in the last live runs. Instagram passed a public
-  fixture. Provider unavailability is not proof of parity or a passing test.
+- New public fixtures passed actual short downloads and playback validation
+  through the Mac production service on September 24 (YouTube, TikTok MP3,
+  Instagram, Facebook). Windows online probes must be checked independently;
+  provider unavailability is not proof of parity or a passing test.
 - Windows now loads visible thumbnails beyond 100 entries with bounded memory,
   includes media thumbnails in list mode, uses three densities, and renders
   nonvisual files as icon rows. This needs Windows desktop visual verification.
 - Favorites and source/category destination rules, Drive MD5 verification and
-  bounded six-range large-file transfers now have automated Windows coverage.
+  bounded-worker/chunk large-file transfers now have automated Windows coverage.
   This does not establish equal real-world transfer speed or full folder
   concurrency on both platforms.
 - Mac still requests confirmation to install while Windows auto-installs when

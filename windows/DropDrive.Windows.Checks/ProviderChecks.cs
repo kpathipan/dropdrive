@@ -10,10 +10,10 @@ internal static class ProviderChecks
             if (!File.Exists(Path.Combine(tools, name))) throw new FileNotFoundException("Missing live-test tool: " + name);
         // Public test URLs from yt-dlp's upstream extractor regression fixtures.
         var probes = new Dictionary<string, string> {
-            ["YouTube"] = "https://www.youtube.com/watch?v=jNQXAC9IVRw",
-            ["TikTok"] = "https://www.tiktok.com/@leenabhushan/video/6748451240264420610",
+            ["YouTube"] = "https://www.youtube.com/watch?v=brLbwajyGNI",
+            ["TikTok"] = "https://www.tiktok.com/@scout2015/video/6718335390845095173",
             ["Instagram"] = "https://www.instagram.com/reel/Chunk8-jurw/",
-            ["Facebook"] = "https://www.facebook.com/radiokicksfm/videos/3676516585958356/"
+            ["Facebook"] = "https://www.facebook.com/NASASCaN/videos/8368792419872400/"
         };
         var report = new List<string> { $"Live provider probes · {DateTimeOffset.UtcNow:O}", "No login/cookies. Failures are reported, not interpreted as passing downloads." };
         foreach (var (provider, url) in probes)

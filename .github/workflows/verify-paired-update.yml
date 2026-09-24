@@ -11,12 +11,16 @@ jobs:
   windows-public-upgrade:
     runs-on: windows-latest
     timeout-minutes: 10
+    strategy:
+      matrix:
+        source: ["0.6.0", "6.25.0"]
     steps:
       - uses: actions/checkout@v4
       - name: Verify installed previous app updates and retains data
         shell: pwsh
         env:
           EXPECTED_VERSION: ${{ inputs.version }}
+          SOURCE_VERSION: ${{ matrix.source }}
         run: |
           if ($env:EXPECTED_VERSION -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid version' }
-          ./windows/test-auto-update.ps1 -ExpectedVersion $env:EXPECTED_VERSION
+          ./windows/test-auto-update.ps1 -ExpectedVersion $env:EXPECTED_VERSION -SourceVersion $env:SOURCE_VERSION

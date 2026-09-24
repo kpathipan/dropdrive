@@ -7,6 +7,10 @@ on:
         description: SemVer for the Windows installer
         required: true
         default: 6.25.1
+      verify_published_update:
+        description: Test the published update only; do not rebuild or publish
+        type: boolean
+        default: false
   push:
     tags:
       - windows-v*
@@ -16,6 +20,7 @@ permissions:
 
 jobs:
   build:
+    if: ${{ inputs.verify_published_update != true }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -111,3 +116,21 @@ jobs:
           path: windows/artifacts/releases/*
       # No publish permission or standalone upload: scripts/paired-release.rb
       # exposes these assets together with the signed Mac package.
+  verify-published-update:
+    if: ${{ inputs.verify_published_update == true }}
+    runs-on: windows-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        source: ["0.6.0", "6.25.0"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify real public feed upgrade and retained state
+        shell: pwsh
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+          SOURCE_VERSION: ${{ matrix.source }}
+        run: |
+          if ($env:EXPECTED_VERSION -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid version' }
+          ./windows/test-auto-update.ps1 -ExpectedVersion $env:EXPECTED_VERSION -SourceVersion $env:SOURCE_VERSION

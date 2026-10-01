@@ -514,6 +514,32 @@ check("resume reuses collision-suffixed folder", resumedSuffix.path, suffixed.pa
 check("suffixed resume only fetches missing file", counter.count("media") - suffixedBefore, 1)
 
 print("--- multi-part download")
+// Regression for the production pause deadlock: task cancellation acquires
+// Swift's task-status lock while a URLSession completion resumes that task.
+// A wall-clock watchdog fails the process even if the cooperative pool deadlocks.
+let cancellationDeadline = DispatchSource.makeTimerSource(queue: .global())
+cancellationDeadline.schedule(deadline: .now() + 30)
+cancellationDeadline.setEventHandler { print("FAIL cancellation/completion deadlocked"); exit(1) }
+cancellationDeadline.resume()
+for round in 0..<200 {
+    let target = sandbox.appendingPathComponent("cancel-race-\(round)")
+    FileManager.default.createFile(atPath: target.path, contents: nil)
+    let coordinator = try RangedStreamCoordinator(
+        fileHandle: FileHandle(forWritingTo: target), startOffset: 0, expectedBytes: 4,
+        onBytes: { _ in })
+    let session = URLSession(configuration: .ephemeral, delegate: coordinator, delegateQueue: nil)
+    let transfer = Task.detached {
+        try await coordinator.run(session: session, request: URLRequest(
+            url: URL(string: "https://www.googleapis.com/coordinator-test/overflow")!))
+    }
+    DispatchQueue.global().asyncAfter(deadline: .now() + Double(round % 5) / 1000) {
+        transfer.cancel()
+    }
+    _ = await transfer.result
+    session.invalidateAndCancel()
+}
+cancellationDeadline.cancel()
+pass("200 concurrent cancellation/completion races settle without deadlock", true)
 for mode in ["slow", "wrong-range", "overflow"] {
     let target = sandbox.appendingPathComponent("coordinator-\(mode)")
     FileManager.default.createFile(atPath: target.path, contents: nil)

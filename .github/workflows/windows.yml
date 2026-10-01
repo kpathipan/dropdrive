@@ -6,7 +6,7 @@ on:
       version:
         description: SemVer for the Windows installer
         required: true
-        default: 6.25.1
+        default: 6.25.2
       verify_published_update:
         description: Test the published update only; do not rebuild or publish
         type: boolean
@@ -123,7 +123,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        source: ["0.6.0", "6.25.0"]
+        source: ["0.6.0", "6.25.0", "6.25.1"]
     steps:
       - uses: actions/checkout@v4
       - name: Verify real public feed upgrade and retained state

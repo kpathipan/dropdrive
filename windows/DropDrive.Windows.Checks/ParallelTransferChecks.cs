@@ -40,7 +40,35 @@ internal static class ParallelTransferChecks
         {
             if (File.Exists(partial) || !item.DisableParallel || item.EntityTag != null) throw new Exception("Unsafe parallel partial left resumable");
         }
+        using var blockedHandler = new CancelledRanges();
+        using var blockedClient = new HttpClient(blockedHandler);
+        using var cancellation = new CancellationTokenSource();
+        var cancelItem = new DownloadItem { Url = item.Url };
+        var cancelling = ParallelRangeTransfer.DownloadAsync(blockedClient, item.Url, partial,
+            bytes.Length, "\"stable\"", cancelItem, null, null, cancellation.Token);
+        await blockedHandler.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        cancellation.Cancel();
+        try { await cancelling.WaitAsync(TimeSpan.FromSeconds(5)); throw new Exception("Cancellation was ignored"); }
+        catch (OperationCanceledException) { }
+        if (File.Exists(partial) || blockedHandler.Active != 0) throw new Exception("Cancellation left writers/partial behind");
+        handler.BadRange = false;
+        await ParallelRangeTransfer.DownloadAsync(client, item.Url, partial, bytes.Length, "\"stable\"", cancelItem, null, null, CancellationToken.None);
+        if (!File.ReadAllBytes(partial).SequenceEqual(bytes)) throw new Exception("Restart after pause changed bytes");
+        File.Delete(partial);
+        Console.WriteLine("PASS Windows cancellation settles all workers and restart preserves exact bytes");
         Console.WriteLine("PASS parallel transfer: bounded chunks/workers, exact bytes, interrupted-suffix resume, safe rejection/cleanup");
+    }
+    private sealed class CancelledRanges : HttpMessageHandler
+    {
+        public readonly TaskCompletionSource Started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int Active;
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            Interlocked.Increment(ref Active);
+            Started.TrySetResult();
+            try { await Task.Delay(Timeout.Infinite, token); throw new Exception("Unexpected completion"); }
+            finally { Interlocked.Decrement(ref Active); }
+        }
     }
     private sealed class Ranges(byte[] bytes) : HttpMessageHandler
     {

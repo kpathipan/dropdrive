@@ -18,6 +18,7 @@ xcrun swiftc -O \
   DropDrive/Models/DownloadProgress.swift \
   DropDrive/Models/DriveLinkAnalysis.swift \
   DropDrive/Models/QueueItem.swift \
+  DropDrive/Services/QueueStore.swift \
   DropDrive/Services/AppLanguage.swift \
   DropDrive/Utilities/UniqueDestinationNaming.swift \
   DropDrive/Utilities/SecurityScopedAccessManager.swift \

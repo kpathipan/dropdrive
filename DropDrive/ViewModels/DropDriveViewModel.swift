@@ -246,7 +246,7 @@ final class DropDriveViewModel {
             queue[index].nextRetryAt = nil
             clearAttention(for: queue[index].id)
         }
-        QueueStore.save(queue)
+        persistQueue()
         processQueueIfNeeded()
     }
 
@@ -537,7 +537,7 @@ final class DropDriveViewModel {
             }
             capacityCache = nil
             DestinationStore.save(folderURL)
-            QueueStore.save(queue)
+            persistQueue()
             processQueueIfNeeded()
         }
     }
@@ -996,7 +996,7 @@ final class DropDriveViewModel {
             selectedMediaIndexes: selectedMediaIndexes
         )
         queue.append(item)
-        QueueStore.save(queue)
+        persistQueue()
         return item.id
     }
 
@@ -1119,7 +1119,7 @@ final class DropDriveViewModel {
                 "Waiting for the destination drive to reconnect.",
                 "กำลังรอไดรฟ์ปลายทางเชื่อมต่ออีกครั้ง"
             )
-            QueueStore.save(queue)
+            persistQueue()
             notifyAttentionIfNeeded(for: queue[index])
             activeQueueItemID = nil
             processQueueIfNeeded()
@@ -1133,7 +1133,7 @@ final class DropDriveViewModel {
             queue[index].status = .failed
             queue[index].attentionKind = .space
             queue[index].errorMessage = Self.videoRecoveryMessage(.space)
-            QueueStore.save(queue)
+            persistQueue()
             processQueueIfNeeded()
             return
         }
@@ -1143,7 +1143,7 @@ final class DropDriveViewModel {
         queue[index].nextRetryAt = nil
         activeQueueItemID = item.id
         activeProgress = DownloadProgress(currentFileName: tr("Preparing…", "กำลังเตรียมไฟล์…"))
-        QueueStore.save(queue)
+        persistQueue()
 
         if item.analysis.isVideo == true {
             startVideoDownload(item, destinationURL: destinationURL)
@@ -1349,7 +1349,7 @@ final class DropDriveViewModel {
                 "Connection lost — retrying automatically.",
                 "เน็ตหลุด — ระบบกำลังลองใหม่ให้อัตโนมัติ"
             )
-            QueueStore.save(queue)
+            persistQueue()
             notifyAttentionIfNeeded(for: queue[index])
         }
         activeProgress = DownloadProgress(
@@ -1400,7 +1400,7 @@ final class DropDriveViewModel {
         }
         activeQueueItemID = nil
         activeProgress = nil
-        QueueStore.save(queue)
+        persistQueue()
 
         let item = queue[index]
         // Files just appeared, moved, or were cleaned up — drop the cached
@@ -1510,7 +1510,7 @@ final class DropDriveViewModel {
             self.completedRowRemovalTasks[id] = nil
             guard self.queue.contains(where: { $0.id == id && $0.status == .completed }) else { return }
             self.queue.removeAll { $0.id == id }
-            QueueStore.save(self.queue)
+            self.persistQueue()
             ResumeEnvelopeStore.clear(for: id)
         }
     }
@@ -1555,7 +1555,7 @@ final class DropDriveViewModel {
         queue[index].retryCount = nil
         queue[index].nextRetryAt = nil
         clearAttention(for: id)
-        QueueStore.save(queue)
+        persistQueue()
         processQueueIfNeeded()
     }
 
@@ -1569,7 +1569,7 @@ final class DropDriveViewModel {
             removePartialArtifacts(of: item)
         }
         queue.removeAll { $0.id == id }
-        QueueStore.save(queue)
+        persistQueue()
         ResumeEnvelopeStore.clear(for: id)
         autoRetryAttempts[id] = nil
         clearAttention(for: id)
@@ -1595,7 +1595,7 @@ final class DropDriveViewModel {
             ResumeEnvelopeStore.clear(for: id)
         }
         queue.removeAll { completedIDs.contains($0.id) }
-        QueueStore.save(queue)
+        persistQueue()
     }
 
     /// A completed row remains actionable: create a fresh queue entry instead
@@ -1617,7 +1617,7 @@ final class DropDriveViewModel {
             saveThumbnail: item.saveThumbnail,
             selectedMediaIndexes: item.selectedMediaIndexes
         ))
-        QueueStore.save(queue)
+        persistQueue()
     }
 
     /// Reorders pending (`.ready`) items via drag-and-drop; the active download and
@@ -1630,10 +1630,17 @@ final class DropDriveViewModel {
         let item = queue.remove(at: fromIndex)
         let insertionIndex = queue.firstIndex(where: { $0.id == toID }) ?? queue.count
         queue.insert(item, at: insertionIndex)
-        QueueStore.save(queue)
+        persistQueue()
     }
 
     // MARK: - Queue persistence / restore
+
+    private func persistQueue() {
+        // Recovery notifications/new downloads can arrive before the restore
+        // prompt. Preserve those pending records until the user decides.
+        let liveIDs = Set(queue.map(\.id))
+        QueueStore.save(queue + (pendingRestoreQueue ?? []).filter { !liveIDs.contains($0.id) })
+    }
 
     private func checkForSavedQueue() {
         guard let saved = QueueStore.load(), !saved.isEmpty else { return }
@@ -1698,12 +1705,12 @@ final class DropDriveViewModel {
         let liveIDs = Set(queue.map(\.id))
         queue.append(contentsOf: saved.filter { !liveIDs.contains($0.id) })
         pendingRestoreQueue = nil
-        QueueStore.save(queue)
+        persistQueue()
     }
 
     func discardSavedQueue() {
         pendingRestoreQueue = nil
-        QueueStore.clear()
+        persistQueue()
     }
 
     /// Every message a failed download can show. The goal is that the row itself

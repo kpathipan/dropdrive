@@ -5,6 +5,19 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.25.2] - Cancellation and queue recovery
+
+### Fixed
+- Mac transfer completion resumes Swift continuations outside the cancellation
+  mutex, preventing the observed pause/completion lock inversion.
+- Mac queue checkpoints use atomic disk writes and a last-good backup, migrate
+  legacy preferences, and preserve pending restore records when new work arrives.
+
+### Tested
+- Cancellation/completion races, checkpoint corruption fallback, explicit empty
+  queue persistence, and Windows parallel cancellation followed by exact restart.
+- Public Windows update verification includes upgrades from 6.25.1.
+
 ## [6.25.1] - Paired release candidate
 
 ### Fixed

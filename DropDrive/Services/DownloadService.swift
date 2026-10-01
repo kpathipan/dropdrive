@@ -426,17 +426,17 @@ nonisolated final class RangedStreamCoordinator: NSObject, URLSessionDataDelegat
     func run(session: URLSession, request: URLRequest) async throws {
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                let timer = DispatchSource.makeTimerSource()
+                timer.schedule(deadline: .now() + slowWindow, repeating: slowWindow)
+                timer.setEventHandler { [weak self] in self?.checkForSlowTransfer() }
                 stateLock.lock()
                 self.continuation = continuation
                 let task = session.dataTask(with: request)
                 self.task = task
                 let alreadyCancelled = cancelledEarly
-                stateLock.unlock()
-                let timer = DispatchSource.makeTimerSource()
-                timer.schedule(deadline: .now() + slowWindow, repeating: slowWindow)
-                timer.setEventHandler { [weak self] in self?.checkForSlowTransfer() }
-                stateLock.lock(); watchdog = timer; stateLock.unlock()
+                watchdog = timer
                 timer.resume()
+                stateLock.unlock()
                 task.resume()
                 if alreadyCancelled { task.cancel() }
             }
@@ -452,29 +452,38 @@ nonisolated final class RangedStreamCoordinator: NSObject, URLSessionDataDelegat
 
     private func checkForSlowTransfer() {
         stateLock.lock()
-        defer { stateLock.unlock() }
-        guard !didResume, writtenBytes < expectedBytes else { return }
+        guard !didResume, writtenBytes < expectedBytes else { stateLock.unlock(); return }
         let now = ProcessInfo.processInfo.systemUptime
         let elapsed = now - sampleTime
         let slow = detectSlowTransfer && !BandwidthLimiter.shared.isLimited && elapsed >= slowWindow
             && Double(writtenBytes - sampleBytes) / max(0.001, elapsed) < 512 * 1024
         let stalled = now - lastActivity >= max(30, slowWindow * 2)
         sampleTime = now; sampleBytes = writtenBytes
-        if slow || stalled { failure = URLError(.timedOut); task?.cancel() }
+        let taskToCancel = slow || stalled ? task : nil
+        if taskToCancel != nil { failure = URLError(.timedOut) }
+        stateLock.unlock()
+        taskToCancel?.cancel()
     }
 
     private func complete(_ result: Result<Void, Error>) {
         stateLock.lock()
-        defer { stateLock.unlock() }
-        guard !didResume else { return }
+        guard !didResume else { stateLock.unlock(); return }
         didResume = true
-        watchdog?.cancel(); watchdog = nil
+        let timer = watchdog
+        watchdog = nil
+        let completion = continuation
+        continuation = nil
+        stateLock.unlock()
+        // Cancellation holds Swift's task-status lock while entering onCancel.
+        // Resuming while holding stateLock creates the inverse lock order and
+        // can deadlock the main thread when the user pauses the queue.
+        timer?.cancel()
         try? fileHandle.close()
         switch result {
         case .success:
-            continuation?.resume()
+            completion?.resume()
         case .failure(let error):
-            continuation?.resume(throwing: error)
+            completion?.resume(throwing: error)
         }
     }
 
@@ -618,14 +627,17 @@ private final class DownloadTaskCoordinator: NSObject, URLSessionDownloadDelegat
 
     private func complete(_ result: Result<URL, Error>) {
         stateLock.lock()
-        defer { stateLock.unlock() }
-        guard !didResume else { return }
+        guard !didResume else { stateLock.unlock(); return }
         didResume = true
+        let completion = continuation
+        continuation = nil
+        stateLock.unlock()
+        // Never enter Swift continuation machinery under the cancellation lock.
         switch result {
         case .success(let url):
-            continuation?.resume(returning: url)
+            completion?.resume(returning: url)
         case .failure(let error):
-            continuation?.resume(throwing: error)
+            completion?.resume(throwing: error)
         }
     }
 

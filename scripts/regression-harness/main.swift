@@ -261,5 +261,16 @@ check("catalogue selects semantic version, not publication order", PlatformRelea
 check("malformed versions rejected", !PlatformReleaseCatalog.isNewer("windows-v99.0.0", than: "6.24.4") && !PlatformReleaseCatalog.isNewer("6..25", than: "6.24.4"))
 check("Mac matches Windows daily passive update policy", PlatformReleaseCatalog.automaticInterval == 86400)
 
+let checkpointRoot = FileManager.default.temporaryDirectory.appendingPathComponent("queue-check-\(UUID())")
+defer { try? FileManager.default.removeItem(at: checkpointRoot) }
+let checkpoint = QueueDiskStore(directory: checkpointRoot)
+try checkpoint.save(JSONEncoder().encode([queueItem]))
+check("queue checkpoint survives a new store instance", QueueDiskStore(directory: checkpointRoot).load()?.first?.id == queueItem.id)
+try checkpoint.save(JSONEncoder().encode([queueItem]))
+try Data("interrupted".utf8).write(to: checkpointRoot.appendingPathComponent("queue-v1.json"))
+check("corrupt checkpoint recovers last good queue", checkpoint.load()?.first?.id == queueItem.id)
+try checkpoint.save(JSONEncoder().encode([QueueItem]()))
+check("explicit empty queue does not resurrect backup", checkpoint.load()?.isEmpty == true)
+
 if failures > 0 { exit(1) }
 print("ALL PASS")

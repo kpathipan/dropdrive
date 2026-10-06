@@ -48,6 +48,7 @@ public sealed class DownloadItem : INotifyPropertyChanged
     public bool WaitForDestination { get; set; }
     public long ReceivedBytes { get; set; }
     public List<string> OutputPaths { get; set; } = [];
+    public string CompletionWarning { get; set; } = "";
     public bool BatchSelected { get; set; } = true;
     public List<MediaEntry> Entries { get; set; } = [];
     public string? ThumbnailUrl { get; set; }

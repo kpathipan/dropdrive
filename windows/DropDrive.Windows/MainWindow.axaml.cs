@@ -299,10 +299,10 @@ public partial class MainWindow : Window
                 {
                     await _downloadService.DownloadAsync(item, item.Destination ?? _settings.Destination, cancellation.Token);
                     SetStatus($"ดาวน์โหลดเสร็จแล้ว: {item.Name}");
-                    _stateService.AddHistory(item);
-                    _stateService.RecordCompletion(item);
-                    if (_settings.NotifyOnComplete) NotifyResult(item, false);
-                    if (_settings.OpenFolderOnComplete) LaunchPath(item.ResultPath is { } path ? Path.GetDirectoryName(path) : item.Destination);
+                    DownloadCompletion.Optional(item, Locale.Choose("บันทึกประวัติไม่ได้", "Could not save history"), () => _stateService.AddHistory(item));
+                    DownloadCompletion.Optional(item, Locale.Choose("บันทึกสถิติไม่ได้", "Could not save statistics"), () => _stateService.RecordCompletion(item));
+                    if (_settings.NotifyOnComplete) DownloadCompletion.Optional(item, Locale.Choose("ส่งการแจ้งเตือนไม่ได้", "Could not send notification"), () => NotifyResult(item, false));
+                    if (_settings.OpenFolderOnComplete) DownloadCompletion.Optional(item, Locale.Choose("เปิดโฟลเดอร์ไม่ได้", "Could not open folder"), () => LaunchPath(item.ResultPath is { } path ? Path.GetDirectoryName(path) : item.Destination));
                 }
                 catch (OperationCanceledException)
                 {

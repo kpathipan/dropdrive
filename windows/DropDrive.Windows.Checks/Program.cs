@@ -58,6 +58,7 @@ try
 {
     Complete(ReleaseChecks.RunAsync());
     Complete(UserFeedbackChecks.RunAsync(Path.Combine(stateFolder, "feedback")));
+    Complete(CompletionChecks.RunAsync(Path.Combine(stateFolder, "completion")), 40);
     Complete(ThumbnailChecks.CacheAsync());
     ThumbnailChecks.Viewport(Path.Combine(stateFolder, "thumbnail-ui"));
     Complete(ParallelTransferChecks.RunAsync(Path.Combine(stateFolder, "parallel")));

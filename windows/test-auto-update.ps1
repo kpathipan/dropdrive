@@ -1,8 +1,8 @@
-param([string]$ExpectedVersion = "6.25.2", [ValidateSet("0.6.0", "6.25.0", "6.25.1")][string]$SourceVersion = "0.6.0")
+param([string]$ExpectedVersion = "6.25.3", [ValidateSet("0.6.0", "6.25.0", "6.25.1", "6.25.2")][string]$SourceVersion = "0.6.0")
 $ErrorActionPreference = "Stop"
 if ($env:GITHUB_ACTIONS -ne "true") { throw "Automatic update tests are restricted to disposable Windows CI." }
 $setup = Join-Path $env:RUNNER_TEMP "DropDrive-update-source-$SourceVersion.exe"
-$sourceTag = if ($SourceVersion -eq "6.25.1") { "v6.25.1" } elseif ($SourceVersion -eq "6.25.0") { "windows-test-v6.25.0" } else { "windows-v0.6.0" }
+$sourceTag = if ($SourceVersion -in @("6.25.1", "6.25.2")) { "v$SourceVersion" } elseif ($SourceVersion -eq "6.25.0") { "windows-test-v6.25.0" } else { "windows-v0.6.0" }
 Invoke-WebRequest "https://github.com/kpathipan/dropdrive/releases/download/$sourceTag/com.dropdrive.windows-win-Setup.exe" -OutFile $setup
 $installer = Start-Process $setup -ArgumentList "--silent" -PassThru
 if (!$installer.WaitForExit(60000) -or $installer.ExitCode -ne 0) { throw "Source installation failed." }

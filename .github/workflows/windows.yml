@@ -6,13 +6,13 @@ on:
       version:
         description: SemVer for the Windows installer
         required: true
-        default: 6.25.2
+        default: 6.25.3
       verify_published_update:
         description: Test the published update only; do not rebuild or publish
         type: boolean
         default: false
-      publish_prepared_6252:
-        description: Publish the owner-approved, already-tested 6.25.2 pair
+      publish_windows_hotfix:
+        description: Publish the owner-approved Windows-only 6.25.3 hotfix after checks
         type: boolean
         default: false
   push:
@@ -24,7 +24,7 @@ permissions:
 
 jobs:
   build:
-    if: ${{ inputs.verify_published_update != true && inputs.publish_prepared_6252 != true }}
+    if: ${{ inputs.verify_published_update != true }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -118,8 +118,7 @@ jobs:
         with:
           name: DropDrive-Windows-${{ env.DROPDRIVE_WINDOWS_VERSION }}
           path: windows/artifacts/releases/*
-      # No publish permission or standalone upload: scripts/paired-release.rb
-      # exposes these assets together with the signed Mac package.
+      # The build job cannot publish. The explicit hotfix job below is Windows-only.
   verify-published-update:
     if: ${{ inputs.verify_published_update == true }}
     runs-on: windows-latest
@@ -127,7 +126,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        source: ["0.6.0", "6.25.0", "6.25.1"]
+        source: ["0.6.0", "6.25.1", "6.25.2"]
     steps:
       - uses: actions/checkout@v4
       - name: Verify real public feed upgrade and retained state
@@ -138,58 +137,58 @@ jobs:
         run: |
           if ($env:EXPECTED_VERSION -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid version' }
           ./windows/test-auto-update.ps1 -ExpectedVersion $env:EXPECTED_VERSION -SourceVersion $env:SOURCE_VERSION
-  publish-prepared-6252:
-    if: ${{ inputs.publish_prepared_6252 == true && inputs.verify_published_update != true && inputs.version == '6.25.2' }}
+  publish-windows-hotfix:
+    needs: build
+    if: ${{ inputs.publish_windows_hotfix == true && inputs.version == '6.25.3' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
       actions: read
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: DropDrive-Windows-6.25.2
-          run-id: 36935419108
-          github-token: ${{ github.token }}
+          name: DropDrive-Windows-6.25.3
           path: prepared
+      - uses: actions/download-artifact@v4
+        with:
+          name: DropDrive-Provider-Checks-6.25.3
+          path: provider
       - uses: actions/github-script@v7
         with:
           script: |
-            const fs = require('fs');
-            const crypto = require('crypto');
-            const owner = context.repo.owner, repo = context.repo.repo;
-            const commit = '691630576659fba500207e8441f440cdcfa143e2';
-            const macName = 'DropDrive-v6.25.2.dmg';
-            const macHash = '33d824fc8b1696b5ae8fac1a799cde4bf0970132649d7ae5fa5d3687328dfab6';
+            const fs = require('fs'), crypto = require('crypto'), path = require('path');
+            const owner = context.repo.owner, repo = context.repo.repo, commit = context.sha;
+            const version = '6.25.3', tag = 'windows-v'+version;
             const check = (ok, why) => { if (!ok) throw new Error(why); };
-            const run = (await github.rest.actions.getWorkflowRun({owner,repo,run_id:36935419108})).data;
-            check(run.conclusion === 'success' && run.head_sha === commit, 'Source build mismatch');
+            const hash = data => crypto.createHash('sha256').update(data).digest('hex');
             const receipt = JSON.parse(fs.readFileSync('prepared/windows-build.json','utf8'));
-            check(receipt.platform === 'windows' && receipt.version === '6.25.2' && receipt.commit === commit &&
-              receipt.contract_sha256 === '8f3c2d0f51a5f1785ba75cf0e1901750bc592483a38a2665b379bd8db17da8f8', 'Receipt mismatch');
+            check(receipt.platform === 'windows' && receipt.version === version && receipt.commit === commit &&
+              receipt.contract_sha256 === hash(fs.readFileSync('packaging/parity-contract.json')), 'Receipt mismatch');
             for (const name of ['core-ui','native-shell','packaged-startup','installed-upgrade'])
               check(receipt.checks.includes(name), 'Missing check: '+name);
-            const expected = new Map([[macName, macHash]]);
+            const expected = new Map();
             for (const f of receipt.files) {
-              check(f.name === require('path').basename(f.name) && !expected.has(f.name), 'Unsafe filename');
-              const data = fs.readFileSync('prepared/'+f.name);
-              check(crypto.createHash('sha256').update(data).digest('hex') === f.sha256, 'Local hash mismatch');
+              check(f.name === path.basename(f.name) && !f.name.endsWith('.dmg') && !expected.has(f.name), 'Unsafe filename/platform');
+              check(hash(fs.readFileSync('prepared/'+f.name)) === f.sha256, 'Artifact hash mismatch');
               expected.set(f.name, f.sha256);
             }
-            for (const name of ['com.dropdrive.windows-6.25.2-full.nupkg','com.dropdrive.windows-win-Setup.exe','com.dropdrive.windows-win-Portable.zip','releases.win.json','RELEASES'])
+            for (const name of ['com.dropdrive.windows-6.25.3-full.nupkg','com.dropdrive.windows-win-Setup.exe','com.dropdrive.windows-win-Portable.zip','releases.win.json','RELEASES'])
               check(expected.has(name), 'Missing package: '+name);
             const feed = JSON.parse(fs.readFileSync('prepared/releases.win.json','utf8'));
             check(feed.Assets.length > 0, 'Empty feed');
             for (const a of feed.Assets) {
-              check(a.Version === '6.25.2' && a.PackageId === 'com.dropdrive.windows' && a.Type === 'Full' && expected.has(a.FileName), 'Invalid feed');
+              check(a.Version === version && a.PackageId === 'com.dropdrive.windows' && a.Type === 'Full' && expected.has(a.FileName), 'Invalid feed');
               const data = fs.readFileSync('prepared/'+a.FileName);
               check(data.length === a.Size && crypto.createHash('sha1').update(data).digest('hex') === a.SHA1.toLowerCase(), 'Feed hash mismatch');
             }
+            const notes = fs.readFileSync('packaging/release-notes-windows-6.25.3.md','utf8') +
+              '\n\nSource: '+commit+'\n\n## Live provider checks (not all providers necessarily pass)\n\n'+fs.readFileSync('provider/provider-checks.txt','utf8');
             const releases = await github.paginate(github.rest.repos.listReleases,{owner,repo,per_page:100});
-            const release = releases.find(r => r.tag_name === 'v6.25.2');
-            check(release && release.draft && !release.prerelease && release.target_commitish === commit, 'Expected pinned draft');
-            check(release.body.includes('sha256: '+macHash) && release.body.includes('TikTok') && release.body.includes(commit), 'Incomplete release notes');
+            let release = releases.find(r => r.tag_name === tag);
+            if (!release) release = (await github.rest.repos.createRelease({owner,repo,tag_name:tag,target_commitish:commit,draft:true,name:'DropDrive 6.25.3 · Windows',body:notes})).data;
+            check(release.draft && !release.prerelease && release.target_commitish === commit && release.body === notes, 'Expected pinned draft');
             let assets = await github.paginate(github.rest.repos.listReleaseAssets,{owner,repo,release_id:release.id,per_page:100});
-            check(assets.some(a => a.name === macName && a.digest === 'sha256:'+macHash), 'Signed Mac artifact missing');
             for (const f of receipt.files) {
               const present = assets.find(a => a.name === f.name);
               if (present) { check(present.digest === 'sha256:'+f.sha256, 'Existing asset mismatch'); continue; }
@@ -199,5 +198,5 @@ jobs:
             }
             assets = await github.paginate(github.rest.repos.listReleaseAssets,{owner,repo,release_id:release.id,per_page:100});
             check(assets.length === expected.size && assets.every(a => a.digest === 'sha256:'+expected.get(a.name)), 'Remote asset set/hash mismatch');
-            await github.rest.repos.updateRelease({owner,repo,release_id:release.id,draft:false,make_latest:'true'});
-            core.info('PASS verified same-source paired release, feed and all remote SHA256 digests; published v6.25.2');
+            await github.rest.repos.updateRelease({owner,repo,release_id:release.id,draft:false,make_latest:'false'});
+            core.info('PASS verified Windows-only hotfix published; Mac release unchanged');

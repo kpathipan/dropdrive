@@ -27,9 +27,10 @@ public sealed class MediaAnalysisService
         if (!File.Exists(tool)) throw new FileNotFoundException("ไม่พบตัววิเคราะห์ลิงก์ กรุณาติดตั้ง DropDrive ใหม่");
         var startInfo = new ProcessStartInfo(tool) {
             UseShellExecute = false, RedirectStandardOutput = true,
-            RedirectStandardError = true, CreateNoWindow = true
+            RedirectStandardError = true, CreateNoWindow = true,
+            StandardOutputEncoding = System.Text.Encoding.UTF8, StandardErrorEncoding = System.Text.Encoding.UTF8
         };
-        var args = new List<string> { "--ignore-config", "--dump-single-json", "--skip-download", "--flat-playlist", "--socket-timeout", "15", "--retries", "1" };
+        var args = new List<string> { "--ignore-config", "--encoding", "utf-8", "--dump-single-json", "--skip-download", "--flat-playlist", "--socket-timeout", "15", "--retries", "1" };
         if (uri.AbsolutePath != "/playlist" && (uri.Host.EndsWith("youtube.com", StringComparison.OrdinalIgnoreCase) || uri.Host == "youtu.be"))
             args.Add("--no-playlist");
         MediaOptions.AddRuntimeArguments(args, Path.Combine(AppContext.BaseDirectory, "Tools"));

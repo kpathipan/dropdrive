@@ -10,13 +10,16 @@ public static class MediaValidator
         if (!File.Exists(path) || new FileInfo(path).Length == 0) throw new IOException("ไม่พบไฟล์ที่ดาวน์โหลด หรือไฟล์ว่าง");
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
         deadline.CancelAfter(TimeSpan.FromSeconds(20));
-        var info = new ProcessStartInfo(Path.Combine(tools, "ffprobe.exe")) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        var info = new ProcessStartInfo(Path.Combine(tools, "ffprobe.exe")) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
+            StandardOutputEncoding = System.Text.Encoding.UTF8, StandardErrorEncoding = System.Text.Encoding.UTF8 };
         foreach (var argument in new[] { "-v", "error", "-show_entries", "format=duration:stream=codec_type", "-of", "json", "-i", path }) info.ArgumentList.Add(argument);
         using var process = Process.Start(info) ?? throw new IOException("เปิดตัวตรวจสอบไฟล์ไม่ได้");
         using var registration = deadline.Token.Register(() => { try { process.Kill(true); } catch (InvalidOperationException) { } });
         var output = process.StandardOutput.ReadToEndAsync(deadline.Token);
         var errors = process.StandardError.ReadToEndAsync(deadline.Token);
-        await Task.WhenAll(output, errors, process.WaitForExitAsync(deadline.Token));
+        try { await Task.WhenAll(output, errors, process.WaitForExitAsync(deadline.Token)); }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        { throw new IOException("มีไฟล์แล้ว แต่ตรวจสอบไม่ทันเวลาที่กำหนด กรุณาตรวจไฟล์ในโฟลเดอร์ปลายทาง"); }
         if (process.ExitCode != 0 || !IsPlayable(output.Result, audioOnly))
             throw new IOException("ดาวน์โหลดแล้วแต่ตรวจสอบการเล่นไม่ผ่าน ไฟล์อาจไม่สมบูรณ์");
     }

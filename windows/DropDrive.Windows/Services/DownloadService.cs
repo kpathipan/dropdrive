@@ -19,12 +19,14 @@ public sealed class DownloadService
     {
         // Never recreate a missing user-selected destination (e.g. an unplugged drive).
         TransferGuard.EnsureSpace(destination, item.IsMedia ? null : item.EstimatedBytes);
+        item.CompletionWarning = "";
         item.Status = "Downloading"; item.CanCancel = true; item.CanRetry = false;
         if ((item.IsDrive || item.IsPhotoCollection) && item.IsCollection) await DownloadDriveFolderAsync(item, destination, cancellationToken);
         else if (item.IsDrive || item.DirectTransfer || IsDirectFile(item.Url)) await DownloadDirectAsync(item, destination, cancellationToken);
         else await DownloadMediaAsync(item, destination, cancellationToken);
         item.Progress = 100; item.Status = "Complete"; item.CanCancel = false;
-        item.Detail = item.AudioOnly ? "บันทึกเป็น MP3 แล้ว" : "บันทึกในโฟลเดอร์ปลายทางแล้ว";
+        if (string.IsNullOrEmpty(item.CompletionWarning))
+            item.Detail = item.AudioOnly ? "บันทึกเป็น MP3 แล้ว" : "บันทึกในโฟลเดอร์ปลายทางแล้ว";
     }
 
     private async Task DownloadDirectAsync(DownloadItem item, string destination, CancellationToken cancellationToken)
@@ -265,7 +267,9 @@ public sealed class DownloadService
         var toolsPath = Path.Combine(AppContext.BaseDirectory, "Tools");
         var tool = Path.Combine(toolsPath, "yt-dlp.exe");
         if (!File.Exists(tool)) throw new FileNotFoundException("ไม่พบตัวดาวน์โหลด กรุณาติดตั้ง DropDrive ใหม่");
-        var startInfo = new ProcessStartInfo(tool) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+        item.OutputPaths.Clear(); item.ResultPath = null;
+        var startInfo = new ProcessStartInfo(tool) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true,
+            StandardOutputEncoding = System.Text.Encoding.UTF8, StandardErrorEncoding = System.Text.Encoding.UTF8 };
         var arguments = MediaOptions.Arguments(item, destination, toolsPath);
         string? infoPath = null;
         if (TikTokMediaService.IsTikTok(item.Url) && !item.IsCollection)
@@ -296,24 +300,18 @@ public sealed class DownloadService
             while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
             {
                 if (isError) { errors.Enqueue(line.Length <= 2000 ? line : line[..2000]); if (errors.Count > 8) errors.Dequeue(); }
-                Dispatcher.UIThread.Post(() => ParseProgress(item, line));
+                if (!isError) Dispatcher.UIThread.Post(() => ParseProgress(item, line));
             }
         }
         await Task.WhenAll(ReadLines(process.StandardOutput, false), ReadLines(process.StandardError, true), process.WaitForExitAsync(cancellationToken));
         // Drain callbacks before declaring completion so queued progress cannot
         // make a completed card appear to be downloading again.
         await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
-        if (process.ExitCode != 0)
-        {
-            var detail = string.Join('\n', errors);
-            DiagnosticSink?.Invoke(detail);
-            if (IsTransientMediaError(detail)) throw new HttpRequestException(FriendlyError(detail));
-            throw new InvalidOperationException(FriendlyError(detail));
-        }
-        if (item.OutputPaths.Count == 0) throw new IOException("ตัวดาวน์โหลดไม่ส่งไฟล์ผลลัพธ์กลับมา กรุณาลองใหม่");
-        foreach (var path in item.OutputPaths)
-            await MediaValidator.ValidateAsync(path, item.AudioOnly, toolsPath, cancellationToken);
-        FinalizeMediaNames(item, destination);
+        var detail = string.Join('\n', errors);
+        if (process.ExitCode != 0) DiagnosticSink?.Invoke(detail);
+        await DownloadCompletion.VerifyMediaAsync(item, process.ExitCode, detail,
+            (path, token) => MediaValidator.ValidateAsync(path, item.AudioOnly || item.Quality == 5, toolsPath, token), cancellationToken);
+        DownloadCompletion.Optional(item, Locale.Choose("จัดชื่อไฟล์ไม่สำเร็จ ใช้ชื่อเดิมได้", "Could not tidy filenames; original names retained"), () => FinalizeMediaNames(item, destination));
         item.ReceivedBytes = item.OutputPaths.Where(File.Exists).Sum(path => new FileInfo(path).Length);
         if (item.IsCollection) item.ResultPath = destination;
         }
@@ -333,7 +331,12 @@ public sealed class DownloadService
             var name = Path.GetFileName(path);
             if (name.EndsWith(".part", StringComparison.Ordinal) || name.EndsWith(".ytdl", StringComparison.Ordinal) || name.Contains(".part-Frag", StringComparison.Ordinal)) continue;
             var renamed = UniquePath(destination, name.Replace(marker, ".", StringComparison.Ordinal));
-            File.Move(path, renamed);
+            try { File.Move(path, renamed); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                DownloadCompletion.Warn(item, Locale.Choose("จัดชื่อไฟล์ไม่สำเร็จ ใช้ชื่อเดิมได้", "Could not tidy filenames; original names retained"));
+                continue;
+            }
             for (var index = 0; index < item.OutputPaths.Count; index++)
                 if (item.OutputPaths[index] == path) item.OutputPaths[index] = renamed;
             if (item.ResultPath == path) item.ResultPath = renamed;

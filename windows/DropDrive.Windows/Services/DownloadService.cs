@@ -300,7 +300,10 @@ public sealed class DownloadService
             while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
             {
                 if (isError) { errors.Enqueue(line.Length <= 2000 ? line : line[..2000]); if (errors.Count > 8) errors.Dequeue(); }
-                if (!isError) Dispatcher.UIThread.Post(() => ParseProgress(item, line));
+                // yt-dlp may send progress to stderr. Only final output paths
+                // must come from the explicit stdout after_move marker.
+                if (!isError || !line.StartsWith("DDPATH:", StringComparison.Ordinal))
+                    Dispatcher.UIThread.Post(() => ParseProgress(item, line));
             }
         }
         await Task.WhenAll(ReadLines(process.StandardOutput, false), ReadLines(process.StandardError, true), process.WaitForExitAsync(cancellationToken));

@@ -195,8 +195,8 @@ jobs:
               check(hash(fs.readFileSync('prepared/'+f.name)) === f.sha256, 'Artifact checksum mismatch');
               expected.set(f.name,f.sha256);
             }
-            const required = ['DropDrive-v'+version+'.dmg','com.dropdrive.windows-'+version+'-full.nupkg','com.dropdrive.windows-win-Setup.exe','com.dropdrive.windows-win-Portable.zip','releases.win.json','RELEASES'];
-            check(expected.size === required.length && required.every(n => expected.has(n)), 'Incomplete paired package');
+            const required = ['DropDrive-v'+version+'.dmg','com.dropdrive.windows-'+version+'-full.nupkg','com.dropdrive.windows-win-Setup.exe','com.dropdrive.windows-win-Portable.zip','releases.win.json','assets.win.json','RELEASES'];
+            check(expected.size === required.length && required.every(n => expected.has(n)), 'Unexpected paired package: '+[...expected.keys()].join(', '));
             check(assets.every(a => expected.has(a.name) || a.name === 'mac-build.json'), 'Unexpected draft asset');
             const dmg = assets.find(a => a.name === mac.files[0].name);
             check(dmg && dmg.state === 'uploaded' && dmg.digest === 'sha256:'+mac.files[0].sha256, 'Uploaded Mac DMG hash mismatch');

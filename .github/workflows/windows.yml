@@ -15,6 +15,10 @@ on:
         description: Publish the owner-approved Windows-only 6.25.3 hotfix after checks
         type: boolean
         default: false
+      publish_prepared_pair:
+        description: Publish the owner-approved prepared 6.25.4 pair with disclosed provider limitations
+        type: boolean
+        default: false
   push:
     tags:
       - windows-v*
@@ -24,7 +28,7 @@ permissions:
 
 jobs:
   build:
-    if: ${{ inputs.verify_published_update != true }}
+    if: ${{ inputs.verify_published_update != true && inputs.publish_prepared_pair != true }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -137,6 +141,86 @@ jobs:
         run: |
           if ($env:EXPECTED_VERSION -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid version' }
           ./windows/test-auto-update.ps1 -ExpectedVersion $env:EXPECTED_VERSION -SourceVersion $env:SOURCE_VERSION
+  publish-prepared-pair:
+    if: ${{ inputs.publish_prepared_pair == true && inputs.verify_published_update != true && inputs.version == '6.25.4' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: DropDrive-Windows-6.25.4
+          path: prepared
+          run-id: 39176279685
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: DropDrive-Provider-Checks-6.25.4
+          path: provider
+          run-id: 39176279685
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            // Scoped maintenance release requested by the owner, not a full live
+            // parity certification. Keep provider failures in the public notes.
+            const fs = require('fs'), crypto = require('crypto'), path = require('path');
+            const owner = context.repo.owner, repo = context.repo.repo;
+            const commit = 'a10871cc882c673ee62ddf3de444f9e415d98cf1';
+            const version = '6.25.4', tag = 'v'+version;
+            const check = (ok, why) => { if (!ok) throw new Error(why); };
+            const hash = data => crypto.createHash('sha256').update(data).digest('hex');
+            const sourceRun = (await github.rest.actions.getWorkflowRun({owner,repo,run_id:39176279685})).data;
+            check(sourceRun.head_sha === commit && sourceRun.conclusion === 'success' && sourceRun.path === '.github/workflows/windows.yml', 'Source build mismatch');
+            const contractHash = hash(fs.readFileSync('packaging/parity-contract.json'));
+            const releases = await github.paginate(github.rest.repos.listReleases,{owner,repo,per_page:100});
+            const release = releases.find(r => r.tag_name === tag);
+            check(release && release.draft && !release.prerelease && release.target_commitish === commit, 'Expected pinned unpublished draft');
+            let assets = await github.paginate(github.rest.repos.listReleaseAssets,{owner,repo,release_id:release.id,per_page:100});
+            const macReceiptAsset = assets.find(a => a.name === 'mac-build.json');
+            check(macReceiptAsset, 'Missing Mac build receipt');
+            const macReceiptResponse = await github.rest.repos.getReleaseAsset({owner,repo,asset_id:macReceiptAsset.id,headers:{accept:'application/octet-stream'}});
+            const mac = JSON.parse(Buffer.from(macReceiptResponse.data).toString('utf8'));
+            const win = JSON.parse(fs.readFileSync('prepared/windows-build.json','utf8'));
+            for (const [r,platform,checks] of [[mac,'mac',['regressions','performance','keychain','offline-engine','media-fixtures','signed-build']], [win,'windows',['core-ui','native-shell','packaged-startup','installed-upgrade']]]) {
+              check(r.schema === 1 && r.platform === platform && r.version === version && r.commit === commit && r.contract_sha256 === contractHash, 'Receipt identity mismatch: '+platform);
+              for (const c of checks) check(r.checks.includes(c), 'Missing check: '+c);
+            }
+            check(mac.files.length === 1 && mac.files[0].name === 'DropDrive-v'+version+'.dmg', 'Invalid Mac receipt');
+            const expected = new Map([[mac.files[0].name,mac.files[0].sha256]]);
+            for (const f of win.files) {
+              check(f.name === path.basename(f.name) && !f.name.includes('\\') && !expected.has(f.name), 'Unsafe/duplicate asset');
+              check(hash(fs.readFileSync('prepared/'+f.name)) === f.sha256, 'Artifact checksum mismatch');
+              expected.set(f.name,f.sha256);
+            }
+            const required = ['DropDrive-v'+version+'.dmg','com.dropdrive.windows-'+version+'-full.nupkg','com.dropdrive.windows-win-Setup.exe','com.dropdrive.windows-win-Portable.zip','releases.win.json','RELEASES'];
+            check(expected.size === required.length && required.every(n => expected.has(n)), 'Incomplete paired package');
+            check(assets.every(a => expected.has(a.name) || a.name === 'mac-build.json'), 'Unexpected draft asset');
+            const dmg = assets.find(a => a.name === mac.files[0].name);
+            check(dmg && dmg.state === 'uploaded' && dmg.digest === 'sha256:'+mac.files[0].sha256, 'Uploaded Mac DMG hash mismatch');
+            const feed = JSON.parse(fs.readFileSync('prepared/releases.win.json','utf8'));
+            check(feed.Assets.length > 0, 'Empty feed');
+            for (const a of feed.Assets) {
+              check(a.Version === version && a.PackageId === 'com.dropdrive.windows' && a.Type === 'Full' && expected.has(a.FileName), 'Invalid feed');
+              const data = fs.readFileSync('prepared/'+a.FileName);
+              check(data.length === a.Size && crypto.createHash('sha1').update(data).digest('hex') === a.SHA1.toLowerCase(), 'Feed size/SHA1 mismatch');
+              if (a.SHA256) check(hash(data) === a.SHA256.toLowerCase(), 'Feed SHA256 mismatch');
+            }
+            const notes = fs.readFileSync('packaging/release-notes-6.25.4.md','utf8') + '\n\nSource: '+commit+'\nsha256: '+mac.files[0].sha256+'\n\n## Windows live provider probes (UNAVAILABLE is not a pass)\n\n```text\n'+fs.readFileSync('provider/provider-checks.txt','utf8').trim()+'\n```\n';
+            for (const f of win.files) {
+              const present = assets.find(a => a.name === f.name);
+              if (present) { check(present.digest === 'sha256:'+f.sha256, 'Existing asset differs'); continue; }
+              const data = fs.readFileSync('prepared/'+f.name);
+              await github.rest.repos.uploadReleaseAsset({owner,repo,release_id:release.id,name:f.name,data,headers:{'content-type':'application/octet-stream','content-length':data.length}});
+            }
+            assets = await github.paginate(github.rest.repos.listReleaseAssets,{owner,repo,release_id:release.id,per_page:100});
+            check(assets.length === expected.size+1 && assets.every(a => a.name === 'mac-build.json' || (a.state === 'uploaded' && a.digest === 'sha256:'+expected.get(a.name))), 'Remote paired asset set/hash mismatch');
+            // Retain the build receipt for audit. Both platform packages become
+            // discoverable together only after every remote hash is verified.
+            await github.rest.repos.updateRelease({owner,repo,release_id:release.id,draft:false,make_latest:'true',body:notes});
+            core.info('PASS same-source Mac + Windows maintenance release published; provider limitations disclosed');
   publish-windows-hotfix:
     needs: build
     if: ${{ inputs.publish_windows_hotfix == true && inputs.version == '6.25.3' }}

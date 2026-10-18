@@ -60,11 +60,17 @@
                     <Grid><Path Stretch="Uniform" Fill="Transparent" StrokeThickness="1.7" Data="{StaticResource DownloadIcon}" Width="24" Height="24" Stroke="{DynamicResource AccentColor}"/><Image Name="ReviewThumbnail" Stretch="UniformToFill"/></Grid>
                   </Border>
                   <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
-                    <TextBox Name="ReviewName" Classes="name" AutomationProperties.Name="{DynamicResource L6EC1B80B53C0}"/>
+                    <TextBox Name="ReviewName" Classes="name" TextChanged="ReviewNameChanged" AutomationProperties.Name="{DynamicResource L6EC1B80B53C0}"/>
                     <TextBlock Name="ReviewDetail" FontSize="10" Classes="muted" TextWrapping="Wrap"/>
                   </StackPanel>
                 </Grid>
                 <TextBlock Name="DuplicateNotice" IsVisible="False" Text="{DynamicResource LD4D4CDFA686A}" Classes="muted" FontSize="11" TextWrapping="Wrap"/>
+                <Button Name="RevealDuplicateButton" IsVisible="False" Classes="link" Content="{DynamicResource L80722856939E}" Click="RevealDuplicate"/>
+                <TextBlock Name="DuplicateLocationUnavailable" IsVisible="False" Classes="muted" FontSize="11" TextWrapping="Wrap"/>
+                <StackPanel Name="CollisionNotice" IsVisible="False" Spacing="4">
+                  <TextBlock Name="CollisionLabel" Classes="muted" FontSize="11" TextWrapping="Wrap"/>
+                  <Button Name="RevealCollisionButton" Classes="link" Content="{DynamicResource L80722856939E}" Click="RevealDuplicate"/>
+                </StackPanel>
                 <Border Height="1" Background="{DynamicResource BorderColor}"/>
                 <Grid ColumnDefinitions="Auto,16,*,Auto" ColumnSpacing="7">
                   <TextBlock Text="{DynamicResource LAD10FF493AF1}" FontSize="11" FontWeight="SemiBold" Classes="muted" VerticalAlignment="Center"/>

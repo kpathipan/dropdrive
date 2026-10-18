@@ -66,6 +66,8 @@ public static class Locale
         ["ลิงก์นี้อยู่ในคิวแล้ว"] = "This link is already queued", ["เลือกอย่างน้อย 1 ไฟล์"] = "Select at least one file",
         ["วางลิงก์เว็บที่ถูกต้องก่อน"] = "Paste a valid web link first", ["คัดลอกลิงก์แล้ว"] = "Link copied",
         ["ไม่พบไฟล์ อาจถูกย้ายหรือลบแล้ว"] = "File not found. It may have been moved or deleted.",
+        ["ไม่พบตำแหน่งไฟล์เดิม — ไฟล์อาจถูกย้าย ลบ หรือไดรฟ์ไม่ได้เชื่อมต่อ"] = "Original location unavailable — the file may have moved, been deleted, or the drive may be disconnected.",
+        ["มีไฟล์หรือโฟลเดอร์ชื่อนี้อยู่แล้ว แอปจะไม่เขียนทับไฟล์เดิม"] = "A file or folder with this name already exists. Your original files will not be overwritten.",
         ["พื้นที่ว่างไม่เพียงพอสำหรับการดาวน์โหลดนี้"] = "Not enough free space for this download.",
         ["ไม่พบโฟลเดอร์ปลายทาง เชื่อมต่อไดรฟ์หรือเลือกโฟลเดอร์ใหม่"] = "Destination unavailable. Reconnect the drive or choose another folder.",
         ["การเชื่อมต่อขาดหายหรือไฟล์ไม่พร้อม กดลองใหม่"] = "Connection lost or file unavailable. Please retry.",

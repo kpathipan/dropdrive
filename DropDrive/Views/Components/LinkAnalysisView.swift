@@ -320,6 +320,37 @@ struct BatchReviewView: View {
     }
 }
 
+private struct RevealExistingDownloadButton: View {
+    let url: URL
+    @State private var locationUnavailable = false
+
+    var body: some View {
+        Button {
+            // Recheck at click time: an external drive may have disappeared
+            // since the review card was rendered. Never reveal a guessed path.
+            guard let existing = DuplicateDownloadLocation.existingURL(url) else {
+                locationUnavailable = true
+                return
+            }
+            NSWorkspace.shared.activateFileViewerSelecting([existing])
+        } label: {
+            Label(tr("Show in Finder", "แสดงใน Finder"), systemImage: "folder")
+                .font(.dd(11, .semibold))
+                .foregroundStyle(DDTheme.accent)
+        }
+        .buttonStyle(.plain)
+        .help(url.path)
+        .alert(tr("Original location unavailable", "ไม่พบตำแหน่งไฟล์เดิม"), isPresented: $locationUnavailable) {
+            Button(tr("OK", "ตกลง"), role: .cancel) { }
+        } message: {
+            Text(tr(
+                "The file may have been moved or deleted, or its drive may be disconnected. Your download selection hasn't changed.",
+                "ไฟล์อาจถูกย้าย ลบ หรือไดรฟ์ไม่ได้เชื่อมต่อ รายการที่เลือกดาวน์โหลดยังเหมือนเดิม"
+            ))
+        }
+    }
+}
+
 /// Shown when analysis succeeds: the item's details plus an explicit Download
 /// confirm, so the destination can still be changed before anything is queued.
 ///
@@ -332,6 +363,7 @@ struct AnalyzedPromptView: View {
     let analysis: DriveLinkAnalysis
     let accessAccount: GoogleAccount?
     let isDuplicate: Bool
+    let existingDownloadURL: URL?
     let destinationURL: URL?
     let startsImmediately: Bool
     let preflight: (DriveLinkAnalysis) -> DestinationPreflight
@@ -392,6 +424,18 @@ struct AnalyzedPromptView: View {
                                 )
                                 .font(.dd(12))
                                 .foregroundStyle(.secondary)
+                                if let existingDownloadURL {
+                                    RevealExistingDownloadButton(url: existingDownloadURL)
+                                        .padding(.top, 5)
+                                } else {
+                                    Text(tr(
+                                        "Original location unavailable — the file may have moved or the drive may be disconnected.",
+                                        "ไม่พบตำแหน่งไฟล์เดิม — ไฟล์อาจถูกย้าย ลบ หรือไดรฟ์ไม่ได้เชื่อมต่อ"
+                                    ))
+                                    .font(.dd(11))
+                                    .foregroundStyle(.secondary)
+                                    .padding(.top, 5)
+                                }
                             }
                         } icon: {
                             Image(systemName: "arrow.clockwise.circle.fill")
@@ -821,11 +865,14 @@ struct AnalyzedPromptView: View {
             if preflight.hasNameCollision {
                 Label(tr("A matching name exists — DropDrive will keep both files.", "พบชื่อซ้ำ — DropDrive จะเก็บทั้งสองไฟล์"), systemImage: "doc.on.doc")
                     .foregroundStyle(.orange)
+                if let url = preflight.existingItemURL {
+                    RevealExistingDownloadButton(url: url)
+                }
             }
         }
         .font(.dd(11))
         .foregroundStyle(.secondary)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
     }
 
     @ViewBuilder

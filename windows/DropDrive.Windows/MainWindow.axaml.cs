@@ -403,6 +403,7 @@ public partial class MainWindow : Window
 
     private void UpdateDestinationLabels()
     {
+        RefreshDuplicateLocations();
         DestinationLabel.Text = FolderName(_settings.Destination);
         ToolTip.SetTip(DestinationLabel, _settings.Destination);
         SettingsDestinationLabel.Text = _settings.Destination;
@@ -485,7 +486,38 @@ public partial class MainWindow : Window
     private void OpenResult(object? sender, RoutedEventArgs e) => LaunchPath(ResultPath(sender));
     private void RevealResult(object? sender, RoutedEventArgs e)
     {
-        var path = ResultPath(sender);
+        RevealPath(ResultPath(sender));
+    }
+    private void RevealDuplicate(object? sender, RoutedEventArgs e)
+    {
+        var path = sender is Button { Tag: string recordedPath } ? DuplicateDownloadLocation.ExistingPath(recordedPath) : null;
+        if (path == null)
+        {
+            SetStatus("ไม่พบตำแหน่งไฟล์เดิม — ไฟล์อาจถูกย้าย ลบ หรือไดรฟ์ไม่ได้เชื่อมต่อ");
+            RefreshDuplicateLocations();
+            return;
+        }
+        RevealPath(path);
+    }
+    private void ReviewNameChanged(object? sender, TextChangedEventArgs e) => RefreshDuplicateLocations();
+    private void RefreshDuplicateLocations()
+    {
+        if (_review is not { } item || RevealDuplicateButton == null) return;
+        var history = _stateService.LoadHistory();
+        var path = DuplicateDownloadLocation.CompletedPath(item.Url, _downloads, history);
+        RevealDuplicateButton.Tag = path;
+        RevealDuplicateButton.IsVisible = path != null;
+        ToolTip.SetTip(RevealDuplicateButton, path);
+        DuplicateLocationUnavailable.IsVisible = DuplicateNotice.IsVisible && path == null;
+        DuplicateLocationUnavailable.Text = Locale.Text("ไม่พบตำแหน่งไฟล์เดิม — ไฟล์อาจถูกย้าย ลบ หรือไดรฟ์ไม่ได้เชื่อมต่อ");
+        var collision = DuplicateDownloadLocation.CollisionPath(item, item.Destination ?? _settings.Destination, ReviewName.Text ?? item.Name);
+        CollisionNotice.IsVisible = collision != null && collision != path;
+        CollisionLabel.Text = Locale.Text("มีไฟล์หรือโฟลเดอร์ชื่อนี้อยู่แล้ว แอปจะไม่เขียนทับไฟล์เดิม");
+        RevealCollisionButton.Tag = collision;
+        ToolTip.SetTip(RevealCollisionButton, collision);
+    }
+    private void RevealPath(string? path)
+    {
         if (path != null && Directory.Exists(path)) { LaunchPath(path); return; }
         if (path == null || !File.Exists(path)) { SetStatus("ไม่พบไฟล์ อาจถูกย้ายหรือลบแล้ว"); return; }
         try

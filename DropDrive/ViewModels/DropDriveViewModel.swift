@@ -15,8 +15,10 @@ struct QueueSummary {
 struct DestinationPreflight: Equatable {
     let capacity: DestinationCapacity.State
     let requiredBytes: Int64?
-    let hasNameCollision: Bool
+    let existingItemURL: URL?
     let canQueue: Bool
+
+    var hasNameCollision: Bool { existingItemURL != nil }
 
     var spaceDescription: String {
         switch capacity {
@@ -271,14 +273,20 @@ final class DropDriveViewModel {
         guard let destination = selectedDestinationURL else {
             return DestinationPreflight(
                 capacity: capacity, requiredBytes: analysis.isVideo == true ? nil : analysis.totalBytes,
-                hasNameCollision: false, canQueue: canQueue)
+                existingItemURL: nil, canQueue: canQueue)
         }
         let candidate = destination.appendingPathComponent(analysis.name, isDirectory: analysis.type == .folder)
         return DestinationPreflight(
             capacity: capacity,
             requiredBytes: analysis.isVideo == true ? nil : analysis.totalBytes,
-            hasNameCollision: FileManager.default.fileExists(atPath: candidate.path),
+            existingItemURL: DuplicateDownloadLocation.existingURL(candidate),
             canQueue: canQueue
+        )
+    }
+
+    func existingDownloadURL(for itemID: String) -> URL? {
+        DuplicateDownloadLocation.completedURL(
+            itemID: itemID, queue: queue, history: DownloadHistoryStore.shared.items
         )
     }
 

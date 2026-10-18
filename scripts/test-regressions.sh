@@ -18,6 +18,8 @@ xcrun swiftc -O \
   DropDrive/Models/DownloadProgress.swift \
   DropDrive/Models/DriveLinkAnalysis.swift \
   DropDrive/Models/QueueItem.swift \
+  DropDrive/Models/DownloadHistoryItem.swift \
+  DropDrive/Utilities/DuplicateDownloadLocation.swift \
   DropDrive/Services/QueueStore.swift \
   DropDrive/Services/AppLanguage.swift \
   DropDrive/Utilities/UniqueDestinationNaming.swift \

@@ -272,5 +272,35 @@ check("corrupt checkpoint recovers last good queue", checkpoint.load()?.first?.i
 try checkpoint.save(JSONEncoder().encode([QueueItem]()))
 check("explicit empty queue does not resurrect backup", checkpoint.load()?.isEmpty == true)
 
+// Duplicate prompts reveal the actual output, not today's destination or a
+// reconstructed title. All fixtures live in an isolated temporary directory.
+let revealRoot = FileManager.default.temporaryDirectory.appendingPathComponent("duplicate-location-\(UUID())")
+try FileManager.default.createDirectory(at: revealRoot, withIntermediateDirectories: true)
+defer { try? FileManager.default.removeItem(at: revealRoot) }
+let originalOutput = revealRoot.appendingPathComponent("ชื่อไฟล์เดิม 🎬 (1).mp4")
+try Data("fixture".utf8).write(to: originalOutput)
+let missingOutput = revealRoot.appendingPathComponent("moved.mp4")
+let oldLink = "https://www.instagram.com/reel/same-post/?utm_source=old"
+let oldIdentity = LinkIdentity.videoItemID(for: "https://www.instagram.com/reels/same-post/")
+func historyFixture(_ url: URL?, status: DownloadHistoryItem.Status = .completed, link: String = oldLink) -> DownloadHistoryItem {
+    DownloadHistoryItem(name: "Original", date: .now, status: status, itemURL: url, driveLink: link)
+}
+check("duplicate reveal handles Unicode renamed output", DuplicateDownloadLocation.completedURL(itemID: oldIdentity, queue: [], history: [historyFixture(originalOutput)]) == originalOutput)
+check("duplicate reveal skips missing newest copy", DuplicateDownloadLocation.completedURL(itemID: oldIdentity, queue: [], history: [historyFixture(missingOutput), historyFixture(originalOutput)]) == originalOutput)
+check("duplicate reveal ignores failed and cancelled records", DuplicateDownloadLocation.completedURL(itemID: oldIdentity, queue: [], history: [historyFixture(originalOutput, status: .failed), historyFixture(originalOutput, status: .cancelled)]) == nil)
+check("duplicate reveal never picks another link with same name", DuplicateDownloadLocation.completedURL(itemID: "video:instagram:another-post", queue: [], history: [historyFixture(originalOutput)]) == nil)
+check("duplicate reveal unavailable for trimmed history", DuplicateDownloadLocation.completedURL(itemID: oldIdentity, queue: [], history: []) == nil)
+check("duplicate reveal rejects remote paths", DuplicateDownloadLocation.existingURL(URL(string: "https://example.com/video.mp4")) == nil)
+check("local collision can reveal a folder", DuplicateDownloadLocation.existingURL(revealRoot) == revealRoot)
+check("Drive duplicate resolves stored folder", DuplicateDownloadLocation.completedURL(itemID: "drive-id", queue: [], history: [historyFixture(revealRoot, link: "https://drive.google.com/drive/folders/drive-id")]) == revealRoot)
+var completedCopy = queueItem
+completedCopy.status = .completed
+completedCopy.resultURL = originalOutput
+check("completed queue output is revealable", DuplicateDownloadLocation.completedURL(itemID: completedCopy.itemID, queue: [completedCopy], history: []) == originalOutput)
+completedCopy.status = .downloading
+check("incomplete queue output is not mistaken for completed file", DuplicateDownloadLocation.completedURL(itemID: completedCopy.itemID, queue: [completedCopy], history: []) == nil)
+try FileManager.default.removeItem(at: originalOutput)
+check("removed output is rejected on click-time recheck", DuplicateDownloadLocation.existingURL(originalOutput) == nil)
+
 if failures > 0 { exit(1) }
 print("ALL PASS")

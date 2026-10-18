@@ -39,7 +39,7 @@ public partial class MainWindow
         QualityChoice.ItemsSource = MediaOptions.Qualities.Select(Locale.Text).ToArray(); QualityChoice.SelectedIndex = quality;
         SubtitleChoice.ItemsSource = MediaOptions.Subtitles.Select(Locale.Text).ToArray(); SubtitleChoice.SelectedIndex = subtitle;
         foreach (var item in _downloads) { item.Notify(nameof(DownloadItem.DisplayStatus)); item.Notify(nameof(DownloadItem.Detail)); }
-        UpdateQueueSummary(); UpdateSelection(); RenderFiles(); RefreshHistory(); PersistSettings();
+        UpdateQueueSummary(); UpdateSelection(); RenderFiles(); RefreshHistory(); RefreshDuplicateLocations(); PersistSettings();
     }
     private void SaveParitySettings()
     {

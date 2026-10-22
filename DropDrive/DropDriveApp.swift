@@ -21,6 +21,7 @@ final class DropDriveAppDelegate: NSObject, NSApplicationDelegate {
         // Quit menu). Driven manually via NSStatusItem rather than SwiftUI's
         // MenuBarExtra so right-click can show its own menu.
         statusController = StatusItemController()
+        AutomationBridge.shared.start()
         // Start network work only after AppKit has finished launching. Running
         // the first check from the SwiftUI App initializer could fail before
         // the agent had a usable application lifecycle, then remain invisible

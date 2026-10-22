@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "releaseVersion": "6.25.4",
+  "releaseVersion": "6.25.5",
   "reference": "Mac 6.24.4 and later jointly approved changes",
   "automaticUpdateHours": 24,
   "features": [
@@ -17,6 +17,7 @@
   ],
   "intentionalDifferences": [
     "Mac menubar/popover versus Windows compact window/tray",
-    "OS-native folder picker, notifications, credential protection and default viewer"
+    "OS-native folder picker, notifications, credential protection and default viewer",
+    "Opt-in local MCP command channel is currently macOS-only; Windows MCP parity is not claimed"
   ]
 }

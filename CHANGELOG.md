@@ -5,6 +5,20 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.25.5] - 2026-10-22
+
+### Added
+- Mac opt-in local command channel and stdio MCP adapter for link analysis,
+  explicitly named downloads/destinations, progress, errors and file verification.
+- Durable request IDs prevent retrying the same command from downloading twice;
+  saved queues require the user's restore decision and removed jobs report cancellation.
+- Google credentials stay in DropDrive; private same-user IPC exposes no network port.
+
+### Scope
+- Windows receives the matching release version and existing functionality, not
+  the new Mac-only MCP channel. Existing provider/parity limitations remain disclosed.
+- Updating DropDrive alone does not enable MCP or install it into another application.
+
 ## [6.25.2] - Cancellation and queue recovery
 
 ### Fixed

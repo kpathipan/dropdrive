@@ -16,6 +16,7 @@ xcrun swiftc -O \
   DropDriveShare/ShareLinkExtractor.swift \
   DropDrive/Models/ExternalLinkReceipt.swift \
   DropDrive/Models/DownloadProgress.swift \
+  DropDrive/Models/AutomationCommand.swift \
   DropDrive/Models/DriveLinkAnalysis.swift \
   DropDrive/Models/QueueItem.swift \
   DropDrive/Models/DownloadHistoryItem.swift \

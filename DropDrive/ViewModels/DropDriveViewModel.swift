@@ -507,6 +507,62 @@ final class DropDriveViewModel {
         )
     }
 
+    /// Automation has explicit per-job options and never edits the user's form,
+    /// global destination, Google accounts, or paused/recovery queue decisions.
+    func performAutomation(_ command: AutomationCommand) async throws -> AutomationJob {
+        try command.validate()
+        guard let link = command.url else { throw AutomationFailure("invalid_link", "Missing source link.") }
+        let work = await Self.analyzeBatchLink(link, downloadService: downloadService, videoDownloadService: videoDownloadService)
+        let analysis: DriveLinkAnalysis
+        switch work.result {
+        case .ready(let value): analysis = value
+        case .needsConnection: throw AutomationFailure("authentication_required", "Sign in through DropDrive; MCP never receives your Google credentials.")
+        case .noAccountAccess: throw AutomationFailure("access_denied", "None of DropDrive's signed-in accounts can access this item.")
+        case .unsupported: throw AutomationFailure("unsupported_link", "DropDrive cannot analyze this link.")
+        case .videoUnavailable: throw AutomationFailure("source_unavailable", "The video could not be read from its source.")
+        case .failed(let failure): throw AutomationFailure("analysis_failed", Self.friendlyMessage(for: failure))
+        }
+        var job = AutomationJob(command: command, state: "analyzed", name: analysis.name,
+                                fileCount: analysis.fileCount ?? 1, totalBytes: analysis.totalBytes, isVideo: analysis.isVideo == true)
+        guard command.action == "download" else { return job }
+        try command.validate() // Destination may have disconnected during analysis.
+        guard queue.filter({ $0.status != .completed }).count < 100 else {
+            throw AutomationFailure("queue_full", "Download queue is full.")
+        }
+        if command.asAudio == true && analysis.isVideo != true {
+            throw AutomationFailure("invalid_format", "MP3 is only available for supported video links.")
+        }
+        if (queue + (pendingRestoreQueue ?? [])).contains(where: { $0.itemID == analysis.itemID && $0.status != .completed && $0.status != .cancelled }) {
+            job.state = "duplicate"; job.errorCode = "duplicate_active"
+            job.message = "This source is already in the queue. No second download was created."
+            return job
+        }
+        if command.allowDuplicate != true && DownloadHistoryStore.shared.hasCompleted(itemID: analysis.itemID) {
+            job.state = "duplicate"; job.errorCode = "duplicate_completed"
+            job.outputPath = existingDownloadURL(for: analysis.itemID)?.path
+            job.message = "Previously downloaded. Inspect the original or explicitly allow a separate copy."
+            return job
+        }
+        let destination = URL(fileURLWithPath: command.destination!, isDirectory: true)
+        let required = analysis.isVideo == true ? Self.unknownSizeFloorBytes : analysis.totalBytes.map(Self.requiredCapacity) ?? Self.unknownSizeFloorBytes
+        if case .available(let free) = DestinationCapacity.inspect(destination), free < required {
+            throw AutomationFailure("insufficient_space", "Destination has insufficient free space.")
+        }
+        let item = QueueItem(id: command.id, driveLink: link, analysis: analysis,
+                             destinationURL: destination, asAudio: command.asAudio,
+                             customName: command.name, videoQuality: command.asAudio == true ? .mp3 : nil)
+        queue.append(item)
+        persistQueue()
+        job.state = "queued"; job.name = item.displayName
+        return job
+    }
+
+    func startAutomationQueue() {
+        guard !isQueuePaused, !isSigningIn, pendingRestoreQueue == nil,
+              !queue.contains(where: { $0.status == .paused }) else { return }
+        processQueueIfNeeded()
+    }
+
     func chooseDestinationFolder() {
         Task {
             isChoosingDestination = true
@@ -1574,6 +1630,7 @@ final class DropDriveViewModel {
         // Removing an unfinished item is a cancellation from the user's point of
         // view: whatever it already wrote to disk goes with it.
         if let item = queue.first(where: { $0.id == id }), item.status != .completed {
+            AutomationBridge.shared.userRemoved(id)
             removePartialArtifacts(of: item)
         }
         queue.removeAll { $0.id == id }
@@ -1648,6 +1705,7 @@ final class DropDriveViewModel {
         // prompt. Preserve those pending records until the user decides.
         let liveIDs = Set(queue.map(\.id))
         QueueStore.save(queue + (pendingRestoreQueue ?? []).filter { !liveIDs.contains($0.id) })
+        for item in queue { AutomationBridge.shared.update(item) }
     }
 
     private func checkForSavedQueue() {
@@ -1717,6 +1775,7 @@ final class DropDriveViewModel {
     }
 
     func discardSavedQueue() {
+        for item in pendingRestoreQueue ?? [] { AutomationBridge.shared.userRemoved(item.id) }
         pendingRestoreQueue = nil
         persistQueue()
     }

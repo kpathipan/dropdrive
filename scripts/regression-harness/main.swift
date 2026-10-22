@@ -302,5 +302,29 @@ check("incomplete queue output is not mistaken for completed file", DuplicateDow
 try FileManager.default.removeItem(at: originalOutput)
 check("removed output is rejected on click-time recheck", DuplicateDownloadLocation.existingURL(originalOutput) == nil)
 
+let automationRoot = FileManager.default.temporaryDirectory.appendingPathComponent("dd-command-\(UUID().uuidString)")
+try FileManager.default.createDirectory(at: automationRoot, withIntermediateDirectories: false)
+defer { try? FileManager.default.removeItem(at: automationRoot) }
+func validCommand(_ command: AutomationCommand) -> Bool { do { try command.validate(); return true } catch { return false } }
+let commandID = UUID()
+let command = AutomationCommand(id: commandID, action: "download", url: "https://drive.google.com/file/d/public/view", name: "ทดสอบ MCP", destination: automationRoot.path)
+check("automation accepts explicit destination and Unicode name", validCommand(command))
+var unsafeCommand = command; unsafeCommand.name = "../outside"
+check("automation rejects name traversal", !validCommand(unsafeCommand))
+unsafeCommand = command; unsafeCommand.url = "https://drive.google.com.evil.test/file/d/id"
+check("automation rejects lookalike domains", !validCommand(unsafeCommand))
+unsafeCommand = command; unsafeCommand.url = "file:///tmp/private"
+check("automation rejects file URLs", !validCommand(unsafeCommand))
+unsafeCommand = command; unsafeCommand.url = "https://name:secret@drive.google.com/file/d/id"
+check("automation rejects credentials in links", !validCommand(unsafeCommand))
+unsafeCommand = command; unsafeCommand.destination = automationRoot.appendingPathComponent("missing").path
+check("automation rejects missing destination without creating it", !validCommand(unsafeCommand) && !FileManager.default.fileExists(atPath: unsafeCommand.destination!))
+unsafeCommand = command; unsafeCommand.protocolVersion = 2
+check("automation rejects unknown protocol version", !validCommand(unsafeCommand))
+check("automation requires status job ID", !validCommand(AutomationCommand(id: UUID(), action: "status")))
+let job = AutomationJob(command: command, state: "completed", fileCount: 1, outputPath: automationRoot.path)
+let restoredJob = try JSONDecoder().decode(AutomationJob.self, from: JSONEncoder().encode(job))
+check("automation journal preserves identity and result", restoredJob == job)
+
 if failures > 0 { exit(1) }
 print("ALL PASS")

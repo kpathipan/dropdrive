@@ -20,7 +20,10 @@ async function finish(jobID) {
   throw new Error('Job did not finish within integration-test deadline; files and queue are left untouched.');
 }
 try {
-  const listed = await client.listTools(); assert.equal(listed.tools.length, 5);
+  const listed = await client.listTools();
+  for (const name of ['dropdrive_health', 'dropdrive_analyze', 'dropdrive_download', 'dropdrive_status', 'dropdrive_verify', 'dropdrive_upload']) {
+    assert.ok(listed.tools.some(tool => tool.name === name));
+  }
   assert.equal((await call('dropdrive_health')).ok, true);
   const analysis = await call('dropdrive_analyze', { url: source, request_id: randomUUID() });
   assert.equal(analysis.ok, true);

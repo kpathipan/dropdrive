@@ -52,6 +52,7 @@ final class DropDriveViewModel {
     /// The menu-bar UI, Services, Share extension, and deep links all feed the
     /// same live queue/progress state rather than independent download engines.
     static let shared = DropDriveViewModel()
+    var uploads: UploadCoordinator { UploadCoordinator.shared }
 
     private static let assumedDownloadRateBytesPerSecond: Double = 5_000_000 // conservative ~5 MB/s estimate for the ETA shown before starting
     private static let batchAnalysisConcurrency = 4
@@ -174,6 +175,7 @@ final class DropDriveViewModel {
     }
 
     var isQueueProcessing: Bool { activeQueueItemID != nil }
+    var isTransferInProgress: Bool { isQueueProcessing || uploads.hasActiveJobs }
 
     /// The confirm card can speak in the action the user will actually see.
     /// Completed/failed history rows do not make a queue; ready, paused,
@@ -1066,8 +1068,6 @@ final class DropDriveViewModel {
 
     /// Breathing room on top of the download itself, so a download can never take
     /// the volume to its last byte (macOS gets unhappy well before zero).
-    private static let maximumDiskSpaceHeadroomBytes: Int64 = 2 * 1024 * 1024 * 1024
-    private static let minimumDiskSpaceHeadroomBytes: Int64 = 64 * 1024 * 1024
     /// Required free space when the download's size is unknown — video links are
     /// confirmed from oEmbed data, which carries no size at all, and those used
     /// to skip the check entirely.
@@ -1076,11 +1076,7 @@ final class DropDriveViewModel {
     /// Small downloads should not require an unrelated 2 GB of free space.
     /// Reserve 10% with sensible 64 MB–2 GB bounds instead.
     private static func requiredCapacity(for bytes: Int64) -> Int64 {
-        let headroom = min(
-            Self.maximumDiskSpaceHeadroomBytes,
-            max(Self.minimumDiskSpaceHeadroomBytes, bytes / 10)
-        )
-        return bytes + headroom
+        DownloadSpaceBudget.required(forRemainingBytes: bytes)
     }
 
     private func cachedDestinationCapacity() -> DestinationCapacity.State {
@@ -1142,6 +1138,9 @@ final class DropDriveViewModel {
         }
 
         let next = queue.first(where: { $0.status == .ready })
+        // The service will budget a folder after resolving its owned resume
+        // root and pending files; the full analyzed size includes completed work.
+        if next?.analysis.type == .folder { return free < Self.unknownSizeFloorBytes ? Self.videoRecoveryMessage(.space) : nil }
         let known = next?.analysis.isVideo == true ? 0 : (next?.analysis.totalBytes ?? 0)
         let freeText = Formatters.byteCount(free)
 
@@ -1189,10 +1188,8 @@ final class DropDriveViewModel {
             processQueueIfNeeded()
             return
         }
-        let required =
-            item.analysis.isVideo == true
-            ? Self.unknownSizeFloorBytes
-            : item.analysis.totalBytes.map(Self.requiredCapacity) ?? Self.unknownSizeFloorBytes
+        let required = DownloadSpaceBudget.beforePlanning(totalBytes: item.analysis.totalBytes,
+            isFolder: item.analysis.type == .folder, isVideo: item.analysis.isVideo == true)
         if case .available(let free) = DestinationCapacity.inspect(destinationURL), free < required {
             queue[index].status = .failed
             queue[index].attentionKind = .space
@@ -1618,6 +1615,7 @@ final class DropDriveViewModel {
         queue[index].attentionKind = nil
         queue[index].retryCount = nil
         queue[index].nextRetryAt = nil
+        autoRetryAttempts[id] = nil
         clearAttention(for: id)
         persistQueue()
         processQueueIfNeeded()
@@ -1727,9 +1725,18 @@ final class DropDriveViewModel {
     func promptForSavedQueueIfNeeded() {
         guard let saved = pendingRestoreQueue, !saved.isEmpty, !hasAskedAboutRestore else { return }
         hasAskedAboutRestore = true
+        // SwiftUI's initial .task may run inside a view transaction. AppKit
+        // suppresses runModal there and returns an abort response immediately.
+        // Present on the next main-loop turn, outside that transaction.
+        DispatchQueue.main.async { [weak self] in
+            self?.presentSavedQueuePrompt()
+        }
+    }
 
+    private func presentSavedQueuePrompt() {
+        guard let saved = pendingRestoreQueue, !saved.isEmpty else { return }
         let count = saved.count
-        let restore = SystemAlert.confirm(
+        guard let restore = SystemAlert.confirmChoice(
             title: tr("Restore previous queue?", "กู้คืนคิวจากครั้งก่อน?"),
             message: tr(
                 "You have \(count) item\(count == 1 ? "" : "s") from your last session.",
@@ -1737,7 +1744,11 @@ final class DropDriveViewModel {
             ),
             confirmTitle: tr("Restore", "กู้คืน"),
             cancelTitle: tr("Discard", "ทิ้งไป")
-        )
+        ) else {
+            // A failed presentation is never consent to discard downloads.
+            hasAskedAboutRestore = false
+            return
+        }
         if restore { restoreSavedQueue() } else { discardSavedQueue() }
     }
 

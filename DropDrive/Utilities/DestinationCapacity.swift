@@ -40,3 +40,22 @@ nonisolated enum DestinationCapacity {
         return .available(best)
     }
 }
+
+/// A resumed folder only needs room for its pending files. Its actual plan is
+/// owned by the download service, so the view model must defer the full budget
+/// until that service has separated completed files from pending work.
+nonisolated enum DownloadSpaceBudget {
+    static let reserveBytes: Int64 = 64 * 1024 * 1024
+
+    static func required(forRemainingBytes bytes: Int64) -> Int64 {
+        let bytes = max(0, bytes)
+        let headroom = min(Int64(2 * 1024 * 1024 * 1024), max(reserveBytes, bytes / 10))
+        let result = bytes.addingReportingOverflow(headroom)
+        return result.overflow ? Int64.max : result.partialValue
+    }
+
+    static func beforePlanning(totalBytes: Int64?, isFolder: Bool, isVideo: Bool) -> Int64 {
+        if isFolder || isVideo { return reserveBytes }
+        return totalBytes.map(required(forRemainingBytes:)) ?? reserveBytes
+    }
+}

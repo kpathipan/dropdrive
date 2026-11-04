@@ -27,6 +27,7 @@ final class LoginManager: LoginManaging {
     static let shared = LoginManager()
 
     static let driveReadonlyScope = "https://www.googleapis.com/auth/drive.readonly"
+    static let driveFileScope = "https://www.googleapis.com/auth/drive.file"
 
     private enum StorageKey {
         /// Pre-multi-account display metadata, retained only for migration.
@@ -69,7 +70,7 @@ final class LoginManager: LoginManaging {
             let accountID = accounts[index].userID
             guard let session = loadSession(for: accountID),
                   session.authState.isAuthorized,
-                  Self.grantedScopes(of: session).contains(Self.driveReadonlyScope),
+                  Self.hasDriveScope(session),
                   let token = try? await accessToken(for: session, accountID: accountID) else {
                 reconnectIDs.insert(accountID)
                 continue
@@ -177,6 +178,56 @@ final class LoginManager: LoginManaging {
         let available = await cachedAccessTokens(preferredAccountID: accountID)
         guard let token = available.tokens.first else { throw LoginManagerError.notSignedIn }
         return token
+    }
+
+    /// Explicit, one-time incremental consent from the app UI. Uploads never
+    /// initiate browser authentication or silently choose a different account.
+    func authorizeUploads(accountID: String?) async throws -> GoogleAccountSnapshot {
+        guard let clientID = configuredClientID, let redirect = Self.redirectURL(clientID: clientID),
+              let window = NSApplication.shared.keyWindow ?? NSApplication.shared.windows.first else {
+            throw LoginManagerError.missingPresentingWindow
+        }
+        var parameters = ["include_granted_scopes": "true", "prompt": "consent"]
+        if let account = loadStoredAccounts().first(where: { $0.userID == accountID }) {
+            parameters["login_hint"] = account.email
+        } else { parameters["prompt"] = "select_account consent" }
+        let request = OIDAuthorizationRequest(configuration: Self.googleConfiguration, clientId: clientID,
+            clientSecret: nil, scopes: [OIDScopeOpenID, OIDScopeProfile, OIDScopeEmail, Self.driveFileScope],
+            redirectURL: redirect, responseType: OIDResponseTypeCode, additionalParameters: parameters)
+        let session = AuthSession(authState: try await presentAuthorization(request: request, window: window))
+        guard Self.grantedScopes(of: session).contains(Self.driveFileScope) else {
+            throw AutomationFailure("upload_permission_required", "Google did not grant drive.file. Enable upload permission in DropDrive.")
+        }
+        let fallback = Self.accountFromIDToken(in: session)
+        let token = try await accessToken(for: session, accountID: fallback.userID, persistSession: false)
+        let account = (try? await Self.fetchProfile(accessToken: token)) ?? fallback
+        guard account.userID != Self.unknownAccountID, accountID == nil || accountID == account.userID else {
+            throw AutomationFailure("account_mismatch", "Google returned a different account. Choose the intended upload account and try again.")
+        }
+        try storeSession(session, accountID: account.userID)
+        var accounts = loadStoredAccounts(); Self.upsert(account, in: &accounts); saveAccounts(accounts)
+        if loadDefaultAccountID() == nil { saveDefaultAccountID(account.userID) }
+        return currentSnapshot()
+    }
+
+    func uploadAccountID(preferred: String?) throws -> String {
+        migrateLegacySessionIfPresent()
+        let accounts = loadStoredAccounts()
+        guard let id = preferred ?? loadDefaultAccountID() ?? accounts.first?.userID,
+              accounts.contains(where: { $0.userID == id }) else {
+            throw AutomationFailure("authentication_required", "Connect a Google account and enable uploads in DropDrive once.")
+        }
+        return id
+    }
+
+    func uploadAccessToken(accountID: String, forceRefresh: Bool = false) async throws -> GoogleAccessToken {
+        guard let session = loadSession(for: accountID), session.authState.isAuthorized,
+              Self.grantedScopes(of: session).contains(Self.driveFileScope) else {
+            throw AutomationFailure("upload_permission_required", "Enable uploads for this Google account in DropDrive once (drive.file).")
+        }
+        if forceRefresh { session.authState.setNeedsTokenRefresh() }
+        do { return GoogleAccessToken(accountID: accountID, token: try await accessToken(for: session, accountID: accountID)) }
+        catch { throw AutomationFailure("authentication_required", "Reconnect this Google account in DropDrive. No upload was sent with another account.") }
     }
 
     /// Refreshes the access token if needed and persists a rotated refresh token
@@ -291,6 +342,11 @@ final class LoginManager: LoginManaging {
         return scope?.components(separatedBy: " ") ?? []
     }
 
+    private static func hasDriveScope(_ session: AuthSession) -> Bool {
+        let scopes = grantedScopes(of: session)
+        return scopes.contains(driveReadonlyScope) || scopes.contains(driveFileScope)
+    }
+
     private static func fetchProfile(accessToken: String) async throws -> GoogleAccount {
         struct UserInfo: Decodable {
             let sub: String
@@ -338,7 +394,7 @@ final class LoginManager: LoginManaging {
         let accounts = loadStoredAccounts()
         let reconnectIDs = Set(accounts.compactMap { account -> String? in
             guard let session = loadSession(for: account.userID), session.authState.isAuthorized,
-                  Self.grantedScopes(of: session).contains(Self.driveReadonlyScope) else {
+                  Self.hasDriveScope(session) else {
                 return account.userID
             }
             return nil

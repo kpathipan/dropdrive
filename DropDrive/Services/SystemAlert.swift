@@ -20,6 +20,19 @@ enum SystemAlert {
         cancelTitle: String,
         destructive: Bool = false
     ) -> Bool {
+        confirmChoice(title: title, message: message, confirmTitle: confirmTitle,
+            cancelTitle: cancelTitle, destructive: destructive) == true
+    }
+
+    /// Nil means the panel was suppressed/aborted, not an explicit cancel.
+    /// Recovery flows must preserve their records in that case.
+    static func confirmChoice(
+        title: String,
+        message: String,
+        confirmTitle: String,
+        cancelTitle: String,
+        destructive: Bool = false
+    ) -> Bool? {
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = message
@@ -29,7 +42,15 @@ enum SystemAlert {
             confirm.hasDestructiveAction = true
         }
         NSApp.activate(ignoringOtherApps: true)
-        return alert.runModal() == .alertFirstButtonReturn
+        return confirmationChoice(for: alert.runModal())
+    }
+
+    nonisolated static func confirmationChoice(for response: NSApplication.ModalResponse) -> Bool? {
+        switch response {
+        case .alertFirstButtonReturn: true
+        case .alertSecondButtonReturn: false
+        default: nil
+        }
     }
 
     static func inform(title: String, message: String, confirmTitle: String, secondaryTitle: String? = nil) -> Bool {

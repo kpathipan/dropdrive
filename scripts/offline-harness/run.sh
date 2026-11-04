@@ -22,6 +22,7 @@ xcrun swiftc -O -swift-version 5 -default-isolation MainActor \
   DropDrive/Utilities/FileCategoryClassifier.swift \
   DropDrive/Utilities/UniqueDestinationNaming.swift \
   DropDrive/Utilities/Formatters.swift \
+  DropDrive/Utilities/DestinationCapacity.swift \
   DropDrive/Services/ResumeEnvelopeStore.swift \
   scripts/offline-harness/Stubs.swift \
   scripts/offline-harness/main.swift \

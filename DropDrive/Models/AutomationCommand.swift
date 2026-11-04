@@ -10,13 +10,29 @@ nonisolated struct AutomationCommand: Codable, Equatable, Sendable {
     var asAudio: Bool?
     var allowDuplicate: Bool?
     var jobID: UUID?
+    var sourcePath: String?
+    var driveFolder: String?
+    var accountID: String?
+    var pageToken: String?
 
     func validate() throws {
         guard protocolVersion == 1 else { throw AutomationFailure("unsupported_version", "Expected protocol version 1.") }
-        guard ["ping", "analyze", "download", "status"].contains(action) else {
+        guard ["ping", "analyze", "download", "status", "upload", "upload_cancel", "upload_retry", "upload_verify", "upload_folders", "upload_create_folder"].contains(action) else {
             throw AutomationFailure("unsupported_action", "Unsupported command.")
         }
         if action == "status", jobID == nil { throw AutomationFailure("invalid_request", "jobID is required.") }
+        if action.hasPrefix("upload") {
+            if ["upload_cancel", "upload_retry", "upload_verify"].contains(action), jobID == nil {
+                throw AutomationFailure("invalid_request", "jobID is required.")
+            }
+            if let name { try UploadInput.validateName(name) }
+            if let driveFolder { _ = try UploadInput.folderID(driveFolder) }
+            if action == "upload" {
+                guard let sourcePath, sourcePath.hasPrefix("/"), !sourcePath.contains("\0"), sourcePath.utf8.count <= 16_384,
+                      driveFolder != nil else { throw AutomationFailure("invalid_request", "Upload requires an absolute sourcePath and a Drive folder ID/link.") }
+            }
+            return
+        }
         guard action == "analyze" || action == "download" else { return }
         guard let url, url.count <= 8192, let parsed = URLComponents(string: url),
               parsed.scheme == "https", parsed.user == nil, parsed.password == nil,
@@ -63,6 +79,7 @@ nonisolated struct AutomationJob: Codable, Equatable, Sendable {
     var outputPath: String?
     var errorCode: String?
     var message: String?
+    var upload: UploadStatus?
     var updatedAt: Date = .now
     var terminal: Bool { ["analyzed", "completed", "failed", "cancelled", "duplicate", "interrupted"].contains(state) }
 }
@@ -78,4 +95,7 @@ nonisolated struct AutomationReply: Codable, Sendable {
     var completedFiles: Int?
     var bytesPerSecond: Double?
     var percentage: Int?
+    var folder: UploadFolder?
+    var folders: [UploadFolder]?
+    var nextPageToken: String?
 }

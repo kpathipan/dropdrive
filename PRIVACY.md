@@ -9,8 +9,10 @@ current application rather than a generic policy template.
 DropDrive connects only when needed for features you use:
 
 - **Google Drive and Google Sign-In** — reads metadata and file contents for
-  Drive links. The app requests the read-only Drive scope and cannot modify,
-  delete, or upload files in your Drive.
+  Drive links. Download sign-in uses the read-only Drive scope. Mac uploads
+  explicitly add `drive.file` when enabled by the user, allowing creation of
+  selected files/folders without requesting full-Drive write access. Files are
+  sent directly to Google; uploads do not change sharing or silently overwrite.
 - **TikTok, YouTube, Facebook, and Instagram** — reads public metadata,
   thumbnails, and media for links you submit. Media travels directly from the
   platform or its content-delivery network to your chosen folder.
@@ -38,6 +40,12 @@ DropDrive stores only what is needed to keep the app useful between launches:
   copy of downloaded media.
 - Small temporary resume, analysis, thumbnail, and tool-cache data. Completed
   or abandoned temporary data is removed automatically.
+- Private upload checkpoints containing the original request, source identity,
+  generated Drive file ID, accepted bytes and resumable session URL. These use
+  app-private 0700/0600 storage outside the Automation IPC spool. Session URLs
+  and Google tokens never appear in MCP results or logs. Checkpoints persist
+  across cancellation/restart to prevent duplicate cloud files and are not
+  automatically deleted on timeout. UI-picked sources retain local bookmarks.
 
 ## Your controls
 
@@ -49,6 +57,9 @@ DropDrive stores only what is needed to keep the app useful between launches:
 
 ## App Sandbox
 
-DropDrive runs inside the macOS App Sandbox. It can write to folders selected
-through the system picker and to its own sandbox/iCloud inbox; it does not have
-unrestricted filesystem access.
+Sandboxed development configurations are limited to user-selected resources.
+The existing stable-certificate DMG signing route runs the main app outside the
+App Sandbox for file-based Keychain continuity; the Share extension remains
+sandboxed. macOS file permissions and privacy controls still apply. MCP uploads
+accept an explicitly supplied absolute regular-file path readable by that app;
+they do not restrict sources to a particular working folder or follow symlinks.

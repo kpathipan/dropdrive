@@ -17,11 +17,13 @@ xcrun swiftc -O \
   DropDrive/Models/ExternalLinkReceipt.swift \
   DropDrive/Models/DownloadProgress.swift \
   DropDrive/Models/AutomationCommand.swift \
+  DropDrive/Models/UploadJob.swift \
   DropDrive/Models/DriveLinkAnalysis.swift \
   DropDrive/Models/QueueItem.swift \
   DropDrive/Models/DownloadHistoryItem.swift \
   DropDrive/Utilities/DuplicateDownloadLocation.swift \
   DropDrive/Services/QueueStore.swift \
+  DropDrive/Services/SystemAlert.swift \
   DropDrive/Services/AppLanguage.swift \
   DropDrive/Utilities/UniqueDestinationNaming.swift \
   DropDrive/Utilities/SecurityScopedAccessManager.swift \

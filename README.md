@@ -8,6 +8,11 @@ Full parity is not yet certified; the contract lists the remaining checks.
 
 ## Features
 
+- **Mac uploads** — choose/drop local files, review a Drive destination, upload
+  with resumable progress, explicit conflict handling, retry/cancel and remote
+  size/MD5 verification. The optional [local MCP](mcp/README.md) uses the same
+  upload engine. See [OAuth/destination setup and test scope](docs/uploads-macos.md).
+
 - **Smart Link Analysis** — paste a Drive link and see what it is (file or folder, size, file count, owner, public/private) before downloading anything, including items behind a Drive "shortcut" or a `resourcekey`-protected link
 - **Visual folder review** — switch between Gallery and List at three sizes, see Google Drive thumbnails for photos/videos and native icons for other files, use checkboxes or Select New to choose what you need, and press Space to preview
 - **Video and media downloads** — paste a TikTok / YouTube / Facebook / Instagram link, choose quality or MP3, subtitles, chapters, cover art, or a trimmed section, and review playlist/carousel items before downloading; TikTok photo posts keep their ordered images and soundtrack

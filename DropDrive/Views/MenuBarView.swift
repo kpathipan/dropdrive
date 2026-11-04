@@ -8,11 +8,12 @@ struct MenuBarView: View {
     enum Pane: String, CaseIterable, Identifiable {
         case queue
         case recent
+        case uploads
         case settings
 
         /// Persistent bottom navigation. Settings stays a header action so the
         /// three everyday download destinations remain visually dominant.
-        static let primaryCases: [Pane] = [.queue, .recent]
+        static let primaryCases: [Pane] = [.queue, .uploads, .recent]
 
         var id: String { rawValue }
 
@@ -20,6 +21,7 @@ struct MenuBarView: View {
             switch self {
             case .queue: "arrow.down.circle"
             case .recent: "clock.arrow.circlepath"
+            case .uploads: "arrow.up.circle"
             case .settings: "gearshape"
             }
         }
@@ -28,6 +30,7 @@ struct MenuBarView: View {
             switch self {
             case .queue: tr("Queue", "คิวดาวน์โหลด")
             case .recent: tr("Recent", "ล่าสุด")
+            case .uploads: tr("Uploads", "อัปโหลด")
             case .settings: tr("Settings", "การตั้งค่า")
             }
         }
@@ -80,6 +83,8 @@ struct MenuBarView: View {
             return Self.clampedWindowHeight(queueMeasuredHeight + Self.chromeAllowance)
         case .recent:
             return Self.clampedWindowHeight(recentMeasuredHeight + Self.chromeAllowance)
+        case .uploads:
+            return Self.maxWindowHeight
         case .settings:
             return 500
         }
@@ -153,7 +158,7 @@ struct MenuBarView: View {
                 }
             case .recent:
                 withAnimation(Self.springMotion) { recentMeasuredHeight = height }
-            case .settings:
+            case .uploads, .settings:
                 break
             }
         }
@@ -186,6 +191,10 @@ struct MenuBarView: View {
         .onReceive(NotificationCenter.default.publisher(for: .dropDriveShowQueue)) { _ in
             previousPrimaryPane = .queue
             selectedPane = .queue
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .dropDriveShowUploads)) { _ in
+            previousPrimaryPane = .uploads
+            selectedPane = .uploads
         }
         .onReceive(NotificationCenter.default.publisher(for: .dropDriveShowAttention)) { _ in
             previousPrimaryPane = selectedPane == .settings ? previousPrimaryPane : selectedPane
@@ -377,6 +386,8 @@ struct MenuBarView: View {
             queuePane.transition(.opacity)
         case .recent:
             recentPane.transition(.opacity)
+        case .uploads:
+            UploadView().transition(.opacity)
         case .settings:
             settingsPane.transition(.opacity)
         }

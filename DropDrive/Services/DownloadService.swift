@@ -755,10 +755,13 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
 
     private let loginManager: LoginManaging
     private let urlSession: URLSession
+    private let destinationCapacity: @Sendable (URL) -> DestinationCapacity.State
 
-    init(loginManager: LoginManaging, urlSession: URLSession = .shared) {
+    init(loginManager: LoginManaging, urlSession: URLSession = .shared,
+         destinationCapacity: @escaping @Sendable (URL) -> DestinationCapacity.State = { DestinationCapacity.inspect($0) }) {
         self.loginManager = loginManager
         self.urlSession = urlSession
+        self.destinationCapacity = destinationCapacity
     }
 
     // MARK: - Link analysis
@@ -1133,6 +1136,15 @@ nonisolated struct GoogleDriveDownloadService: DownloadServicing {
             } else {
                 pending.append(item)
             }
+        }
+
+        // The root/manifest above scopes reuse to this job. Do not subtract
+        // arbitrary similarly named folders, and do not charge completed bytes
+        // a second time: they already occupy the volume's reported used space.
+        let remainingBytes = max(0, totalBytes - completedBytes)
+        if !pending.isEmpty, case .available(let free) = destinationCapacity(rootFolderURL),
+           free < DownloadSpaceBudget.required(forRemainingBytes: remainingBytes) {
+            throw CocoaError(.fileWriteOutOfSpace)
         }
 
         let tracker = ProgressTracker(totalFiles: plan.count, totalBytes: totalBytes, completedFiles: completedFiles, bytesDownloaded: completedBytes)

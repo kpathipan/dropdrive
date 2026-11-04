@@ -13,6 +13,7 @@ final class AutomationBridge {
     private var jobs: [UUID: AutomationJob] = [:]
     private var operations: [UUID: Task<Void, Never>] = [:]
     private var started = false
+    private var processing: Set<UUID> = []
     private var inbox: URL { Self.directory.appendingPathComponent("requests") }
     private var replies: URL { Self.directory.appendingPathComponent("replies") }
     private var ledger: URL { Self.directory.appendingPathComponent("jobs") }
@@ -112,28 +113,54 @@ final class AutomationBridge {
         for path in paths.filter({ $0.pathExtension == "json" }).prefix(32) {
             guard let id = UUID(uuidString: path.deletingPathExtension().lastPathComponent),
                   path.lastPathComponent == id.uuidString + ".json" else { continue }
+            guard processing.insert(id).inserted else { continue }
+            Task { @MainActor in
+            defer { self.processing.remove(id) }
             do {
                 let command = try JSONDecoder().decode(AutomationCommand.self, from: secureRead(path))
                 guard command.id == id else { throw AutomationFailure("invalid_request", "Request filename and ID differ.") }
-                let reply = try receive(command)
+                let reply = try await receive(command)
                 try write(reply, to: replies.appendingPathComponent(id.uuidString + ".json"))
             } catch {
                 let failure = error as? AutomationFailure ?? AutomationFailure("invalid_request", "Could not process local command.")
-                if failure.code == "writing_request" { continue }
+                if failure.code == "writing_request" { return }
                 try? write(AutomationReply(id: id, ok: false, error: failure), to: replies.appendingPathComponent(id.uuidString + ".json"))
             }
             try? fm.removeItem(at: path)
+            }
         }
     }
 
-    private func receive(_ command: AutomationCommand) throws -> AutomationReply {
+    private func receive(_ command: AutomationCommand) async throws -> AutomationReply {
         try command.validate()
         let model = DropDriveViewModel.shared
         if command.action == "ping" {
             return AutomationReply(id: command.id, appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String, queuePaused: model.isQueuePaused)
         }
+        let uploads = model.uploads
+        if command.action == "upload" || command.action == "upload_create_folder" {
+            guard jobs[command.id] == nil else { throw AutomationFailure("id_conflict", "This ID already belongs to a download command.") }
+            return AutomationReply(id: command.id, job: try uploads.submit(command))
+        }
+        if command.action == "upload_cancel" {
+            return AutomationReply(id: command.id, job: try uploads.cancel(command.jobID!))
+        }
+        if command.action == "upload_retry" {
+            return AutomationReply(id: command.id, job: try uploads.retry(command.jobID!, newName: command.name))
+        }
+        if command.action == "upload_verify" {
+            return AutomationReply(id: command.id, job: try await uploads.verify(command.jobID!))
+        }
+        if command.action == "upload_folders" {
+            if let folder = command.driveFolder, command.pageToken == nil {
+                return AutomationReply(id: command.id, folder: try await uploads.resolveFolder(folder, accountID: command.accountID))
+            }
+            let page = try await uploads.listFolders(parent: nil, pageToken: command.pageToken, accountID: command.accountID)
+            return AutomationReply(id: command.id, folders: page.folders, nextPageToken: page.nextPageToken)
+        }
         if command.action == "status" {
             let id = command.jobID!
+            if let upload = uploads.job(id) { return AutomationReply(id: command.id, job: upload) }
             if let item = (model.queue + (model.pendingRestoreQueue ?? [])).first(where: { $0.id == id }) {
                 update(item, awaitingRestore: model.pendingRestoreQueue?.contains(where: { $0.id == id }) == true)
             }
@@ -143,6 +170,7 @@ final class AutomationBridge {
                                    bytesDownloaded: progress?.bytesDownloaded, completedFiles: progress?.completedFiles,
                                    bytesPerSecond: progress?.bytesPerSecond, percentage: progress?.activeDisplayPercentage)
         }
+        guard uploads.job(command.id) == nil else { throw AutomationFailure("id_conflict", "This ID already belongs to an upload command.") }
         if let existing = jobs[command.id] {
             guard existing.command == command else { throw AutomationFailure("id_conflict", "This request ID belongs to a different command.") }
             return AutomationReply(id: command.id, job: existing)

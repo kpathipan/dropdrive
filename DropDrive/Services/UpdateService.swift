@@ -313,10 +313,10 @@ final class UpdateService {
     func installUpdate() {
         guard case .available(let release) = state else { return }
 
-        if DropDriveViewModel.shared.isQueueProcessing {
+        if DropDriveViewModel.shared.isTransferInProgress {
             state = .failed(tr(
-                "Finish or pause the current download first, then update.",
-                "รอให้ดาวน์โหลดที่ค้างอยู่เสร็จ หรือกดหยุดก่อน แล้วค่อยอัปเดต"
+                "Finish or stop the current transfer first, then update.",
+                "รอให้ดาวน์โหลดหรืออัปโหลดเสร็จ หรือกดหยุดก่อน แล้วค่อยอัปเดต"
             ))
             return
         }
@@ -343,7 +343,7 @@ final class UpdateService {
                 // Re-checked here rather than only up front: the download takes
                 // long enough for the user to have started something in the
                 // meantime, and the swap is the moment that would kill it.
-                guard !DropDriveViewModel.shared.isQueueProcessing else {
+                guard !DropDriveViewModel.shared.isTransferInProgress else {
                     try? FileManager.default.removeItem(at: staged.deletingLastPathComponent())
                     throw UpdateError.queueBusy
                 }

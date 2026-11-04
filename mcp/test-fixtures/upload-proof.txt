@@ -1,0 +1,2 @@
+DropDrive macOS upload integration fixture.
+ทดสอบอัปโหลดผ่าน private IPC — no credentials or private user content.

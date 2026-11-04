@@ -1,5 +1,14 @@
 # Local verification — 2026-10-22
 
+Mac upload extension verified on 2026-10-26: see
+[upload setup and dated test evidence](../docs/uploads-macos.md). It adds six
+upload tools, a shared app/MCP resumable engine and an in-popover upload pane.
+Both build configurations and real uploads passed. The installed local app is
+now 6.25.5; no release or Windows files were changed by this feature work.
+New native chat tool discovery may require reopening Codex; upload tests used
+the actual stdio MCP SDK, and UI upload was verified separately. The record
+below is retained as historical download-only verification.
+
 Scope: macOS local build of 6.25.4 (51), with `DDLocalAutomationBuild=true`.
 Installed over `/Applications/DropDrive.app` only while its queue was empty.
 No tag, push, public release, Windows change or Google credential extraction.

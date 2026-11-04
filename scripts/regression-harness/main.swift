@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 var failures = 0
 func check(_ label: String, _ condition: @autoclosure () -> Bool) {
@@ -11,6 +12,20 @@ check("missing capacity is unknown", DestinationCapacity.normalized(important: n
 check("NAS zero capacity is unknown", DestinationCapacity.normalized(important: 0, ordinary: 0) == .unknown)
 check("ordinary capacity is a valid fallback", DestinationCapacity.normalized(important: 0, ordinary: 16_000_000) == .available(16_000_000))
 check("best positive capacity wins", DestinationCapacity.normalized(important: 32_000_000, ordinary: 16_000_000) == .available(32_000_000))
+
+let retryFree: Int64 = 119_066_853_376
+let retryTotal: Int64 = 142_512_088_094
+let retryRemaining: Int64 = 43_702_220_556
+check("resumed folder planning does not charge the whole 142 GB again", DownloadSpaceBudget.beforePlanning(totalBytes: retryTotal, isFolder: true, isVideo: false) <= retryFree)
+check("43 GB remaining fits the actual free space with reserve", DownloadSpaceBudget.required(forRemainingBytes: retryRemaining) <= retryFree)
+check("fresh 142 GB download still requires enough room", DownloadSpaceBudget.required(forRemainingBytes: retryTotal) > retryFree)
+check("known single-file start keeps the full-size gate", DownloadSpaceBudget.beforePlanning(totalBytes: retryTotal, isFolder: false, isVideo: false) > retryFree)
+check("space-budget arithmetic cannot overflow", DownloadSpaceBudget.required(forRemainingBytes: Int64.max) == Int64.max)
+
+check("restore requires an explicit Restore response", SystemAlert.confirmationChoice(for: .alertFirstButtonReturn) == true)
+check("discard requires an explicit Discard response", SystemAlert.confirmationChoice(for: .alertSecondButtonReturn) == false)
+check("suppressed restore alert preserves the pending queue", SystemAlert.confirmationChoice(for: .abort) == nil)
+check("closed restore alert preserves the pending queue", SystemAlert.confirmationChoice(for: .cancel) == nil)
 
 let nearlyFinished = DownloadProgress(bytesDownloaded: 995, totalBytes: 1_000)
 check("active progress never rounds up to 100 percent", nearlyFinished.activeDisplayPercentage == 99)

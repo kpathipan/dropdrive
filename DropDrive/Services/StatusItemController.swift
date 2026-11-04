@@ -73,6 +73,11 @@ final class StatusItemController: NSObject {
             dropTarget.onDrop = { [weak self] links in
                 self?.receiveDroppedLinks(links)
             }
+            dropTarget.onUploadDrop = { [weak self] files in
+                DropDriveViewModel.shared.uploads.selectFiles(files)
+                self?.showPopover()
+                NotificationCenter.default.post(name: .dropDriveShowUploads, object: nil)
+            }
             dropTarget.onDestinationDrop = { [weak self] folderURL in
                 DropDriveViewModel.shared.selectDestinationFolder(folderURL)
                 self?.showPopover()
@@ -200,15 +205,15 @@ final class StatusItemController: NSObject {
 
     @objc private func quit() {
         let viewModel = DropDriveViewModel.shared
-        guard viewModel.isQueueProcessing else {
+        guard viewModel.isTransferInProgress else {
             NSApp.terminate(nil)
             return
         }
 
         let alert = NSAlert()
-        alert.messageText = tr("A download is in progress. Quit anyway?", "กำลังดาวน์โหลดอยู่ ต้องการปิดแอพเลยไหม?")
-        alert.addButton(withTitle: tr("Quit and stop downloading", "ปิดและหยุดดาวน์โหลด"))
-        alert.addButton(withTitle: tr("Keep downloading", "ดาวน์โหลดต่อ"))
+        alert.messageText = tr("A transfer is in progress. Quit anyway?", "กำลังดาวน์โหลดหรืออัปโหลดอยู่ ต้องการปิดแอพเลยไหม?")
+        alert.addButton(withTitle: tr("Quit and stop transfers", "ปิดและหยุดรับส่งไฟล์"))
+        alert.addButton(withTitle: tr("Keep transferring", "รับส่งไฟล์ต่อ"))
         NSApp.activate(ignoringOtherApps: true)
         if alert.runModal() == .alertFirstButtonReturn {
             NSApp.terminate(nil)
@@ -418,6 +423,7 @@ private final class StatusItemDropTargetView: NSView {
     var onHighlight: ((Bool) -> Void)?
     var onDrop: (([String]) -> Void)?
     var onDestinationDrop: ((URL) -> Void)?
+    var onUploadDrop: (([URL]) -> Void)?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -447,7 +453,8 @@ private final class StatusItemDropTargetView: NSView {
     }
 
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        let acceptsDrop = Self.destinationFolder(from: sender.draggingPasteboard) != nil
+        let acceptsDrop = !UploadDropFiles.files(from: sender.draggingPasteboard).isEmpty
+            || Self.destinationFolder(from: sender.draggingPasteboard) != nil
             || !Self.links(from: sender.draggingPasteboard).isEmpty
         onHighlight?(acceptsDrop)
         return acceptsDrop ? .copy : []
@@ -459,6 +466,8 @@ private final class StatusItemDropTargetView: NSView {
 
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
         onHighlight?(false)
+        let files = UploadDropFiles.files(from: sender.draggingPasteboard)
+        if !files.isEmpty { onUploadDrop?(files); return true }
         if let folderURL = Self.destinationFolder(from: sender.draggingPasteboard) {
             onDestinationDrop?(folderURL)
             return true

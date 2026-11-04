@@ -435,12 +435,31 @@ let deleted = Array(descendants(of: folderURL, skipsHidden: true).filter { $0.pa
 for url in deleted { try FileManager.default.removeItem(at: url) }
 
 let mediaBefore = counter.count("media")
-let secondRoot = try await service.download(
+// Simulate a disk that fits only the missing files plus the normal reserve,
+// not another copy of the entire folder. Use the production planning engine.
+let tightFree = DownloadSpaceBudget.reserveBytes + Int64(deleted.count * fileSize)
+let tightService = GoogleDriveDownloadService(loginManager: StubLogin(), urlSession: session,
+    destinationCapacity: { _ in .available(tightFree) })
+pass("resume fixture cannot fit the whole folder again", tightFree < DownloadSpaceBudget.required(forRemainingBytes: expectedBytes))
+let secondRoot = try await tightService.download(
     DownloadRequest(driveLink: "x", itemID: "root", destinationURL: sandbox,
                     resourceKey: nil, resumeID: UUID())) { _ in }
 check("resumed into the same folder", secondRoot.path, folderURL.path)
 check("only the missing files re-downloaded", counter.count("media") - mediaBefore, deleted.count)
 pass("deleted files restored", deleted.allSatisfy { FileManager.default.fileExists(atPath: $0.path) })
+
+let freshDestination = sandbox.appendingPathComponent("tight-fresh", isDirectory: true)
+try FileManager.default.createDirectory(at: freshDestination, withIntermediateDirectories: true)
+let freshMediaBefore = counter.count("media")
+do {
+    _ = try await tightService.download(DownloadRequest(driveLink: "x", itemID: "root",
+        destinationURL: freshDestination, resourceKey: nil, resumeID: UUID())) { _ in }
+    pass("fresh folder rejects insufficient capacity", false)
+} catch {
+    pass("fresh folder rejects insufficient capacity", (error as NSError).domain == NSCocoaErrorDomain &&
+        (error as NSError).code == CocoaError.fileWriteOutOfSpace.rawValue)
+}
+check("insufficient capacity starts no file transfers", counter.count("media") - freshMediaBefore, 0)
 
 // MARK: - 4. Multi-part ranged download of a large file
 

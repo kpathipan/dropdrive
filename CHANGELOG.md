@@ -5,6 +5,15 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- Mac Uploads tab: choose or drop local files, pick a Google Drive folder, and
+  upload with resumable progress, retry/cancel, explicit name-collision
+  handling, and remote size/MD5 verification. Uses only the `drive.file` scope,
+  requested once when uploads are enabled. Active uploads block self-update.
+- Local MCP upload tools backed by the same upload engine.
+
 ## [6.25.5] - 2026-10-22
 
 ### Added

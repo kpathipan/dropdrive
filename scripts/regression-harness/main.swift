@@ -124,6 +124,15 @@ check(
     "selecting the final file returns the compact all-files state",
     FolderSelectionSemantics.toggling(id: "two", selectedIDs: oneFileSelection, allIDs: folderIDs) == nil
 )
+let typeIDs: Set<String> = ["v1", "v2", "i1", "d1"]
+let videosOff = FolderSelectionSemantics.togglingGroup(ids: ["v1", "v2"], selectedIDs: nil, allIDs: typeIDs)
+check("unticking a fully selected type removes only that type", videosOff == ["i1", "d1"])
+let onlyImages = FolderSelectionSemantics.togglingGroup(ids: ["i1"], selectedIDs: [], allIDs: typeIDs)
+check("ticking a type from none selects just that type", onlyImages == ["i1"])
+let imagesAndVideos = FolderSelectionSemantics.togglingGroup(ids: ["v1", "v2"], selectedIDs: ["i1", "v1"], allIDs: typeIDs)
+check("ticking a partly selected type selects all of it, keeping other types", imagesAndVideos == ["i1", "v1", "v2"])
+check("ticking the last missing type returns the all-files state",
+      FolderSelectionSemantics.togglingGroup(ids: ["d1"], selectedIDs: imagesAndVideos, allIDs: typeIDs) == nil)
 
 let privateFolderAnalysis = DriveLinkAnalysis(
     itemID: "private-folder", name: "Private Folder", type: .folder, isPublic: false,

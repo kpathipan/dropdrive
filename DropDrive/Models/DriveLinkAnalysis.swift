@@ -249,6 +249,18 @@ nonisolated enum FolderSelectionSemantics {
         else if allIDs.contains(id) { selection.insert(id) }
         return selection == allIDs ? nil : selection
     }
+
+    /// File-type chip: a fully selected group is cleared, anything else selects the whole group.
+    static func togglingGroup(
+        ids group: Set<String>,
+        selectedIDs: Set<String>?,
+        allIDs: Set<String>
+    ) -> Set<String>? {
+        var selection = effectiveSelection(selectedIDs: selectedIDs, allIDs: allIDs)
+        let group = group.intersection(allIDs)
+        if group.isSubset(of: selection) { selection.subtract(group) } else { selection.formUnion(group) }
+        return selection == allIDs ? nil : selection
+    }
 }
 
 enum LinkAnalysisState: Equatable {

@@ -565,6 +565,30 @@ public partial class MainWindow : Window
         SelectAllCheck.IsChecked = count == 0 ? false : count == _review.Entries.Count ? true : null;
         SelectionCount.Text = Locale.Choose($"{count}/{_review.Entries.Count} ไฟล์", $"{count}/{_review.Entries.Count} files");
         ReviewDownloadButton.IsEnabled = !_review.IsCollection || count > 0;
+        RenderTypeFilters();
+    }
+    /// One three-state checkbox per file type present; each acts on the whole type, not just search results.
+    private void RenderTypeFilters()
+    {
+        var review = _review;
+        if (TypeFilters == null || review == null) return;
+        TypeFilters.Children.Clear();
+        var groups = review.Entries.GroupBy(entry => DestinationRules.EntryCategory(entry)).ToDictionary(group => group.Key, group => group.ToArray());
+        TypeFilters.IsVisible = groups.Count > 1;
+        if (groups.Count < 2) return;
+        foreach (var category in DestinationRules.CategoryOrder.Where(groups.ContainsKey))
+        {
+            var entries = groups[category]; var picked = entries.Count(entry => entry.Selected);
+            var label = DestinationRules.CategoryLabel(category);
+            var check = new CheckBox { Content = $"{char.ToUpper(label[0])}{label[1..]} {entries.Length}", FontSize = 11, IsThreeState = true, Margin = new Thickness(0, 0, 10, 0),
+                IsChecked = picked == entries.Length ? true : picked == 0 ? false : null };
+            check.Click += (_, _) => {
+                _selectingAll = true;
+                DestinationRules.ToggleCategory(review.Entries, category);
+                _selectingAll = false; UpdateSelection();
+            };
+            TypeFilters.Children.Add(check);
+        }
     }
     private void FileSearchChanged(object? sender, TextChangedEventArgs e) => RenderFiles();
     private void FileLayoutChanged(object? sender, SelectionChangedEventArgs e)

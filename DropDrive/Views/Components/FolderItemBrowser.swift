@@ -139,6 +139,7 @@ struct FolderItemBrowser: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             controls
+            if presentCategories.count > 1 { typeFilters }
             selectionSummary
             if diffSummary.hasHistory {
                 folderDiffSummary
@@ -231,6 +232,49 @@ struct FolderItemBrowser: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .frame(width: 94)
+        }
+    }
+
+    /// Only the types this folder actually contains, in a fixed order.
+    private var presentCategories: [DriveLinkAnalysis.FolderItem.Category] {
+        let present = Set(items.map(\.category))
+        return [.videos, .images, .documents, .archives, .other].filter(present.contains)
+    }
+
+    /// Multi-select type chips. Each acts on the whole type, not just search results.
+    private var typeFilters: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(presentCategories, id: \.self) { category in
+                    let ids = Set(items.filter { $0.category == category }.map(\.id))
+                    let picked = ids.intersection(effectiveSelectedIDs).count
+                    let state: SelectionState = picked == ids.count ? .all : picked == 0 ? .none : .some
+                    Button {
+                        selectedFileIDs = FolderSelectionSemantics.togglingGroup(ids: ids, selectedIDs: selectedFileIDs, allIDs: allItemIDs)
+                        browserFocused = true
+                    } label: {
+                        Label("\(categoryLabel(category)) \(ids.count)", systemImage: state.symbol)
+                            .font(.dd(10, .medium).monospacedDigit())
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .foregroundStyle(state == .none ? Color.secondary : DDTheme.accent)
+                            .background(state == .none ? DDTheme.card : DDTheme.accentSoft, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(categoryLabel(category))
+                    .accessibilityValue(state.accessibilityValue)
+                }
+            }
+        }
+    }
+
+    private func categoryLabel(_ category: DriveLinkAnalysis.FolderItem.Category) -> String {
+        switch category {
+        case .videos: tr("Videos", "วิดีโอ")
+        case .images: tr("Images", "รูปภาพ")
+        case .documents: tr("Documents", "เอกสาร")
+        case .archives: tr("Archives", "ไฟล์บีบอัด")
+        case .other: tr("Other", "ไฟล์อื่น")
         }
     }
 

@@ -77,6 +77,15 @@ try
     var photoItem = new DownloadItem { Url = "https://example.com/photo.jpg", Name = "photo.jpg", IsMedia = false };
     Expect(DestinationRules.Resolve(destinationSettings, photoItem) == "D:\\Photos", "category destination rule applies when there is no source rule");
     Expect(DestinationRules.Source("https://docs.google.com/document/d/abc/edit") == DestinationRules.Source("https://drive.google.com/file/d/abc/view"), "Drive and Docs share one destination rule");
+    Expect(DestinationRules.EntryCategory("notes.md", "document") == "documents" && DestinationRules.EntryCategory("a.tgz", "document") == "archives"
+        && DestinationRules.EntryCategory("song.mp3", "audio") == "other" && DestinationRules.EntryCategory("x.bin", "document", "text/plain") == "documents",
+        "file-type categories match the Mac classifier");
+    var typed = new List<MediaEntry> { new() { Title = "a.mp4", Kind = "video" }, new() { Title = "b.mp4", Kind = "video" }, new() { Title = "c.jpg", Kind = "image" } };
+    DestinationRules.ToggleCategory(typed, "videos");
+    Expect(!typed[0].Selected && !typed[1].Selected && typed[2].Selected, "unticking a fully selected type removes only that type");
+    typed[0].Selected = true;
+    DestinationRules.ToggleCategory(typed, "videos");
+    Expect(typed.All(entry => entry.Selected), "ticking a partly selected type selects all of it, keeping other types");
     state.SaveSettings(destinationSettings);
     Expect(state.LoadSettings().FavoriteDestinations.Single() == "D:\\Favorites" && state.LoadSettings().SourceDestinationRules.Count == 1, "favorites and explicit destination rules survive restart");
 

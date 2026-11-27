@@ -102,6 +102,7 @@
                       <CheckBox Name="SelectAllCheck" Content="{DynamicResource L8BBE465CBBA8}" IsChecked="True" IsThreeState="True" Click="SelectAllFiles" FontSize="11"/>
                       <TextBlock Grid.Column="1" Name="SelectionCount" FontSize="10" Classes="muted" VerticalAlignment="Center"/>
                     </Grid>
+                    <WrapPanel Name="TypeFilters" Orientation="Horizontal"/>
                     <Button Name="SelectNewButton" Classes="link" Content="{DynamicResource L95B334397F7E}" Click="SelectNewFiles"/>
                     <TextBlock Name="SnapshotNotice" Classes="muted" FontSize="10" TextWrapping="Wrap"/>
                     <Grid ColumnDefinitions="*,*" ColumnSpacing="8">

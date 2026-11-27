@@ -29,9 +29,7 @@ struct UploadView: View {
                     if let message = uploads.message {
                         Text(message).font(.caption).foregroundStyle(.orange).textSelection(.enabled)
                     }
-                    LazyVStack(alignment: .leading, spacing: 10) {
-                        ForEach(uploads.jobs, id: \.command.id) { job in jobRow(job) }
-                    }
+                    if !uploads.jobs.isEmpty { history }
                 }
             }
             .padding(14)
@@ -140,36 +138,107 @@ struct UploadView: View {
         }.padding(10).background(DDTheme.rail, in: RoundedRectangle(cornerRadius: 10))
     }
 
+    private var history: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(tr("Upload history", "ประวัติอัปโหลด")).font(.subheadline.weight(.medium))
+                Spacer()
+                Button(tr("Clear History", "ล้างประวัติ")) { uploads.clearHistory() }
+                    .buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
+                    .disabled(!uploads.hasClearableJobs)
+                    .help(tr("Removes finished, failed and cancelled uploads from this list. Files on Drive are not touched.",
+                             "ลบรายการที่เสร็จ/ไม่สำเร็จ/ยกเลิกออกจากหน้านี้ ไฟล์ใน Drive ไม่หาย"))
+            }
+            ForEach(dayGroups, id: \.title) { group in
+                Text(group.title).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                VStack(spacing: 0) {
+                    ForEach(Array(group.jobs.enumerated()), id: \.element.command.id) { index, job in
+                        if index > 0 { Divider() }
+                        jobRow(job)
+                    }
+                }.background(DDTheme.rail, in: RoundedRectangle(cornerRadius: 10))
+            }
+        }
+    }
+
+    /// Jobs are already newest-first, so day buckets keep that order.
+    private var dayGroups: [(title: String, jobs: [AutomationJob])] {
+        let calendar = Calendar.current
+        var groups: [(title: String, jobs: [AutomationJob])] = []
+        for job in uploads.jobs {
+            let title = calendar.isDateInToday(job.updatedAt) ? tr("Today", "วันนี้")
+                : calendar.isDateInYesterday(job.updatedAt) ? tr("Yesterday", "เมื่อวาน")
+                : job.updatedAt.formatted(date: .abbreviated, time: .omitted)
+            if groups.last?.title == title { groups[groups.count - 1].jobs.append(job) } else { groups.append((title, [job])) }
+        }
+        return groups
+    }
+
     private func jobRow(_ job: AutomationJob) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(job.name ?? "Upload").font(.subheadline.weight(.medium)).lineLimit(2)
-            Text(stateLabel(job.state)).font(.caption).foregroundStyle(job.state == "completed" ? .green : .secondary)
-            if let status = job.upload, status.totalBytes > 0 {
+        let active = !job.terminal
+        let size = job.upload?.totalBytes ?? job.totalBytes ?? 0
+        let details = [job.updatedAt.formatted(date: .omitted, time: .shortened),
+                       size > 0 ? Formatters.byteCount(size) : nil,
+                       job.upload?.folder?.path].compactMap { $0 }
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: stateIcon(job.state)).foregroundStyle(stateColor(job.state)).frame(width: 16)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(job.name ?? "Upload").font(.subheadline.weight(.medium)).lineLimit(1).truncationMode(.middle)
+                        .help(job.name ?? "")
+                    Text(([stateLabel(job.state)] + details).joined(separator: " · "))
+                        .font(.caption2).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                }
+                Spacer(minLength: 4)
+                HStack(spacing: 8) {
+                    if ["failed", "cancelled", "interrupted"].contains(job.state) {
+                        Button {
+                            do { _ = try uploads.retry(job.command.id, newName: rename[job.command.id]) }
+                            catch { uploads.message = (error as? AutomationFailure)?.message ?? "Cannot retry this job." }
+                        } label: { Image(systemName: "arrow.clockwise") }.help(tr("Retry", "ลองใหม่"))
+                    }
+                    if active && job.state != "cancelling" {
+                        Button { _ = try? uploads.cancel(job.command.id) } label: { Image(systemName: "xmark.circle") }
+                            .help(tr("Cancel", "ยกเลิก"))
+                    }
+                    if let link = job.upload?.remoteURL, let url = URL(string: link) {
+                        Link(destination: url) { Image(systemName: "arrow.up.forward.square") }.help(tr("Open in Drive", "เปิดใน Drive"))
+                    }
+                }.buttonStyle(.plain).foregroundStyle(DDTheme.accent)
+            }
+            if active, let status = job.upload, status.totalBytes > 0 {
                 ProgressView(value: Double(status.bytesUploaded), total: Double(status.totalBytes))
                 Text("\(Formatters.byteCount(status.bytesUploaded)) / \(Formatters.byteCount(status.totalBytes))")
                     .font(.caption2).foregroundStyle(.secondary)
             }
-            if let message = job.message { Text(message).font(.caption).foregroundStyle(.orange).textSelection(.enabled) }
+            if let message = job.message, job.state != "completed" {
+                Text(message).font(.caption2).foregroundStyle(.orange).textSelection(.enabled)
+            }
             if job.errorCode == "name_conflict" {
                 TextField(tr("New filename", "เปลี่ยนชื่อไฟล์"), text: Binding(get: { rename[job.command.id] ?? job.name ?? "" }, set: { rename[job.command.id] = $0 }))
                     .textFieldStyle(.roundedBorder)
             }
-            HStack {
-                if ["failed", "cancelled", "interrupted"].contains(job.state) {
-                    Button(tr("Retry", "ลองใหม่")) {
-                        do { _ = try uploads.retry(job.command.id, newName: rename[job.command.id]) }
-                        catch { uploads.message = (error as? AutomationFailure)?.message ?? "Cannot retry this job." }
-                    }
-                }
-                if !job.terminal && job.state != "cancelling" {
-                    Button(tr("Cancel", "ยกเลิก")) { _ = try? uploads.cancel(job.command.id) }
-                }
-                if let link = job.upload?.remoteURL, let url = URL(string: link) {
-                    Link(tr("Open in Drive", "เปิดใน Drive"), destination: url)
-                }
-            }.font(.caption)
-        }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
-            .background(DDTheme.rail, in: RoundedRectangle(cornerRadius: 10))
+        }.padding(.horizontal, 10).padding(.vertical, 8).frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func stateIcon(_ state: String) -> String {
+        switch state {
+        case "completed": "checkmark.circle.fill"
+        case "failed": "exclamationmark.triangle.fill"
+        case "cancelled": "minus.circle"
+        case "interrupted": "pause.circle"
+        default: "arrow.up.circle"
+        }
+    }
+
+    private func stateColor(_ state: String) -> Color {
+        switch state {
+        case "completed": .green
+        case "failed": .red
+        case "cancelled": .secondary
+        case "interrupted": .orange
+        default: DDTheme.accent
+        }
     }
 
     private func stateLabel(_ state: String) -> String {

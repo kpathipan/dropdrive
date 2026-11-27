@@ -37,6 +37,12 @@ final class UploadStore {
         guard fsync(directory) == 0 else { throw AutomationFailure("checkpoint_failed", "Cannot durably save upload checkpoint directory.") }
     }
 
+    func delete(_ id: UUID) throws {
+        let target = root.appendingPathComponent(id.uuidString + ".json")
+        guard FileManager.default.fileExists(atPath: target.path) else { return }
+        try FileManager.default.removeItem(at: target)
+    }
+
     func load() throws -> [UUID: PrivateUploadRecord] {
         try prepare()
         var result: [UUID: PrivateUploadRecord] = [:]

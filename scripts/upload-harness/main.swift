@@ -180,6 +180,9 @@ actor Checkpoints {
         check("private checkpoint survives restart with original ID", stored[changed.job.command.id]?.fileID == "generated_id")
         let attributes = try FileManager.default.attributesOfItem(atPath: directory.appendingPathComponent("private-store/\(changed.job.command.id.uuidString).json").path)
         check("private checkpoint mode is 0600", (attributes[.posixPermissions] as? NSNumber)?.intValue == 0o600)
+        try store.delete(changed.job.command.id)
+        let afterClear = try store.load()
+        check("cleared history checkpoint is gone after restart", afterClear[changed.job.command.id] == nil)
         print("ALL UPLOAD ENGINE CHECKS PASS")
     }
 }

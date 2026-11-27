@@ -63,6 +63,18 @@ final class UploadCoordinator {
 
     func job(_ id: UUID) -> AutomationJob? { records[id]?.job }
 
+    /// Finished rows only. "interrupted" stays: it holds the resumable session.
+    static let clearableStates: Set<String> = ["completed", "cancelled", "failed"]
+    var hasClearableJobs: Bool { jobs.contains { Self.clearableStates.contains($0.state) } }
+
+    func clearHistory() {
+        for (id, record) in records where tasks[id] == nil && Self.clearableStates.contains(record.job.state) {
+            do { try store.delete(id); records[id] = nil }
+            catch { message = tr("Some upload history could not be cleared.", "ล้างประวัติอัปโหลดบางรายการไม่ได้") }
+        }
+        refreshJobs()
+    }
+
     func submit(_ command: AutomationCommand, bookmark: Data? = nil) throws -> AutomationJob {
         try command.validate()
         guard storageError == nil else { throw AutomationFailure("unsafe_checkpoint", storageError!) }

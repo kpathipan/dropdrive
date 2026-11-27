@@ -5,6 +5,22 @@ All notable changes to DropDrive are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [6.27.0] - 2026-11-27
+
+### Added
+- Mac and Windows: when choosing files from a Drive folder, tick one or more
+  file types (videos, images, documents, archives, other) to select every file
+  of that type; only types the folder contains are shown.
+- Mac Uploads: Clear History removes finished, failed and cancelled uploads
+  from the list (files on Drive are untouched; resumable uploads are kept).
+
+### Changed
+- Mac Uploads history is grouped by day and each row shows its time, size and
+  Drive folder, with compact retry/cancel/open icons.
+- Windows now classifies documents and archives with the same extension and
+  MIME lists as Mac (adds csv, rtf, md, odt, bz2, xz, tgz and more). This also
+  affects which category destination rule a download uses.
+
 ## [6.26.0] - 2026-11-04
 
 ### Added

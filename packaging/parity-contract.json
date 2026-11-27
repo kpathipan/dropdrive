@@ -1,12 +1,12 @@
 {
   "schema": 1,
-  "releaseVersion": "6.25.5",
+  "releaseVersion": "6.27.0",
   "reference": "Mac 6.24.4 and later jointly approved changes",
   "automaticUpdateHours": 24,
   "features": [
     "compact-ui-thai-english", "shared-branding", "link-analysis-batch",
     "drive-public", "drive-optional-multiple-accounts", "login-refresh",
-    "folder-cards-list-sizes-selection", "thumbnail-scroll-and-space",
+    "folder-cards-list-sizes-selection", "folder-file-type-selection", "thumbnail-scroll-and-space",
     "destination-no-duplicate-folder", "destination-favorites-source-category-rules", "duplicate-review-mp3", "duplicate-reveal-existing-location",
     "queue-pause-resume-reorder-recovery", "history-search-open-repeat",
     "youtube-video-mp3", "tiktok-original-video-mp3-photos",
